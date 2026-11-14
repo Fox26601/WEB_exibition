@@ -8,6 +8,7 @@ namespace Gallery.UI
 {
     /// <summary>
     /// Language chrome EN/RU/UK/HE and artwork title/text panel from catalog strings.
+    /// Info panel toggles via E / Info button; Close and Esc also dismiss.
     /// </summary>
     public class LocaleUI : MonoBehaviour
     {
@@ -26,6 +27,8 @@ namespace Gallery.UI
         Text _langLabel;
 
         public string CurrentLang => _lang;
+        public bool IsInfoOpen => _panel != null && _panel.activeSelf;
+        public ArtworkView Selected => _selected;
 
         public void Initialize(string initialLang, InteractionRaycaster raycaster)
         {
@@ -33,7 +36,7 @@ namespace Gallery.UI
             _raycaster = raycaster;
             EnsureUi();
             RefreshLangLabel();
-            SetPanelVisible(false);
+            CloseInfo();
         }
 
         public void BindCatalog(CatalogData catalog)
@@ -47,34 +50,84 @@ namespace Gallery.UI
             PlayerPrefs.SetString("gallery.lang", _lang);
             RefreshLangLabel();
             if (_selected != null)
-                ShowSelection(_selected);
-            if (_panel != null && _panel.activeSelf && _selected != null)
-                OpenTextPanel(_selected);
+                RefreshSelectionChrome(_selected);
+            if (IsInfoOpen && _selected != null)
+                ApplyPanelText(_selected);
         }
 
         public void ShowSelection(ArtworkView view)
         {
+            if (_selected != null && _selected != view)
+                _selected.SetSelected(false);
+
             _selected = view;
             EnsureUi();
+
             if (view == null)
             {
-                _titleText.text = "";
+                if (_titleText != null) _titleText.text = "";
                 if (_infoButton != null) _infoButton.SetActive(false);
+                if (IsInfoOpen)
+                    CloseInfo();
                 return;
             }
 
-            _titleText.text = view.Entry.title != null ? view.Entry.title.Get(_lang) : "";
-            if (_infoButton != null) _infoButton.SetActive(true);
+            view.SetSelected(true);
+            RefreshSelectionChrome(view);
+
+            // Info open + select another artwork → swap panel content, keep open.
+            if (IsInfoOpen)
+                ApplyPanelText(view);
+        }
+
+        public void ClearSelection()
+        {
+            ShowSelection(null);
+        }
+
+        public void ToggleInfo()
+        {
+            if (_selected == null)
+                return;
+
+            if (IsInfoOpen)
+                CloseInfo();
+            else
+                OpenTextPanel(_selected);
         }
 
         public void OpenTextPanel(ArtworkView view)
         {
             if (view == null) return;
+            if (GalleryUIState.IsMediaOverlay)
+                return;
+
             _selected = view;
             EnsureUi();
-            _titleText.text = view.Entry.title != null ? view.Entry.title.Get(_lang) : "";
-            _bodyText.text = view.Entry.text != null ? view.Entry.text.Get(_lang) : "";
+            ApplyPanelText(view);
             SetPanelVisible(true);
+        }
+
+        public void CloseInfo()
+        {
+            SetPanelVisible(false);
+        }
+
+        void ApplyPanelText(ArtworkView view)
+        {
+            if (view == null) return;
+            if (_titleText != null)
+                _titleText.text = view.Entry.title != null ? view.Entry.title.Get(_lang) : "";
+            if (_bodyText != null)
+                _bodyText.text = view.Entry.text != null ? view.Entry.text.Get(_lang) : "";
+        }
+
+        void RefreshSelectionChrome(ArtworkView view)
+        {
+            if (_titleText != null)
+                _titleText.text = view.Entry.title != null ? view.Entry.title.Get(_lang) : "";
+            if (_infoButton != null)
+                _infoButton.SetActive(true);
         }
 
         void EnsureUi()
@@ -88,7 +141,6 @@ namespace Gallery.UI
             canvasGo.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             canvasGo.AddComponent<GraphicRaycaster>();
 
-            // Language row
             var langRow = CreatePanel("LangRow", canvasGo.transform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
                 new Vector2(0f, -24f), new Vector2(420f, 40f));
             var langs = Languages;
@@ -108,8 +160,7 @@ namespace Gallery.UI
 
             _infoButton = CreateButton(canvasGo.transform, "Info", new Vector2(0f, 36f), () =>
             {
-                if (_selected != null) OpenTextPanel(_selected);
-                else _raycaster?.OpenInfoForSelected();
+                _raycaster?.ToggleInfoForSelected();
             }).gameObject;
             _infoButton.GetComponent<RectTransform>().anchorMin = new Vector2(0.5f, 0f);
             _infoButton.GetComponent<RectTransform>().anchorMax = new Vector2(0.5f, 0f);
@@ -126,10 +177,9 @@ namespace Gallery.UI
             _bodyText.horizontalOverflow = HorizontalWrapMode.Wrap;
             _bodyText.verticalOverflow = VerticalWrapMode.Overflow;
 
-            var close = CreateButton(_panel.transform, "Close", new Vector2(0f, -130f), () => SetPanelVisible(false));
+            var close = CreateButton(_panel.transform, "Close", new Vector2(0f, -130f), CloseInfo);
             close.GetComponent<RectTransform>().sizeDelta = new Vector2(120f, 36f);
 
-            // Mobile joystick (left)
             BuildJoystick();
         }
 
@@ -153,6 +203,11 @@ namespace Gallery.UI
         {
             if (_panel != null)
                 _panel.SetActive(visible);
+
+            if (visible)
+                GalleryUIState.Set(GalleryLayer.Info);
+            else
+                GalleryUIState.ClearIf(GalleryLayer.Info);
         }
 
         void RefreshLangLabel()
