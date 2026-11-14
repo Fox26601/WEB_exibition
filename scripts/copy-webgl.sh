@@ -15,6 +15,7 @@ fi
 mkdir -p "$DEST"
 rsync -a --delete \
   --exclude 'README.md' \
+  --exclude '.gitkeep' \
   "$SRC"/ "$DEST"/
 
 # Keep the placeholder README if the build did not include one.
@@ -27,5 +28,10 @@ See `Exibition/README.md` for Player Settings and export steps.
 EOF
 fi
 
+if [[ ! -d "$DEST/Build" ]]; then
+  echo "Warning: $DEST/Build not found. Expected Unity WebGL layout with Build/ and TemplateData/."
+fi
+
 echo "Copied WebGL build → web/public/unity/"
+echo "Exhibition prefers Unity when public/unity/Build exists; otherwise Three.js stub is used."
 ls -la "$DEST"

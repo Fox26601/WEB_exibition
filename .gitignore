@@ -7,14 +7,19 @@ node_modules/
 web/node_modules/
 web/.next/
 web/out/
+web/.data/
 web/.env
 web/.env.local
 web/.env.*.local
+.env
+.env.local
+.env*.local
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
 
-# Unity (Exibition Hub root)
+# Unity (Exibition Hub root — canonical project)
 Exibition/[Ll]ibrary/
 Exibition/[Tt]emp/
 Exibition/[Oo]bj/
@@ -50,7 +55,7 @@ Exibition/crashlytics-buildlog.txt
 Exibition/crashlytics-build.properties
 Exibition/.consolo/
 
-# Legacy unity/ tree if checked out from older PRs
+# Legacy unity/ tree (PR #1 scaffold; Hub opens Exibition/ instead)
 unity/[Ll]ibrary/
 unity/[Tt]emp/
 unity/[Oo]bj/
@@ -60,6 +65,7 @@ unity/[Ll]ogs/
 unity/[Uu]ser[Ss]ettings/
 unity/*.csproj
 unity/*.sln
+*.unitypackage
 
 # IDE
 .idea/

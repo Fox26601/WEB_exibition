@@ -1,0 +1,205 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #0e0c0a;
+  --ink-soft: #1a1612;
+  --paper: #e8dfd0;
+  --paper-dim: #c9bba6;
+  --amber: #c4893a;
+  --amber-bright: #e0a84a;
+  --smoke: rgba(232, 223, 208, 0.12);
+  --line: rgba(232, 223, 208, 0.22);
+  --danger: #b54a3a;
+  --ok: #3d7a5c;
+  --font-display: var(--font-syne), "Arial Narrow", sans-serif;
+  --font-body: var(--font-literata), Georgia, serif;
+  --font-ui: var(--font-outfit), system-ui, sans-serif;
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-paper: var(--paper);
+  --color-paper-dim: var(--paper-dim);
+  --color-amber: var(--amber);
+  --color-amber-bright: var(--amber-bright);
+  --color-smoke: var(--smoke);
+  --color-line: var(--line);
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-ui: var(--font-ui);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-body);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+.grain {
+  position: relative;
+  isolation: isolate;
+}
+
+.grain::before {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  mix-blend-mode: soft-light;
+}
+
+.atmosphere {
+  background:
+    radial-gradient(ellipse 90% 60% at 70% 20%, rgba(196, 137, 58, 0.18), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 15% 80%, rgba(80, 55, 30, 0.45), transparent 50%),
+    linear-gradient(165deg, #16120e 0%, #0e0c0a 45%, #1c1410 100%);
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-soft {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-line {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.animate-rise {
+  animation: rise-in 0.9s ease-out both;
+}
+
+.animate-rise-delay {
+  animation: rise-in 1s ease-out 0.2s both;
+}
+
+.animate-fade {
+  animation: fade-soft 1.2s ease-out both;
+}
+
+.animate-pulse-line {
+  animation: pulse-line 3.5s ease-in-out infinite;
+}
+
+.admin-shell {
+  background: #12100e;
+  color: var(--paper);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+}
+
+.admin-shell input,
+.admin-shell textarea,
+.admin-shell select {
+  background: #1c1814;
+  border: 1px solid var(--line);
+  color: var(--paper);
+  border-radius: 4px;
+  padding: 0.55rem 0.7rem;
+  width: 100%;
+}
+
+.admin-shell label {
+  display: block;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+  margin-bottom: 0.35rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid var(--amber);
+  background: transparent;
+  color: var(--amber-bright);
+  padding: 0.65rem 1.25rem;
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.btn:hover {
+  background: var(--amber);
+  color: var(--ink);
+}
+
+.btn-solid {
+  background: var(--amber);
+  color: var(--ink);
+}
+
+.btn-solid:hover {
+  background: var(--amber-bright);
+}
+
+.btn-danger {
+  border-color: var(--danger);
+  color: #e08a7a;
+}
+
+.btn-danger:hover {
+  background: var(--danger);
+  color: white;
+}
+
+.btn-ghost {
+  border-color: var(--line);
+  color: var(--paper-dim);
+}
+
+[dir="rtl"] .mirror-rtl {
+  transform: scaleX(-1);
+}
