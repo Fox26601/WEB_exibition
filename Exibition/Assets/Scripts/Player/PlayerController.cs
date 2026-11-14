@@ -1,4 +1,4 @@
-using Gallery.Media;
+using Gallery.UI;
 using UnityEngine;
 
 namespace Gallery.Player
@@ -6,6 +6,7 @@ namespace Gallery.Player
     /// <summary>
     /// Desktop: WASD/arrows + mouse look with pointer lock.
     /// Mobile: virtual joystick move + look-zone drag (also accepts HTML joystick via jslib hooks).
+    /// Look pauses while Info/Image/Video is open; move freezes for Image/Video only.
     /// </summary>
     public class PlayerController : MonoBehaviour
     {
@@ -27,7 +28,6 @@ namespace Gallery.Player
         bool _htmlInputActive;
         float _roomLength = 8f;
 
-        // On-screen joystick state (Unity UI fallback when HTML chrome absent).
         Vector2 _uiMove;
         bool _lookDragging;
         Vector2 _lastLookPos;
@@ -56,32 +56,41 @@ namespace Gallery.Player
 
         void Update()
         {
-            if (InputBlocked || MediaBridge.OverlayOpen)
+            if (InputBlocked)
                 return;
 
+            // Image / video: look + move frozen until overlay closes.
+            if (GalleryUIState.BlocksMove)
+                return;
+
+            var lookBlocked = GalleryUIState.BlocksLook;
+
             if (_mobile || _htmlInputActive)
-                UpdateMobile();
+                UpdateMobile(lookBlocked);
             else
-                UpdateDesktop();
+                UpdateDesktop(lookBlocked);
         }
 
-        void UpdateDesktop()
+        void UpdateDesktop(bool lookBlocked)
         {
-            if (Input.GetMouseButtonDown(0) && !IsPointerOverUi())
+            if (!lookBlocked && Input.GetMouseButtonDown(0) && !IsPointerOverUi())
                 TryLockPointer();
 
-            if (Input.GetKeyDown(KeyCode.Escape))
+            // Esc unlock only when no UI layer (InteractionRaycaster owns Esc for layers).
+            if (!lookBlocked && Input.GetKeyDown(KeyCode.Escape))
                 UnlockPointer();
 
             var mx = Input.GetAxisRaw("Horizontal");
             var mz = Input.GetAxisRaw("Vertical");
-            // Arrow keys covered by axes; also accept explicit WASD if axes remapped.
             if (Input.GetKey(KeyCode.A)) mx = -1f;
             if (Input.GetKey(KeyCode.D)) mx = 1f;
             if (Input.GetKey(KeyCode.S)) mz = -1f;
             if (Input.GetKey(KeyCode.W)) mz = 1f;
 
             Move(new Vector2(mx, mz));
+
+            if (lookBlocked)
+                return;
 
             if (_pointerLocked || Input.GetMouseButton(1))
             {
@@ -91,10 +100,17 @@ namespace Gallery.Player
             }
         }
 
-        void UpdateMobile()
+        void UpdateMobile(bool lookBlocked)
         {
             var move = _htmlInputActive ? _htmlMove : _uiMove;
             Move(move);
+
+            if (lookBlocked)
+            {
+                _lookDragging = false;
+                _htmlLookDelta = Vector2.zero;
+                return;
+            }
 
             if (_htmlInputActive && _htmlLookDelta.sqrMagnitude > 0f)
             {
@@ -112,7 +128,7 @@ namespace Gallery.Player
             for (var i = 0; i < Input.touchCount; i++)
             {
                 var t = Input.GetTouch(i);
-                // Right half of screen = look zone.
+                // Right half of screen = look zone (disabled while info/overlay open).
                 if (t.position.x < Screen.width * 0.45f)
                     continue;
 
@@ -168,15 +184,9 @@ namespace Gallery.Player
 
         void TryLockPointer()
         {
-#if UNITY_WEBGL && !UNITY_EDITOR
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
             _pointerLocked = true;
-#else
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-            _pointerLocked = true;
-#endif
         }
 
         public void UnlockPointer()
@@ -192,8 +202,6 @@ namespace Gallery.Player
                    UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
         }
 
-        // --- HTML / jslib joystick bridge ---
-
         public void SetHtmlMove(float x, float y)
         {
             _htmlInputActive = true;
@@ -202,6 +210,8 @@ namespace Gallery.Player
 
         public void AddHtmlLook(float dx, float dy)
         {
+            if (GalleryUIState.BlocksLook)
+                return;
             _htmlInputActive = true;
             _htmlLookDelta += new Vector2(dx, dy);
         }

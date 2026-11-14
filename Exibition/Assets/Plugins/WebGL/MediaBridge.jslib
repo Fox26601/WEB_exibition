@@ -19,7 +19,17 @@ mergeInto(LibraryManager.library, {
     img.setAttribute('style', 'max-width:100%;max-height:100%;object-fit:contain;');
     root.appendChild(img);
 
+    var closeBtn = document.createElement('button');
+    closeBtn.textContent = 'Close';
+    closeBtn.setAttribute('style',
+      'position:absolute;top:12px;right:12px;padding:8px 14px;font:14px sans-serif;cursor:pointer;');
+    root.appendChild(closeBtn);
+
+    var closed = false;
+    var lastTap = 0;
     var close = function () {
+      if (closed) return;
+      closed = true;
       root.style.display = 'none';
       root.innerHTML = '';
       try {
@@ -29,13 +39,26 @@ mergeInto(LibraryManager.library, {
           Module.SendMessage('MediaBridge', 'OnJsOverlayClosed');
         }
       } catch (e) {}
-      root.removeEventListener('click', close);
       document.removeEventListener('keydown', onKey);
     };
     var onKey = function (ev) {
       if (ev.key === 'Escape') close();
     };
-    root.addEventListener('click', close);
+    var onPointer = function (ev) {
+      if (ev.target === closeBtn) return;
+      var now = Date.now();
+      if (now - lastTap < 350) {
+        close();
+        lastTap = 0;
+      } else {
+        lastTap = now;
+      }
+    };
+    closeBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      close();
+    });
+    root.addEventListener('click', onPointer);
     document.addEventListener('keydown', onKey);
   },
 
@@ -63,13 +86,14 @@ mergeInto(LibraryManager.library, {
     video.setAttribute('webkit-playsinline', '');
     video.setAttribute('style', 'max-width:100%;max-height:100%;');
     root.appendChild(video);
+    // Autoplay only after this open gesture (user click/tap that triggered OpenVideo).
     var playPromise = video.play();
     if (playPromise && playPromise.catch) playPromise.catch(function () {});
 
     var closeBtn = document.createElement('button');
     closeBtn.textContent = 'Close';
     closeBtn.setAttribute('style',
-      'position:absolute;top:12px;right:12px;padding:8px 14px;font:14px sans-serif;');
+      'position:absolute;top:12px;right:12px;padding:8px 14px;font:14px sans-serif;cursor:pointer;');
     root.appendChild(closeBtn);
 
     var closed = false;

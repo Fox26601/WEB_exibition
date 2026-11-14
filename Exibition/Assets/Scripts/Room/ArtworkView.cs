@@ -17,9 +17,13 @@ namespace Gallery.Room
         Material _canvasMaterial;
         Texture2D _loadedTexture;
         GameObject _headphones;
+        MeshRenderer _frameRenderer;
+        bool _selected;
 
         static Material s_placeholder;
         static Material s_frameMat;
+        static readonly Color FrameColor = new Color(0.18f, 0.16f, 0.14f);
+        static readonly Color SelectedFrameColor = new Color(0.85f, 0.72f, 0.28f);
 
         public void Setup(ArtworkEntry entry, int index)
         {
@@ -35,7 +39,9 @@ namespace Gallery.Room
             frame.transform.SetParent(transform, false);
             frame.transform.localPosition = Vector3.zero;
             frame.transform.localScale = new Vector3(1.7f, 1.2f, 0.06f);
-            frame.GetComponent<MeshRenderer>().sharedMaterial = FrameMaterial();
+            _frameRenderer = frame.GetComponent<MeshRenderer>();
+            _frameRenderer.sharedMaterial = new Material(FrameMaterial());
+            ApplyFrameColor();
             // Keep collider on frame for raycasts.
             var frameCol = frame.GetComponent<Collider>();
             frameCol.isTrigger = false;
@@ -111,6 +117,23 @@ namespace Gallery.Room
                     _canvasMaterial.SetTexture("_BaseMap", null);
                 SetColor(new Color(0.75f, 0.75f, 0.72f));
             }
+        }
+
+        public void SetSelected(bool selected)
+        {
+            _selected = selected;
+            ApplyFrameColor();
+        }
+
+        void ApplyFrameColor()
+        {
+            if (_frameRenderer == null || _frameRenderer.sharedMaterial == null) return;
+            var c = _selected ? SelectedFrameColor : FrameColor;
+            var mat = _frameRenderer.sharedMaterial;
+            if (mat.HasProperty("_BaseColor"))
+                mat.SetColor("_BaseColor", c);
+            if (mat.HasProperty("_Color"))
+                mat.SetColor("_Color", c);
         }
 
         void SetColor(Color c)
