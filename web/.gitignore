@@ -39,6 +39,11 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Unity WebGL uncompressed siblings (from scripts/decompress-unity.mjs)
+/public/unity/Build/WebGL.framework.js
+/public/unity/Build/WebGL.data
+/public/unity/Build/WebGL.wasm
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

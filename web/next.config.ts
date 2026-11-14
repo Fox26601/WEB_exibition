@@ -14,39 +14,8 @@ const nextConfig: NextConfig = {
       },
     },
   },
-  // Safari does not decompress script/wasm URLs that end in ".gz" even when
-  // Content-Encoding: gzip is set (WebKit 247421). Serve gzip bodies under
-  // extension-less compressed names and point the Unity loader at those URLs.
-  async rewrites() {
-    return [
-      {
-        source: "/unity/Build/WebGL.framework.js",
-        destination: "/unity/Build/WebGL.framework.js.gz",
-      },
-      {
-        source: "/unity/Build/WebGL.wasm",
-        destination: "/unity/Build/WebGL.wasm.gz",
-      },
-    ];
-  },
   async headers() {
     return [
-      {
-        source: "/unity/Build/WebGL.framework.js",
-        headers: [
-          { key: "Content-Type", value: "application/javascript" },
-          { key: "Content-Encoding", value: "gzip" },
-          immutable,
-        ],
-      },
-      {
-        source: "/unity/Build/WebGL.wasm",
-        headers: [
-          { key: "Content-Type", value: "application/wasm" },
-          { key: "Content-Encoding", value: "gzip" },
-          immutable,
-        ],
-      },
       {
         source: "/unity/:path*.wasm",
         headers: [
@@ -81,7 +50,6 @@ const nextConfig: NextConfig = {
         ],
       },
       {
-        // Safari: application/gzip (not octet-stream) so XHR decompresses .data.gz
         source: "/unity/:path*.data.gz",
         headers: [
           { key: "Content-Type", value: "application/gzip" },

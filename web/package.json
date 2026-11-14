@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "decompress-unity": "node scripts/decompress-unity.mjs",
+    "predev": "node scripts/decompress-unity.mjs",
+    "prebuild": "node scripts/decompress-unity.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -55,8 +55,8 @@
       var loaderUrl = buildUrl + "/WebGL.loader.js";
       var config = {
         arguments: [],
-        // data: .gz URL + Content-Type application/gzip (Safari). framework/wasm: no .gz in URL; rewrite serves gzip body.
-        dataUrl: buildUrl + "/WebGL.data.gz",
+        // Uncompressed siblings produced by scripts/decompress-unity.mjs (Safari ignores Content-Encoding on .gz).
+        dataUrl: buildUrl + "/WebGL.data",
         frameworkUrl: buildUrl + "/WebGL.framework.js",
         codeUrl: buildUrl + "/WebGL.wasm",
         streamingAssetsUrl: "StreamingAssets",
