@@ -51,6 +51,39 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        source: "/unity/:path*.wasm.gz",
+        headers: [
+          { key: "Content-Type", value: "application/wasm" },
+          { key: "Content-Encoding", value: "gzip" },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/unity/:path*.data.gz",
+        headers: [
+          { key: "Content-Type", value: "application/octet-stream" },
+          { key: "Content-Encoding", value: "gzip" },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/unity/:path*.js.gz",
+        headers: [
+          { key: "Content-Type", value: "application/javascript" },
+          { key: "Content-Encoding", value: "gzip" },
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
         source: "/unity/:path*.gz",
         headers: [
           { key: "Content-Encoding", value: "gzip" },
