@@ -96,20 +96,6 @@ namespace Gallery.Room
             // Ceiling collider optional — keep for consistency.
         }
 
-        static Material CreateMaterial(Color color)
-        {
-            var shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader == null)
-                shader = Shader.Find("Standard");
-            if (shader == null)
-                shader = Shader.Find("Unlit/Color");
-
-            var mat = new Material(shader);
-            if (mat.HasProperty("_BaseColor"))
-                mat.SetColor("_BaseColor", color);
-            if (mat.HasProperty("_Color"))
-                mat.SetColor("_Color", color);
-            return mat;
-        }
+        static Material CreateMaterial(Color color) => RuntimeMaterials.Create(color);
     }
 }

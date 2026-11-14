@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+const immutable = {
+  key: "Cache-Control",
+  value: "public, max-age=31536000, immutable",
+} as const;
+
 const nextConfig: NextConfig = {
   turbopack: {
     rules: {
@@ -15,39 +20,25 @@ const nextConfig: NextConfig = {
         source: "/unity/:path*.wasm",
         headers: [
           { key: "Content-Type", value: "application/wasm" },
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
+          immutable,
         ],
       },
       {
         source: "/unity/:path*.data",
         headers: [
           { key: "Content-Type", value: "application/octet-stream" },
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
+          immutable,
         ],
       },
       {
         source: "/unity/:path*.js",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
-        ],
+        headers: [immutable],
       },
       {
         source: "/unity/:path*.br",
         headers: [
           { key: "Content-Encoding", value: "br" },
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
+          immutable,
         ],
       },
       {
@@ -55,21 +46,15 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "Content-Type", value: "application/wasm" },
           { key: "Content-Encoding", value: "gzip" },
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
+          immutable,
         ],
       },
       {
         source: "/unity/:path*.data.gz",
         headers: [
-          { key: "Content-Type", value: "application/octet-stream" },
+          { key: "Content-Type", value: "application/gzip" },
           { key: "Content-Encoding", value: "gzip" },
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
+          immutable,
         ],
       },
       {
@@ -77,20 +62,14 @@ const nextConfig: NextConfig = {
         headers: [
           { key: "Content-Type", value: "application/javascript" },
           { key: "Content-Encoding", value: "gzip" },
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
+          immutable,
         ],
       },
       {
         source: "/unity/:path*.gz",
         headers: [
           { key: "Content-Encoding", value: "gzip" },
-          {
-            key: "Cache-Control",
-            value: "public, max-age=31536000, immutable",
-          },
+          immutable,
         ],
       },
     ];
