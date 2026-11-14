@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Gallery.EditorTools
 {
@@ -38,31 +40,99 @@ namespace Gallery.EditorTools
                 return;
             }
 
-            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Gzip;
-            PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
-            PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.WebGL, ManagedStrippingLevel.High);
-            PlayerSettings.stripEngineCode = true;
+            // Uncompressed: Safari/WebKit ignores Content-Encoding on Unity gzip assets.
+            PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
+            PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.FullWithoutStacktrace;
+            PlayerSettings.SetManagedStrippingLevel(
+                UnityEditor.Build.NamedBuildTarget.WebGL,
+                ManagedStrippingLevel.Low);
+            PlayerSettings.stripEngineCode = false;
 
-            var options = new BuildPlayerOptions
-            {
-                scenes = scenes,
-                locationPathName = outPath,
-                target = BuildTarget.WebGL,
-                options = BuildOptions.None,
-            };
+            // URP blit shaders throw ArgumentNullException(shader) on many WebGL GPUs.
+            // Build with Built-in RP, then restore Editor URP settings.
+            var previousDefault = GraphicsSettings.defaultRenderPipeline;
+            var previousQualityPipes = CaptureQualityPipelines();
+            ClearRenderPipelines();
 
-            Debug.Log("WebGLBuilder: building to " + outPath);
-            var report = BuildPipeline.BuildPlayer(options);
-            var summary = report.summary;
-            if (summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
+            var exitCode = 1;
+            try
             {
-                Debug.LogError("WebGLBuilder: build failed — " + summary.result + " errors=" + summary.totalErrors);
-                EditorApplication.Exit(1);
-                return;
+                var options = new BuildPlayerOptions
+                {
+                    scenes = scenes,
+                    locationPathName = outPath,
+                    target = BuildTarget.WebGL,
+                    options = BuildOptions.None,
+                };
+
+                Debug.Log("WebGLBuilder: building to " + outPath + " (Built-in RP for WebGL)");
+                var report = BuildPipeline.BuildPlayer(options);
+                var summary = report.summary;
+                if (summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
+                {
+                    Debug.LogError("WebGLBuilder: build failed — " + summary.result + " errors=" + summary.totalErrors);
+                    exitCode = 1;
+                }
+                else
+                {
+                    Debug.Log("WebGLBuilder: OK → " + outPath + " size=" + summary.totalSize);
+                    exitCode = 0;
+                }
+            }
+            finally
+            {
+                GraphicsSettings.defaultRenderPipeline = previousDefault;
+                RestoreQualityPipelines(previousQualityPipes);
+                AssetDatabase.SaveAssets();
             }
 
-            Debug.Log("WebGLBuilder: OK → " + outPath + " size=" + summary.totalSize);
-            EditorApplication.Exit(0);
+            EditorApplication.Exit(exitCode);
+        }
+
+        static List<RenderPipelineAsset> CaptureQualityPipelines()
+        {
+            var list = new List<RenderPipelineAsset>();
+            var so = new SerializedObject(
+                Unsupported.GetSerializedAssetInterfaceSingleton("QualitySettings"));
+            var settings = so.FindProperty("m_QualitySettings");
+            for (var i = 0; i < settings.arraySize; i++)
+            {
+                var pipe = settings.GetArrayElementAtIndex(i)
+                    .FindPropertyRelative("customRenderPipeline");
+                list.Add(pipe.objectReferenceValue as RenderPipelineAsset);
+            }
+
+            return list;
+        }
+
+        static void ClearRenderPipelines()
+        {
+            GraphicsSettings.defaultRenderPipeline = null;
+            var so = new SerializedObject(
+                Unsupported.GetSerializedAssetInterfaceSingleton("QualitySettings"));
+            var settings = so.FindProperty("m_QualitySettings");
+            for (var i = 0; i < settings.arraySize; i++)
+            {
+                settings.GetArrayElementAtIndex(i)
+                    .FindPropertyRelative("customRenderPipeline").objectReferenceValue = null;
+            }
+
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void RestoreQualityPipelines(List<RenderPipelineAsset> pipes)
+        {
+            var so = new SerializedObject(
+                Unsupported.GetSerializedAssetInterfaceSingleton("QualitySettings"));
+            var settings = so.FindProperty("m_QualitySettings");
+            var n = Mathf.Min(settings.arraySize, pipes.Count);
+            for (var i = 0; i < n; i++)
+            {
+                settings.GetArrayElementAtIndex(i)
+                    .FindPropertyRelative("customRenderPipeline").objectReferenceValue = pipes[i];
+            }
+
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         static string ResolveOutputPath()

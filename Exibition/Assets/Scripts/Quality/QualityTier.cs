@@ -22,14 +22,12 @@ namespace Gallery.Quality
 
         static bool DetectMobile()
         {
+            // Application.isMobilePlatform is reliable on WebGL.
+            // Do not use Input.touchSupported — desktop Safari/Chrome often report true.
             if (Application.isMobilePlatform)
                 return true;
 
-            // Touch-first small screens (foldables / tablets in desktop UA edge cases).
-            if (Input.touchSupported && Mathf.Min(Screen.width, Screen.height) <= 900)
-                return true;
-
-            return false;
+            return SystemInfo.deviceType == DeviceType.Handheld;
         }
 
         static void ApplyMobile()
@@ -42,21 +40,9 @@ namespace Gallery.Quality
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 60;
 
-            try
-            {
-                ScalableBufferManager.ResizeBuffers(RenderScale, RenderScale);
-            }
-            catch
-            {
-                // ScalableBufferManager may be unavailable on some backends.
-            }
-
-            var cams = Object.FindObjectsByType<Camera>(FindObjectsSortMode.None);
-            foreach (var cam in cams)
-            {
-                cam.allowMSAA = false;
-                cam.allowHDR = false;
-            }
+            // Avoid ScalableBufferManager on WebGL — it depends on CoreSRP/CoreCopy
+            // blit shaders that are often unavailable and throw ArgumentNullException(shader).
+            ApplyCameraFlags(allowHdr: false, allowMsaa: false);
 
             Debug.Log($"QualityTier: mobile scale={RenderScale}");
         }
@@ -66,18 +52,22 @@ namespace Gallery.Quality
             RenderScale = 1f;
             QualitySettings.shadows = ShadowQuality.HardOnly;
             QualitySettings.shadowDistance = 25f;
-            QualitySettings.antiAliasing = 2;
+            QualitySettings.antiAliasing = 0;
             Application.targetFrameRate = -1;
 
-            try
-            {
-                ScalableBufferManager.ResizeBuffers(1f, 1f);
-            }
-            catch
-            {
-            }
+            ApplyCameraFlags(allowHdr: false, allowMsaa: false);
 
             Debug.Log("QualityTier: desktop");
+        }
+
+        static void ApplyCameraFlags(bool allowHdr, bool allowMsaa)
+        {
+            var cams = Object.FindObjectsByType<Camera>(FindObjectsSortMode.None);
+            foreach (var cam in cams)
+            {
+                cam.allowMSAA = allowMsaa;
+                cam.allowHDR = allowHdr;
+            }
         }
     }
 }
