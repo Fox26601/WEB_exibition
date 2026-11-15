@@ -135,12 +135,13 @@ namespace Gallery.Bootstrap
             var lightGo = new GameObject("KeyLight");
             var light = lightGo.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.intensity = 1.15f;
-            light.shadows = QualityTier.IsMobileTier ? LightShadows.None : LightShadows.Hard;
+            // Soft key + higher ambient so mid-grey walls read without blow-out.
+            light.intensity = 0.95f;
+            light.shadows = QualityTier.IsMobileTier ? LightShadows.None : LightShadows.Soft;
             lightGo.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
 
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.62f, 0.64f, 0.70f);
+            RenderSettings.ambientLight = new Color(0.70f, 0.72f, 0.76f);
         }
     }
 }

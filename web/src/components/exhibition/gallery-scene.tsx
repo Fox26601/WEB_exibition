@@ -86,10 +86,6 @@ export function GalleryScene({
       color: 0x3a322a,
       roughness: 0.95,
     });
-    const ceilMat = new THREE.MeshStandardMaterial({
-      color: 0x221e1a,
-      roughness: 1,
-    });
 
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(ROOM.width, length),
@@ -99,13 +95,7 @@ export function GalleryScene({
     floor.position.set(0, 0, length / 2);
     scene.add(floor);
 
-    const ceiling = new THREE.Mesh(
-      new THREE.PlaneGeometry(ROOM.width, length),
-      ceilMat,
-    );
-    ceiling.rotation.x = Math.PI / 2;
-    ceiling.position.set(0, ROOM.height, length / 2);
-    scene.add(ceiling);
+    // Open-air: no ceiling mesh (sky visible above).
 
     const leftWall = new THREE.Mesh(
       new THREE.PlaneGeometry(length, ROOM.height),
