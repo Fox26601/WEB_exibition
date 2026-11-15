@@ -111,6 +111,11 @@ namespace Gallery.Admin
         public string artworkId;
         public string kind;
         public string frameId;
+        public float screenX;
+        public float screenY;
+        public float normU;
+        public float normV;
+        public bool overCanvas;
     }
 
     [Serializable]
@@ -119,6 +124,9 @@ namespace Gallery.Admin
         public string type;
         public float screenX;
         public float screenY;
+        public float normU;
+        public float normV;
+        public bool overCanvas;
     }
 
     [Serializable]

@@ -71,3 +71,4 @@ unity/*.sln
 .idea/
 *.swp
 *~
+/.next/
