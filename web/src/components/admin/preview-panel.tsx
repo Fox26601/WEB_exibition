@@ -76,7 +76,7 @@ export function PreviewPanel() {
   }, [catalog]);
 
   const planPreviewSrc = token
-    ? `/exhibition?catalog=draft&token=${encodeURIComponent(token)}&lang=${locale}`
+    ? `/exhibition?catalog=draft&token=${encodeURIComponent(token)}&lang=${locale}&mode=preview-lite`
     : "";
 
   function goBackToPlan() {

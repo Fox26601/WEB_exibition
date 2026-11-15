@@ -145,7 +145,7 @@ namespace Gallery.Room
         {
             if (_views.Count == 0 || _player == null)
                 return;
-            if (AdminBuildMode.Active)
+            if (AdminBuildMode.LightLoad)
                 return;
 
             UpdateStreaming();

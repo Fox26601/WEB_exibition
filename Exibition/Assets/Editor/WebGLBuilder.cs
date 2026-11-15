@@ -43,9 +43,9 @@ namespace Gallery.EditorTools
             // Uncompressed: Safari/WebKit ignores Content-Encoding on Unity gzip assets.
             PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Disabled;
             PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.None;
-            PlayerSettings.WebGL.initialMemorySize = 256;
-            PlayerSettings.WebGL.memoryGeometricGrowthCap = 1024;
-            PlayerSettings.WebGL.maximumMemorySize = 2048;
+            PlayerSettings.WebGL.initialMemorySize = 192;
+            PlayerSettings.WebGL.memoryGeometricGrowthCap = 768;
+            PlayerSettings.WebGL.maximumMemorySize = 1536;
             PlayerSettings.SetManagedStrippingLevel(
                 UnityEditor.Build.NamedBuildTarget.WebGL,
                 ManagedStrippingLevel.Low);

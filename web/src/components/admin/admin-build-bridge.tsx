@@ -436,15 +436,37 @@ export function AdminBuildBridge({
         disabled={!unityReady}
       />
       <div className="relative min-h-[calc(100dvh-14rem)] border border-[var(--line)] bg-black">
-        <div className="absolute inset-x-0 top-0 z-10 space-y-0.5 border-b border-[var(--line)] bg-[#1a1612]/95 px-3 py-2 text-xs text-[var(--paper-dim)]">
-          <div>
-            Unity build mode
-            {!unityReady ? " · loading scene…" : " · ready"}
-          </div>
-          <p className="text-[0.7rem] leading-snug">
-            Drag a work onto a wall or the floor. Move the plan: right mouse or
-            Space+drag · Zoom: scroll. Shift+drag rotates view.
+        <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] bg-[#1a1612]/95 px-3 py-2 text-xs text-[var(--paper-dim)]">
+          <h3 className="m-0 text-[0.65rem] font-normal uppercase tracking-[0.14em] text-[var(--paper)]">
+            Unity · расстановка
+            {!unityReady ? " · загрузка…" : " · готово"}
+          </h3>
+          <p className="m-0 max-w-md text-[0.7rem] leading-snug">
+            Перетащите работу из списка на стену или пол. Короткий клик по
+            размещённой работе — сдвинуть.
           </p>
+        </div>
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-10 border-t border-[var(--line)] bg-[#141210]/92 px-3 py-2.5 text-[0.72rem] leading-relaxed text-[var(--paper)] shadow-[0_-8px_24px_rgba(0,0,0,0.45)]"
+          aria-label="Управление камерой"
+        >
+          <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <span>
+              <strong className="text-[var(--amber-bright)]">ЛКМ</strong> —
+              поворот вида
+            </span>
+            <span>
+              <strong className="text-[var(--amber-bright)]">ПКМ</strong> —
+              сдвиг плана
+            </span>
+            <span>
+              <strong className="text-[var(--amber-bright)]">Колёсико</strong> —
+              масштаб
+            </span>
+            <span className="text-[var(--paper-dim)]">
+              Space+ЛКМ — сдвиг · средняя кнопка — сдвиг
+            </span>
+          </div>
         </div>
         <iframe
           ref={iframeRef}

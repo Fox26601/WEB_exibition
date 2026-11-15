@@ -41,6 +41,7 @@ export function ExhibitionApp({
   const [catalogKind, setCatalogKind] = useState<"live" | "draft">("live");
   const [token, setToken] = useState<string | null>(null);
   const [adminBuild, setAdminBuild] = useState(false);
+  const [previewLite, setPreviewLite] = useState(false);
   const [infoModal, setInfoModal] = useState<InfoModal>(null);
   const [footerModal, setFooterModal] = useState<FooterModal>(null);
   const [reviewName, setReviewName] = useState("");
@@ -57,6 +58,7 @@ export function ExhibitionApp({
     setCatalogKind(kind);
     setToken(tok);
     setAdminBuild(mode === "admin-build");
+    setPreviewLite(mode === "preview-lite");
 
     const qs = new URLSearchParams({ catalog: kind });
     if (tok) qs.set("token", tok);
@@ -323,6 +325,7 @@ export function ExhibitionApp({
           token={token}
           lang={locale}
           adminBuild={false}
+          previewLite={previewLite}
           iframeRef={iframeRef}
         />
       ) : (
@@ -618,12 +621,14 @@ function UnityEmbed({
   token,
   lang,
   adminBuild,
+  previewLite,
   iframeRef,
 }: {
   catalogKind: string;
   token: string | null;
   lang: string;
   adminBuild?: boolean;
+  previewLite?: boolean;
   iframeRef: RefObject<HTMLIFrameElement | null>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -657,6 +662,7 @@ function UnityEmbed({
   const qs = new URLSearchParams({ catalog: catalogKind, lang });
   if (token) qs.set("token", token);
   if (adminBuild) qs.set("mode", "admin-build");
+  else if (previewLite) qs.set("mode", "preview-lite");
 
   useEffect(() => {
     if (!adminBuild) return;
@@ -677,7 +683,7 @@ function UnityEmbed({
       <iframe
         ref={iframeRef}
         title="Unity gallery"
-        key={`unity-${UNITY_ASSET_CACHE_TAG}-${catalogKind}-${token || "live"}-${adminBuild ? "admin" : "visit"}`}
+        key={`unity-${UNITY_ASSET_CACHE_TAG}-${catalogKind}-${token || "live"}-${adminBuild ? "admin" : previewLite ? "lite" : "visit"}`}
         src={`/unity/index.html?${qs.toString()}`}
         className="h-full w-full border-0"
         allow="autoplay; fullscreen"

@@ -12,6 +12,9 @@ namespace Gallery.Room
             if (verts == null || verts.Length < 3)
                 return false;
 
+            if (verts.Length >= 3 && verts.Length <= 6 && TryFanConvex(verts, out triangles))
+                return true;
+
             var n = verts.Length;
             var indices = new List<int>(n);
             for (var i = 0; i < n; i++)
@@ -52,7 +55,66 @@ namespace Gallery.Room
                 return false;
 
             triangles = tris.ToArray();
+            EnsureNormalsFaceUp(verts, triangles);
             return true;
+        }
+
+        /// <summary>Fan from vertex 0 — safe for gallery primitives (triangle–hex).</summary>
+        static bool TryFanConvex(Vector3[] verts, out int[] triangles)
+        {
+            triangles = null;
+            if (verts == null || verts.Length < 3)
+                return false;
+
+            var area = SignedArea(verts);
+            if (Mathf.Approximately(area, 0f))
+                return false;
+
+            var tris = new int[(verts.Length - 2) * 3];
+            var ti = 0;
+            for (var i = 1; i < verts.Length - 1; i++)
+            {
+                tris[ti++] = 0;
+                tris[ti++] = i;
+                tris[ti++] = i + 1;
+            }
+
+            triangles = tris;
+            if (area < 0f)
+                FlipWinding(triangles);
+            return true;
+        }
+
+        public static void EnsureNormalsFaceUp(Vector3[] verts, int[] triangles)
+        {
+            if (verts == null || triangles == null || triangles.Length < 3)
+                return;
+
+            var i0 = triangles[0];
+            var i1 = triangles[1];
+            var i2 = triangles[2];
+            if (i0 < 0 || i1 < 0 || i2 < 0 ||
+                i0 >= verts.Length || i1 >= verts.Length || i2 >= verts.Length)
+                return;
+
+            var cross = CrossXZ(verts[i0], verts[i1], verts[i2]);
+            if (cross < 0f)
+                FlipWinding(triangles);
+        }
+
+        static void FlipWinding(int[] triangles)
+        {
+            for (var i = 0; i + 2 < triangles.Length; i += 3)
+            {
+                var tmp = triangles[i + 1];
+                triangles[i + 1] = triangles[i + 2];
+                triangles[i + 2] = tmp;
+            }
+        }
+
+        static float CrossXZ(Vector3 a, Vector3 b, Vector3 c)
+        {
+            return (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
         }
 
         static float SignedArea(Vector3[] verts)
