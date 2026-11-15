@@ -4,102 +4,153 @@ using UnityEngine.Rendering;
 namespace Gallery.Room
 {
     /// <summary>
-    /// Subtle procedural star night skybox. Cubemap faces are small (128²) for mobile WebGL.
+    /// Subtle procedural star night sky. Prefers Skybox/Cubemap; falls back to an inverted
+    /// unlit sphere so stars still read through the gallery skylight on stripped WebGL builds.
     /// </summary>
     public static class StarSkybox
     {
-        const int FaceSize = 128;
-        const int StarsPerFace = 96;
+        const int FaceSize = 256;
+        const int StarsPerFace = 160;
 
         static Material _skyMat;
         static Cubemap _cube;
+        static Texture2D _domeTex;
+        static GameObject _dome;
 
         public static void Apply(Camera camera)
         {
-            if (_skyMat == null)
-                _skyMat = BuildMaterial();
-
-            if (_skyMat != null)
+            if (TryApplyCubemapSkybox())
             {
-                RenderSettings.skybox = _skyMat;
-                RenderSettings.ambientMode = AmbientMode.Flat;
-                RenderSettings.ambientLight = new Color(0.42f, 0.44f, 0.50f);
                 if (camera != null)
                 {
                     camera.clearFlags = CameraClearFlags.Skybox;
                     camera.backgroundColor = new Color(0.02f, 0.03f, 0.06f);
+                    camera.farClipPlane = Mathf.Max(camera.farClipPlane, 200f);
                 }
 
+                RenderSettings.ambientMode = AmbientMode.Flat;
+                RenderSettings.ambientLight = new Color(0.55f, 0.57f, 0.64f);
+                EnsureDome(false);
                 return;
             }
 
-            // Shader missing: solid night clear still beats default sky.
+            // Cubemap shader missing — solid clear + star dome mesh.
             if (camera != null)
             {
                 camera.clearFlags = CameraClearFlags.SolidColor;
-                camera.backgroundColor = new Color(0.02f, 0.03f, 0.07f);
+                camera.backgroundColor = new Color(0.015f, 0.02f, 0.05f);
+                camera.farClipPlane = Mathf.Max(camera.farClipPlane, 200f);
             }
 
             RenderSettings.ambientMode = AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.45f, 0.46f, 0.50f);
+            RenderSettings.ambientLight = new Color(0.55f, 0.57f, 0.64f);
+            EnsureDome(true);
         }
 
-        static Material BuildMaterial()
+        static bool TryApplyCubemapSkybox()
         {
             var shader = Shader.Find("Skybox/Cubemap");
             if (shader == null)
-                return null;
+                return false;
 
-            _cube = BuildCubemap();
-            var mat = new Material(shader);
-            if (mat.HasProperty("_Tex"))
-                mat.SetTexture("_Tex", _cube);
-            else
-                mat.SetTexture("_MainTex", _cube);
+            if (_skyMat == null)
+            {
+                _cube = BuildCubemap();
+                _skyMat = new Material(shader);
+                if (_skyMat.HasProperty("_Tex"))
+                    _skyMat.SetTexture("_Tex", _cube);
+                else
+                    _skyMat.SetTexture("_MainTex", _cube);
+                if (_skyMat.HasProperty("_Exposure"))
+                    _skyMat.SetFloat("_Exposure", 1.05f);
+            }
 
-            if (mat.HasProperty("_Exposure"))
-                mat.SetFloat("_Exposure", 0.85f);
-            if (mat.HasProperty("_Rotation"))
-                mat.SetFloat("_Rotation", 0f);
+            RenderSettings.skybox = _skyMat;
+            return true;
+        }
 
-            return mat;
+        static void EnsureDome(bool enabled)
+        {
+            if (!enabled)
+            {
+                if (_dome != null)
+                    _dome.SetActive(false);
+                return;
+            }
+
+            if (_dome != null)
+            {
+                _dome.SetActive(true);
+                return;
+            }
+
+            _dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            _dome.name = "StarDome";
+            Object.Destroy(_dome.GetComponent<Collider>());
+            _dome.transform.position = Vector3.zero;
+            _dome.transform.localScale = Vector3.one * 120f;
+
+            // Invert normals via negative scale so we see stars from inside.
+            _dome.transform.localScale = new Vector3(-120f, 120f, 120f);
+
+            var mat = RuntimeMaterials.CreateTextured(Color.white);
+            if (_domeTex == null)
+                _domeTex = BuildDomeTexture();
+            mat.mainTexture = _domeTex;
+            if (mat.HasProperty("_MainTex"))
+                mat.SetTexture("_MainTex", _domeTex);
+            mat.color = Color.white;
+            if (mat.HasProperty("_Color"))
+                mat.SetColor("_Color", Color.white);
+            if (mat.HasProperty("_BaseColor"))
+                mat.SetColor("_BaseColor", Color.white);
+
+            _dome.GetComponent<MeshRenderer>().material = mat;
         }
 
         static Cubemap BuildCubemap()
         {
             var cube = new Cubemap(FaceSize, TextureFormat.RGB24, false);
             for (var face = 0; face < 6; face++)
-            {
-                var pixels = PaintFace(1000 + face * 97);
-                cube.SetPixels(pixels, (CubemapFace)face);
-            }
-
+                cube.SetPixels(PaintStars(1000 + face * 97, FaceSize), (CubemapFace)face);
             cube.Apply(false, true);
             cube.wrapMode = TextureWrapMode.Clamp;
             cube.filterMode = FilterMode.Bilinear;
             return cube;
         }
 
-        static Color[] PaintFace(int seed)
+        static Texture2D BuildDomeTexture()
         {
-            var pixels = new Color[FaceSize * FaceSize];
-            var night = new Color(0.015f, 0.02f, 0.05f);
+            const int size = 512;
+            var tex = new Texture2D(size, size, TextureFormat.RGB24, false);
+            tex.SetPixels(PaintStars(4242, size));
+            tex.Apply(false, true);
+            tex.wrapMode = TextureWrapMode.Repeat;
+            tex.filterMode = FilterMode.Bilinear;
+            return tex;
+        }
+
+        static Color[] PaintStars(int seed, int size)
+        {
+            var pixels = new Color[size * size];
+            var night = new Color(0.012f, 0.016f, 0.045f);
             for (var i = 0; i < pixels.Length; i++)
                 pixels[i] = night;
 
             var rng = new System.Random(seed);
-            for (var s = 0; s < StarsPerFace; s++)
+            var count = Mathf.Max(StarsPerFace, size);
+            for (var s = 0; s < count; s++)
             {
-                var x = rng.Next(FaceSize);
-                var y = rng.Next(FaceSize);
-                var v = 0.55f + (float)rng.NextDouble() * 0.45f;
-                pixels[y * FaceSize + x] = new Color(v, v, Mathf.Min(1f, v + 0.08f));
+                var x = rng.Next(size);
+                var y = rng.Next(size);
+                var v = 0.65f + (float)rng.NextDouble() * 0.35f;
+                pixels[y * size + x] = new Color(v, v, Mathf.Min(1f, v + 0.12f));
 
-                // Occasional 2-pixel star for a bit of presence without bloom.
-                if (rng.NextDouble() < 0.25 && x + 1 < FaceSize)
+                if (rng.NextDouble() < 0.35 && x + 1 < size && y + 1 < size)
                 {
-                    var dim = v * 0.65f;
-                    pixels[y * FaceSize + x + 1] = new Color(dim, dim, dim);
+                    var dim = v * 0.7f;
+                    pixels[y * size + x + 1] = new Color(dim, dim, dim);
+                    pixels[(y + 1) * size + x] = new Color(dim * 0.85f, dim * 0.85f, dim * 0.9f);
                 }
             }
 

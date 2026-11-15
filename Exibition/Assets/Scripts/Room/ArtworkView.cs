@@ -33,23 +33,23 @@ namespace Gallery.Room
 
         void BuildVisuals()
         {
+            // Backing plate (thin) + separate canvas in front to avoid WebGL z-fighting.
             var frame = GameObject.CreatePrimitive(PrimitiveType.Cube);
             frame.name = "Frame";
             frame.transform.SetParent(transform, false);
-            frame.transform.localPosition = Vector3.zero;
-            frame.transform.localScale = new Vector3(1.7f, 1.2f, 0.06f);
+            frame.transform.localPosition = new Vector3(0f, 0f, 0.01f);
+            frame.transform.localScale = new Vector3(1.78f, 1.28f, 0.04f);
             _frameRenderer = frame.GetComponent<MeshRenderer>();
             _frameRenderer.sharedMaterial = new Material(FrameMaterial());
             ApplyFrameColor();
-            // Keep collider on frame for raycasts.
             var frameCol = frame.GetComponent<Collider>();
             frameCol.isTrigger = false;
 
             var canvas = GameObject.CreatePrimitive(PrimitiveType.Quad);
             canvas.name = "Canvas";
             canvas.transform.SetParent(transform, false);
-            canvas.transform.localPosition = new Vector3(0f, 0f, -0.035f);
-            canvas.transform.localScale = new Vector3(1.5f, 1.0f, 1f);
+            canvas.transform.localPosition = new Vector3(0f, 0f, -0.05f);
+            canvas.transform.localScale = new Vector3(1.52f, 1.02f, 1f);
             Object.Destroy(canvas.GetComponent<Collider>());
 
             _canvasRenderer = canvas.GetComponent<MeshRenderer>();
