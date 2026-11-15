@@ -1,3 +1,4 @@
+using Gallery.Admin;
 using Gallery.Catalog;
 using Gallery.Entrance;
 using Gallery.Media;
@@ -96,6 +97,19 @@ namespace Gallery.Bootstrap
                 spawner.Initialize(room, player.transform);
                 spawner.Spawn(catalog);
                 StarSkybox.Apply(cam);
+
+                if (loader.AdminBuildMode || AdminBuildMode.Active)
+                {
+                    AdminBuildBootstrap.Enable(
+                        cam,
+                        player,
+                        room,
+                        spawner,
+                        catalog,
+                        booklet,
+                        locale,
+                        ray);
+                }
             };
 
             loader.Failed += err =>

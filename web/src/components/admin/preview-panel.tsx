@@ -11,11 +11,8 @@ import { emptyLocalized, LOCALES, emptyLayout } from "@/lib/catalog-types";
 import { LangSwitcher } from "@/components/lang-switcher";
 import { pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
-import { RoomSchematic } from "./room-schematic";
-import {
-  GalleryLayoutEditor,
-  ensureLayout,
-} from "./gallery-layout-editor";
+import { GalleryRoomEditor, ensureLayout } from "./gallery-room-editor";
+import { AdminBuildBridge } from "./admin-build-bridge";
 
 const IMAGE_MAX = 8 * 1024 * 1024;
 const VIDEO_MAX = 80 * 1024 * 1024;
@@ -38,6 +35,7 @@ export function PreviewPanel() {
   const [saveError, setSaveError] = useState("");
   const { locale, setLocale } = useGalleryLocale();
   const [iframeKey, setIframeKey] = useState(0);
+  const [wizardStep, setWizardStep] = useState<"plan" | "place3d">("plan");
   const layoutRef = useRef<GalleryLayout>(emptyLayout());
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingLayout = useRef<GalleryLayout | null>(null);
@@ -77,9 +75,16 @@ export function PreviewPanel() {
     return [...catalog.artworks].sort((a, b) => a.sort - b.sort);
   }, [catalog]);
 
-  const iframeSrc = token
+  const planPreviewSrc = token
     ? `/exhibition?catalog=draft&token=${encodeURIComponent(token)}&lang=${locale}`
     : "";
+
+  function goBackToPlan() {
+    const warn =
+      "Вернуться к плану комнат? Расстановка в черновике сохранится; при сильном изменении геометрии комнаты проверьте размещения в 3D.";
+    if (!confirm(warn)) return;
+    setWizardStep("plan");
+  }
 
   function bumpIframe() {
     setIframeKey((k) => k + 1);
@@ -314,15 +319,27 @@ export function PreviewPanel() {
           >
             + Sculpture
           </button>
-          <button
-            type="button"
-            className="btn btn-solid"
-            disabled={busy || (!dirty && saveStatus !== "error")}
-            onClick={() => void publishLive()}
-          >
-            Опубликовать на сайт
-            {dirty ? " ·" : ""}
-          </button>
+          {wizardStep === "place3d" ? (
+            <button
+              type="button"
+              className="btn btn-solid"
+              disabled={busy || (!dirty && saveStatus !== "error")}
+              title="Publish live catalog from this draft"
+              onClick={() => void publishLive()}
+            >
+              Опубликовать на сайт
+              {dirty ? " ·" : ""}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              disabled
+              title="Подтвердите план и расставьте работы в 3D"
+            >
+              Опубликовать на сайт (шаг 2)
+            </button>
+          )}
         </div>
       </div>
 
@@ -338,61 +355,84 @@ export function PreviewPanel() {
         <p className="mb-4 text-sm text-[var(--amber-bright)]">{message}</p>
       ) : null}
 
-      <div className="mb-8">
-        <GalleryLayoutEditor
-          layout={layout}
-          artworks={allArts}
-          localeTitle={(art) => pickLocalized(art.title, locale)}
-          onLayoutChange={scheduleLayoutSave}
-          saveStatus={saveStatus}
-          saveError={saveError}
-          onRetrySave={retrySave}
-        />
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div>
-          <h2 className="mb-2 font-[family-name:var(--font-display)] text-lg font-semibold">
-            Fallback schematic
-          </h2>
-          <p className="mb-3 text-sm text-[var(--paper-dim)]">
-            Used when layout has no rooms (rect L/R). Drag to reorder published
-            slots.
-          </p>
-          <RoomSchematic
-            artworks={publishedArts.filter((a) => a.type !== "model")}
-            highlightedId={highlightedId}
-            onSelect={setHighlightedId}
-            onReorder={busy ? undefined : reorderPublished}
-            localeTitle={(art) => pickLocalized(art.title, locale)}
+      {wizardStep === "plan" ? (
+        <div className="mb-8">
+          <GalleryRoomEditor
+            layout={layout}
+            onLayoutChange={scheduleLayoutSave}
+            saveStatus={saveStatus}
+            saveError={saveError}
+            onRetrySave={retrySave}
           />
-        </div>
-        <div className="border border-[var(--line)] bg-[#1a1612]">
-          <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-2 text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
-            <span>Exhibition draft iframe · {locale.toUpperCase()}</span>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="btn btn-solid"
+              disabled={layout.rooms.length < 1}
+              onClick={() => setWizardStep("place3d")}
+            >
+              Далее: расстановка в 3D
+            </button>
+            {layout.rooms.length < 1 ? (
+              <span className="text-sm text-[#e08a7a]">
+                Нужна хотя бы одна комната.
+              </span>
+            ) : null}
           </div>
-          {iframeSrc ? (
-            <iframe
-              key={`draft-${iframeKey}-${locale}-${token}`}
-              title="Draft exhibition"
-              src={iframeSrc}
-              className="h-[420px] w-full bg-black"
+          <div className="mt-8 border border-[var(--line)] bg-[#1a1612]">
+            <div className="border-b border-[var(--line)] px-4 py-2 text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
+              Draft preview · {locale.toUpperCase()}
+            </div>
+            {planPreviewSrc ? (
+              <iframe
+                key={`draft-${iframeKey}-${locale}-${token}`}
+                title="Draft exhibition preview"
+                src={planPreviewSrc}
+                className="h-[320px] w-full bg-black"
+              />
+            ) : (
+              <div className="flex h-[320px] items-center justify-center text-[var(--paper-dim)]">
+                Loading…
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="mb-8">
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={goBackToPlan}
+            >
+              Назад к плану
+            </button>
+            <span className="text-sm text-[var(--paper-dim)]">
+              Шаг 2 · Unity WebGL · autosave placements
+            </span>
+          </div>
+          {catalog && token ? (
+            <AdminBuildBridge
+              catalog={catalog}
+              layout={layout}
+              locale={locale}
+              token={token}
+              iframeKey={iframeKey}
+              onLayoutChange={scheduleLayoutSave}
             />
           ) : (
-            <div className="flex h-[420px] items-center justify-center text-[var(--paper-dim)]">
-              Loading…
-            </div>
+            <p className="text-[var(--paper-dim)]">Loading admin build…</p>
           )}
         </div>
-      </div>
+      )}
 
       <div className="mt-8">
         <h2 className="mb-3 font-[family-name:var(--font-display)] text-xl font-semibold">
           Artworks ({allArts.length})
         </h2>
         <p className="mb-4 text-sm text-[var(--paper-dim)]">
-          Upload, publish toggle, and delete. Place published works in the layout
-          editor above.
+          Upload, publish toggle, and delete. After confirming the room plan,
+          place published works in 3D on step 2.
         </p>
         <ul className="space-y-3">
           {allArts.map((art) => {

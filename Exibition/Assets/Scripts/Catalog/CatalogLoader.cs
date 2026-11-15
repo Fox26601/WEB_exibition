@@ -27,15 +27,18 @@ namespace Gallery.Catalog
         public string InitialLang { get; private set; } = "en";
         public bool IsLoaded { get; private set; }
         public string LastError { get; private set; }
+        public bool AdminBuildMode { get; private set; }
 
         public event Action<CatalogData> Loaded;
         public event Action<string> Failed;
 
         void Awake()
         {
-            ParseQueryParams(out var mode, out var lang, out _);
+            ParseQueryParams(out var mode, out var lang, out _, out var adminBuild);
             CatalogMode = mode;
             InitialLang = lang;
+            AdminBuildMode = adminBuild;
+            Gallery.Admin.AdminBuildMode.Active = adminBuild;
         }
 
         public void BeginLoad()
@@ -49,9 +52,11 @@ namespace Gallery.Catalog
             IsLoaded = false;
             LastError = null;
 
-            ParseQueryParams(out var mode, out var lang, out var token);
+            ParseQueryParams(out var mode, out var lang, out var token, out var adminBuild);
             CatalogMode = mode;
             InitialLang = lang;
+            AdminBuildMode = adminBuild;
+            Gallery.Admin.AdminBuildMode.Active = adminBuild;
 
             var url = BuildCatalogUrl(mode, token);
             using (var req = UnityWebRequest.Get(url))
@@ -166,11 +171,16 @@ namespace Gallery.Catalog
 #endif
         }
 
-        public static void ParseQueryParams(out string catalogMode, out string lang, out string token)
+        public static void ParseQueryParams(
+            out string catalogMode,
+            out string lang,
+            out string token,
+            out bool adminBuild)
         {
             catalogMode = "live";
             lang = "en";
             token = "";
+            adminBuild = false;
 
             var absolute = Application.absoluteURL;
             if (string.IsNullOrEmpty(absolute))
@@ -202,10 +212,17 @@ namespace Gallery.Catalog
                 switch (key.ToLowerInvariant())
                 {
                     case "catalog":
-                    case "mode":
                         if (string.Equals(value, "draft", StringComparison.OrdinalIgnoreCase))
                             catalogMode = "draft";
-                        else
+                        else if (!string.Equals(value, "admin-build", StringComparison.OrdinalIgnoreCase))
+                            catalogMode = "live";
+                        break;
+                    case "mode":
+                        if (string.Equals(value, "admin-build", StringComparison.OrdinalIgnoreCase))
+                            adminBuild = true;
+                        else if (string.Equals(value, "draft", StringComparison.OrdinalIgnoreCase))
+                            catalogMode = "draft";
+                        else if (string.Equals(value, "live", StringComparison.OrdinalIgnoreCase))
                             catalogMode = "live";
                         break;
                     case "lang":

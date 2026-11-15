@@ -160,6 +160,30 @@ namespace Gallery.Room
             return _roomVerts.TryGetValue(roomId ?? "", out verts);
         }
 
+        public bool TryGetLayoutCenter(out Vector3 center)
+        {
+            center = Vector3.zero;
+            if (_roomVerts.Count == 0)
+                return false;
+
+            var count = 0;
+            foreach (var pair in _roomVerts)
+            {
+                var verts = pair.Value;
+                if (verts == null) continue;
+                for (var i = 0; i < verts.Length; i++)
+                {
+                    center += verts[i];
+                    count++;
+                }
+            }
+
+            if (count == 0) return false;
+            center /= count;
+            center.y = 0f;
+            return true;
+        }
+
         public bool TryGetPaintingPose(ArtworkPlacementData placement, out Vector3 position, out Quaternion rotation)
         {
             position = Vector3.zero;
