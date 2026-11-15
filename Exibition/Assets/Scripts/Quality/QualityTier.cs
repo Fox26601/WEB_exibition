@@ -50,7 +50,7 @@ namespace Gallery.Quality
         static void ApplyDesktop()
         {
             RenderScale = 1f;
-            QualitySettings.shadows = ShadowQuality.HardOnly;
+            QualitySettings.shadows = ShadowQuality.All;
             QualitySettings.shadowDistance = 25f;
             QualitySettings.antiAliasing = 0;
             Application.targetFrameRate = -1;

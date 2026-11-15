@@ -16,9 +16,8 @@ namespace Gallery.Room
         public const float MarginEnds = 2f;
         public const float WallThickness = 0.12f;
 
-        [SerializeField] Color floorColor = new Color(0.82f, 0.80f, 0.76f);
-        [SerializeField] Color wallColor = new Color(0.93f, 0.92f, 0.89f);
-        [SerializeField] Color ceilingColor = new Color(0.96f, 0.96f, 0.95f);
+        [SerializeField] Color floorColor = new Color(0.52f, 0.53f, 0.55f);
+        [SerializeField] Color wallColor = new Color(0.68f, 0.69f, 0.72f);
 
         Transform _root;
         float _length = L0;
@@ -222,15 +221,8 @@ namespace Gallery.Room
 
         void BuildRectCorridor(float length, bool openNearDoorway = false)
         {
+            // Open-air: floor + walls only (no ceiling).
             CreateBox("Floor", new Vector3(0f, -0.05f, length * 0.5f), new Vector3(Width, 0.1f, length), floorColor);
-            var rim = 0.55f;
-            var openW = Mathf.Max(1f, Width - rim * 2f);
-            var openL = Mathf.Max(1f, length - rim * 2f);
-            var ceilY = Height + 0.05f;
-            CreateBox("CeilNear", new Vector3(0f, ceilY, rim * 0.5f), new Vector3(Width, 0.1f, rim), ceilingColor);
-            CreateBox("CeilFar", new Vector3(0f, ceilY, length - rim * 0.5f), new Vector3(Width, 0.1f, rim), ceilingColor);
-            CreateBox("CeilLeft", new Vector3(-Width * 0.5f + rim * 0.5f, ceilY, length * 0.5f), new Vector3(rim, 0.1f, openL), ceilingColor);
-            CreateBox("CeilRight", new Vector3(Width * 0.5f - rim * 0.5f, ceilY, length * 0.5f), new Vector3(rim, 0.1f, openL), ceilingColor);
             CreateBox("WallLeft", new Vector3(-Width * 0.5f, Height * 0.5f, length * 0.5f), new Vector3(WallThickness, Height, length), wallColor);
             CreateBox("WallRight", new Vector3(Width * 0.5f, Height * 0.5f, length * 0.5f), new Vector3(WallThickness, Height, length), wallColor);
 
@@ -384,16 +376,6 @@ namespace Gallery.Room
             go.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
             go.transform.localScale = new Vector3(WallThickness, h, Mathf.Max(0.05f, l));
             go.GetComponent<MeshRenderer>().sharedMaterial = CreateMaterial(wallColor);
-        }
-
-        void CreateBoxUnder(Transform parent, string name, Vector3 localPos, Vector3 scale, Color color)
-        {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = name;
-            go.transform.SetParent(parent, false);
-            go.transform.position = localPos;
-            go.transform.localScale = scale;
-            go.GetComponent<MeshRenderer>().sharedMaterial = CreateMaterial(color);
         }
 
         public static Vector3[] ResolveRoomVertices(GalleryRoomData room)

@@ -69,8 +69,8 @@ namespace Gallery.Entrance
             _root.position = portal;
             _root.rotation = Quaternion.Euler(0f, yaw, 0f);
 
-            var floorColor = new Color(0.78f, 0.76f, 0.72f);
-            var wallColor = new Color(0.90f, 0.89f, 0.86f);
+            var floorColor = new Color(0.52f, 0.53f, 0.55f);
+            var wallColor = new Color(0.68f, 0.69f, 0.72f);
             var trimColor = new Color(0.35f, 0.32f, 0.28f);
             var midLocalZ = -Depth * 0.5f;
 
@@ -97,7 +97,7 @@ namespace Gallery.Entrance
 
             BuildArchLocal(0f, trimColor);
             BuildPosterLocal(-Depth * 0.55f, catalog);
-            BuildPedestalLocal(-Depth * 0.62f, trimColor);
+            BuildPedestalLocal(-1.05f, trimColor);
         }
 
         void BuildLegacy(CatalogData catalog, float galleryStartZ)
@@ -111,8 +111,8 @@ namespace Gallery.Entrance
             _root = new GameObject("Entrance").transform;
             _root.SetParent(transform, false);
 
-            var floorColor = new Color(0.78f, 0.76f, 0.72f);
-            var wallColor = new Color(0.90f, 0.89f, 0.86f);
+            var floorColor = new Color(0.52f, 0.53f, 0.55f);
+            var wallColor = new Color(0.68f, 0.69f, 0.72f);
             var trimColor = new Color(0.35f, 0.32f, 0.28f);
             var midZ = galleryStartZ - Depth * 0.5f;
 
@@ -168,11 +168,11 @@ namespace Gallery.Entrance
                 CreateBoxLocal(_root, "ArchFillL",
                     new Vector3(-sideX, RoomBuilder.Height * 0.5f, localZ),
                     new Vector3(side, RoomBuilder.Height, ArchThickness * 0.7f),
-                    new Color(0.88f, 0.87f, 0.84f));
+                    new Color(0.68f, 0.69f, 0.72f));
                 CreateBoxLocal(_root, "ArchFillR",
                     new Vector3(sideX, RoomBuilder.Height * 0.5f, localZ),
                     new Vector3(side, RoomBuilder.Height, ArchThickness * 0.7f),
-                    new Color(0.88f, 0.87f, 0.84f));
+                    new Color(0.68f, 0.69f, 0.72f));
             }
 
             var label = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -215,11 +215,11 @@ namespace Gallery.Entrance
                 CreateBox(_root, "ArchFillL",
                     new Vector3(-sideX, RoomBuilder.Height * 0.5f, z),
                     new Vector3(side, RoomBuilder.Height, ArchThickness * 0.7f),
-                    new Color(0.88f, 0.87f, 0.84f));
+                    new Color(0.68f, 0.69f, 0.72f));
                 CreateBox(_root, "ArchFillR",
                     new Vector3(sideX, RoomBuilder.Height * 0.5f, z),
                     new Vector3(side, RoomBuilder.Height, ArchThickness * 0.7f),
-                    new Color(0.88f, 0.87f, 0.84f));
+                    new Color(0.68f, 0.69f, 0.72f));
             }
 
             var label = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -299,7 +299,7 @@ namespace Gallery.Entrance
 
         void BuildPedestalLocal(float localZ, Color trimColor)
         {
-            var x = -RoomBuilder.Width * 0.5f + 1.15f;
+            var x = -(ArchWidth * 0.5f) - 0.75f;
 
             CreateBoxLocal(_root, "PedestalBase",
                 new Vector3(x, 0.35f, localZ),
@@ -334,8 +334,8 @@ namespace Gallery.Entrance
 
         void BuildPedestal(float galleryStartZ, Color trimColor)
         {
-            var z = galleryStartZ - Depth * 0.62f;
-            var x = -RoomBuilder.Width * 0.5f + 1.15f;
+            var z = galleryStartZ - 1.05f;
+            var x = -(ArchWidth * 0.5f) - 0.75f;
 
             CreateBox(_root, "PedestalBase",
                 new Vector3(x, 0.35f, z),

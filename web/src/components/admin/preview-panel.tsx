@@ -191,16 +191,6 @@ export function PreviewPanel() {
     }
   }
 
-  async function reorderPublished(publishedIds: string[]) {
-    if (!catalog) return;
-    const pubSet = new Set(publishedIds);
-    const unpublished = catalog.artworks
-      .filter((a) => !pubSet.has(a.id))
-      .sort((a, b) => a.sort - b.sort)
-      .map((a) => a.id);
-    await reorder([...publishedIds, ...unpublished]);
-  }
-
   async function move(id: string, dir: -1 | 1) {
     const ids = allArts.map((a) => a.id);
     const i = ids.indexOf(id);
