@@ -30,7 +30,8 @@ namespace Gallery.Admin
                 return;
 
             var camPos = _camera.transform.position;
-            _room?.TryGetLayoutCenter(out var layoutCenter);
+            var layoutCenter = Vector3.zero;
+            var hasLayoutCenter = _room != null && _room.TryGetLayoutCenter(out layoutCenter);
 
             for (var i = 0; i < _segments.Length; i++)
             {
@@ -49,7 +50,7 @@ namespace Gallery.Admin
                 var camOutside = Vector3.Dot(toCam, n) < 0f;
 
                 var blocksView = false;
-                if (!float.IsNaN(layoutCenter.x))
+                if (hasLayoutCenter)
                 {
                     var toCenter = layoutCenter - camPos;
                     toCenter.y = 0f;

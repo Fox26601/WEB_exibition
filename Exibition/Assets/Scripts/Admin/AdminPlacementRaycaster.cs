@@ -60,10 +60,10 @@ namespace Gallery.Admin
             }
 
             var floor = new Plane(Vector3.up, new Vector3(0f, FloorY, 0f));
-            if (!floor.Raycast(ray, out enter))
+            if (!floor.Raycast(ray, out var floorEnter))
                 return false;
 
-            point = ray.GetPoint(enter);
+            point = ray.GetPoint(floorEnter);
             normal = Vector3.up;
             snapValid = room != null && room.UsingLayout;
             return true;
