@@ -1,4 +1,5 @@
 using Gallery.Catalog;
+using Gallery.Entrance;
 using Gallery.Player;
 using Gallery.Room;
 using UnityEngine;
@@ -72,6 +73,9 @@ namespace Gallery.UI
                 RefreshSelectionChrome(_selected);
             if (IsInfoOpen && _selected != null)
                 ApplyPanelText(_selected);
+
+            var booklet = Object.FindFirstObjectByType<BookletController>();
+            booklet?.SetLanguage(_lang);
         }
 
         public void ShowSelection(ArtworkView view)

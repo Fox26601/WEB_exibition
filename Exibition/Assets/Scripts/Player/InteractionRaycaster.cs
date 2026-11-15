@@ -1,3 +1,4 @@
+using Gallery.Entrance;
 using Gallery.Media;
 using Gallery.Room;
 using Gallery.UI;
@@ -19,6 +20,7 @@ namespace Gallery.Player
         PlayerController _player;
         LocaleUI _locale;
         MediaBridge _media;
+        BookletController _booklet;
         ArtworkView _selected;
         float _lastSelectTime = -10f;
         int _lastSelectIndex = -1;
@@ -27,11 +29,12 @@ namespace Gallery.Player
 
         public ArtworkView Selected => _selected;
 
-        public void Initialize(PlayerController player, LocaleUI locale, MediaBridge media)
+        public void Initialize(PlayerController player, LocaleUI locale, MediaBridge media, BookletController booklet = null)
         {
             _player = player;
             _locale = locale;
             _media = media;
+            _booklet = booklet;
         }
 
         void Update()
@@ -69,7 +72,8 @@ namespace Gallery.Player
         {
             if (GalleryUIState.TryCloseTop(
                     () => _locale?.CloseInfo(),
-                    () => _media?.CloseOverlay()))
+                    () => _media?.CloseOverlay(),
+                    () => _booklet?.CloseBooklet()))
             {
                 return;
             }

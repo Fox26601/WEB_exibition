@@ -2,6 +2,7 @@ import {
   createDefaultCatalog,
   emptyLayout,
   normalizeLayout,
+  normalizeSettings,
   type Catalog,
   type Artwork,
   type CatalogSettings,
@@ -46,6 +47,7 @@ export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
 function ensureSampleMedia(catalog: Catalog): Catalog {
   const defaults = createDefaultCatalog();
   catalog.layout = normalizeLayout(catalog.layout);
+  catalog.settings = normalizeSettings(catalog.settings);
   const byId = new Map(defaults.artworks.map((a) => [a.id, a]));
   for (const art of catalog.artworks) {
     const sample = byId.get(art.id);
@@ -160,7 +162,7 @@ export async function updateSettings(
   settings: CatalogSettings,
 ): Promise<Catalog> {
   const draft = await loadCatalog("draft");
-  draft.settings = settings;
+  draft.settings = normalizeSettings(settings);
   await saveCatalog("draft", draft);
   return draft;
 }

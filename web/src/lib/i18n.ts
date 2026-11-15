@@ -25,6 +25,11 @@ export const UI: Record<
     exhibition: string;
     emptyRoom: string;
     onlineGallery: string;
+    aboutArtist: string;
+    aboutCurator: string;
+    donate: string;
+    links: string;
+    map: string;
   }
 > = {
   en: {
@@ -39,6 +44,11 @@ export const UI: Record<
     exhibition: "Exhibition",
     emptyRoom: "The gallery awaits its first works.",
     onlineGallery: "Online gallery",
+    aboutArtist: "About artist",
+    aboutCurator: "About curator",
+    donate: "Donate",
+    links: "Links",
+    map: "Map",
   },
   ru: {
     enter: "Войти в выставку",
@@ -52,6 +62,11 @@ export const UI: Record<
     exhibition: "Выставка",
     emptyRoom: "Галерея ждёт первых работ.",
     onlineGallery: "Онлайн-галерея",
+    aboutArtist: "Об художнике",
+    aboutCurator: "О кураторе",
+    donate: "Донат",
+    links: "Ссылки",
+    map: "Карта",
   },
   uk: {
     enter: "Увійти на виставку",
@@ -65,6 +80,11 @@ export const UI: Record<
     exhibition: "Виставка",
     emptyRoom: "Галерея чекає на перші роботи.",
     onlineGallery: "Онлайн-галерея",
+    aboutArtist: "Про художника",
+    aboutCurator: "Про куратора",
+    donate: "Донат",
+    links: "Посилання",
+    map: "Мапа",
   },
   he: {
     enter: "כניסה לתערוכה",
@@ -78,6 +98,11 @@ export const UI: Record<
     exhibition: "תערוכה",
     emptyRoom: "הגלריה ממתינה ליצירות הראשונות.",
     onlineGallery: "גלריה מקוונת",
+    aboutArtist: "על האמן",
+    aboutCurator: "על האוצר",
+    donate: "תרומה",
+    links: "קישורים",
+    map: "מפה",
   },
 };
 

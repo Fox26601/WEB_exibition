@@ -10,11 +10,27 @@ const localizedSchema = z.object({
   he: z.string(),
 });
 
+const bookletPageSchema = z.object({
+  key: z.string(),
+  title: localizedSchema,
+  body: localizedSchema,
+});
+
 const settingsSchema = z.object({
   poster: localizedSchema,
   instagram: z.string(),
   email: z.string(),
   bio: localizedSchema,
+  entrance: z.object({
+    posterUrl: z.string(),
+    booklet: z.array(bookletPageSchema),
+  }),
+  aboutArtist: localizedSchema,
+  aboutCurator: localizedSchema,
+  donate: z.object({
+    text: localizedSchema,
+    url: z.string(),
+  }),
 });
 
 export async function GET() {

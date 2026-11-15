@@ -42,12 +42,38 @@ namespace Gallery.Catalog
     }
 
     [Serializable]
+    public class BookletPageData
+    {
+        public string key = "intro";
+        public LocalizedString title = new LocalizedString();
+        public LocalizedString body = new LocalizedString();
+    }
+
+    [Serializable]
+    public class EntranceSettingsData
+    {
+        public string posterUrl = "";
+        public BookletPageData[] booklet = Array.Empty<BookletPageData>();
+    }
+
+    [Serializable]
+    public class DonateSettingsData
+    {
+        public LocalizedString text = new LocalizedString();
+        public string url = "";
+    }
+
+    [Serializable]
     public class CatalogSettings
     {
         public LocalizedString poster = new LocalizedString();
         public string instagram = "";
         public string email = "";
         public LocalizedString bio = new LocalizedString();
+        public EntranceSettingsData entrance = new EntranceSettingsData();
+        public LocalizedString aboutArtist = new LocalizedString();
+        public LocalizedString aboutCurator = new LocalizedString();
+        public DonateSettingsData donate = new DonateSettingsData();
     }
 
     [Serializable]
@@ -169,6 +195,16 @@ namespace Gallery.Catalog
 
             if (data.settings == null)
                 data.settings = new CatalogSettings();
+            if (data.settings.entrance == null)
+                data.settings.entrance = new EntranceSettingsData();
+            if (data.settings.entrance.booklet == null)
+                data.settings.entrance.booklet = Array.Empty<BookletPageData>();
+            if (data.settings.donate == null)
+                data.settings.donate = new DonateSettingsData();
+            if (data.settings.aboutArtist == null)
+                data.settings.aboutArtist = new LocalizedString();
+            if (data.settings.aboutCurator == null)
+                data.settings.aboutCurator = new LocalizedString();
 
             if (data.layout == null)
                 data.layout = new GalleryLayoutData();
