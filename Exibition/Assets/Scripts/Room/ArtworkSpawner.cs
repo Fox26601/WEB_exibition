@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using Gallery.Admin;
 using Gallery.Catalog;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -143,6 +144,8 @@ namespace Gallery.Room
         void Update()
         {
             if (_views.Count == 0 || _player == null)
+                return;
+            if (AdminBuildMode.Active)
                 return;
 
             UpdateStreaming();

@@ -265,31 +265,7 @@ namespace Gallery.Room
             var roomRoot = new GameObject(string.IsNullOrEmpty(room.id) ? "Room" : $"Room_{room.id}").transform;
             roomRoot.SetParent(_root, false);
 
-            var centroid = Vector3.zero;
-            for (var i = 0; i < verts.Length; i++)
-                centroid += verts[i];
-            centroid /= Mathf.Max(1, verts.Length);
-
-            // Approximate floor as overlapping thin boxes from centroid to each edge.
-            for (var i = 0; i < verts.Length; i++)
-            {
-                var a = verts[i];
-                var b = verts[(i + 1) % verts.Length];
-                var mid = (a + b) * 0.5f;
-                var edge = b - a;
-                var edgeLen = edge.magnitude;
-                var toMid = mid - centroid;
-                var depth = toMid.magnitude + 0.05f;
-                var yaw = Mathf.Atan2(toMid.x, toMid.z) * Mathf.Rad2Deg;
-                var floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                floor.name = $"FloorSeg_{i}";
-                floor.transform.SetParent(roomRoot, false);
-                floor.transform.position = new Vector3(centroid.x, -0.05f, centroid.z) +
-                                          Quaternion.Euler(0f, yaw, 0f) * new Vector3(0f, 0f, depth * 0.5f);
-                floor.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-                floor.transform.localScale = new Vector3(Mathf.Max(edgeLen, 0.2f), 0.1f, depth);
-                floor.GetComponent<MeshRenderer>().sharedMaterial = CreateMaterial(floorColor);
-            }
+            BuildPolygonFloor(roomRoot, verts);
 
             for (var i = 0; i < verts.Length; i++)
             {
@@ -303,12 +279,37 @@ namespace Gallery.Room
                 BuildWallSegment(roomRoot, a, b, i, doorway);
             }
 
-            // Simple ceiling rim over centroid.
-            var span = 0f;
+        }
+
+        void BuildPolygonFloor(Transform parent, Vector3[] verts)
+        {
+            if (!PolygonTriangulation.TryTriangulateXZ(verts, out var triangles))
+            {
+                // Fallback: thin box at centroid if triangulation fails.
+                var c = Vector3.zero;
+                for (var i = 0; i < verts.Length; i++) c += verts[i];
+                c /= Mathf.Max(1, verts.Length);
+                CreateBoxUnder(parent, "FloorFallback", new Vector3(c.x, -0.05f, c.z),
+                    new Vector3(2f, 0.1f, 2f), floorColor);
+                return;
+            }
+
+            var meshVerts = new Vector3[verts.Length];
             for (var i = 0; i < verts.Length; i++)
-                span = Mathf.Max(span, Vector3.Distance(centroid, verts[i]));
-            CreateBoxUnder(roomRoot, "Ceil", new Vector3(centroid.x, Height + 0.05f, centroid.z),
-                new Vector3(span * 1.6f, 0.08f, span * 1.6f), ceilingColor);
+                meshVerts[i] = new Vector3(verts[i].x, -0.05f, verts[i].z);
+
+            var mesh = new Mesh { name = "RoomFloor" };
+            mesh.vertices = meshVerts;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+
+            var floorGo = new GameObject("Floor");
+            floorGo.transform.SetParent(parent, false);
+            floorGo.AddComponent<MeshFilter>().sharedMesh = mesh;
+            floorGo.AddComponent<MeshRenderer>().sharedMaterial = CreateMaterial(floorColor);
+            var col = floorGo.AddComponent<MeshCollider>();
+            col.sharedMesh = mesh;
         }
 
         float FindDoorwayWidth(GalleryLayoutData layout, string roomId, int edgeIndex)

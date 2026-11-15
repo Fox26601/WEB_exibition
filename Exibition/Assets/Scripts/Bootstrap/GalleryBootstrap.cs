@@ -60,7 +60,6 @@ namespace Gallery.Bootstrap
             }
 
             player.AttachCamera(cam);
-            StarSkybox.Apply(cam);
             spawner.Initialize(room, player.transform);
 
             var bookletGo = new GameObject("BookletController");
@@ -96,9 +95,12 @@ namespace Gallery.Bootstrap
                 booklet.Bind(catalog, entrance.Pedestal, loader.InitialLang);
                 spawner.Initialize(room, player.transform);
                 spawner.Spawn(catalog);
-                StarSkybox.Apply(cam);
 
-                if (loader.AdminBuildMode || AdminBuildMode.Active)
+                var adminBuild = loader.AdminBuildMode || AdminBuildMode.Active;
+                if (!adminBuild)
+                    StarSkybox.Apply(cam);
+
+                if (adminBuild)
                 {
                     AdminBuildBootstrap.Enable(
                         cam,
@@ -126,7 +128,8 @@ namespace Gallery.Bootstrap
                     yaw: entrance.SpawnYaw,
                     spawnX: entrance.SpawnX);
                 booklet.Bind(null, entrance.Pedestal, loader.InitialLang);
-                StarSkybox.Apply(cam);
+                if (!AdminBuildMode.Active)
+                    StarSkybox.Apply(cam);
             };
 
             loader.BeginLoad();

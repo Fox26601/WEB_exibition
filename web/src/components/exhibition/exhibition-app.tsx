@@ -163,7 +163,7 @@ export function ExhibitionApp({
             };
           }
         ).unityInstance;
-        if (data.type === "gallery-admin-init") {
+        if (data.type.startsWith("gallery-admin-")) {
           unity?.SendMessage(
             "WebAdminBridge",
             "OnJsAdminMessage",

@@ -32,6 +32,11 @@ export type AdminBridgeMessage =
       kind: AdminDragKind;
       frameId: FrameId;
     }
+  | {
+      type: "gallery-admin-drag-move";
+      screenX: number;
+      screenY: number;
+    }
   | { type: "gallery-admin-end-drag"; artworkId: string; commit: boolean }
   | { type: "gallery-admin-remove"; artworkId: string }
   | {
@@ -68,7 +73,7 @@ export function ArtBuildPalette({
   placements: ArtworkPlacement[];
   paletteFrame: FrameId;
   onPaletteFrameChange: (f: FrameId) => void;
-  onBeginDrag: (art: Artwork) => void;
+  onBeginDrag: (art: Artwork, e: ReactPointerEvent) => void;
   onRemovePlacement: (artworkId: string) => void;
   onSetFrame: (artworkId: string, frameId: FrameId) => void;
   disabled?: boolean;
@@ -79,13 +84,13 @@ export function ArtBuildPalette({
   );
 
   return (
-    <aside className="flex h-full min-h-0 flex-col border border-[var(--line)] bg-[#1a1612]">
+    <aside className="flex h-full min-h-0 flex-col border border-[var(--line)] bg-[#1a1612] lg:w-[260px]">
       <div className="border-b border-[var(--line)] px-3 py-2">
         <h3 className="text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
           2 · Place in 3D
         </h3>
         <p className="mt-1 text-[0.7rem] text-[var(--paper-dim)]">
-          Drag a work into the scene. Paintings snap to walls; sculptures to the
+          Drag a work onto the scene. Paintings snap to walls; sculptures to the
           floor.
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1">
@@ -123,7 +128,7 @@ export function ArtBuildPalette({
                 index={i + 1}
                 locale={locale}
                 disabled={disabled}
-                onBeginDrag={() => onBeginDrag(art)}
+                onBeginDrag={(e) => onBeginDrag(art, e)}
               />
               {isPlaced ? (
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -177,16 +182,17 @@ function PaletteItem({
   index: number;
   locale: Locale;
   disabled?: boolean;
-  onBeginDrag: () => void;
+  onBeginDrag: (e: ReactPointerEvent) => void;
 }) {
   return (
     <div
-      className="flex gap-2"
+      className="flex gap-2 touch-none select-none"
       style={{ cursor: disabled ? "not-allowed" : "grab" }}
       onPointerDown={(e: ReactPointerEvent) => {
         if (disabled) return;
         e.preventDefault();
-        onBeginDrag();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        onBeginDrag(e);
       }}
     >
       <span className="flex h-5 w-5 shrink-0 items-center justify-center bg-[#0e0c0a] text-[0.65rem]">
@@ -230,6 +236,7 @@ export function AdminBuildBridge({
   const [unityReady, setUnityReady] = useState(false);
   const [paletteFrame, setPaletteFrame] = useState<FrameId>("wood");
   const dragArtRef = useRef<Artwork | null>(null);
+  const dragActiveRef = useRef(false);
 
   const published = useMemo(
     () =>
@@ -253,32 +260,57 @@ export function AdminBuildBridge({
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     win.postMessage(msg, ADMIN_ORIGIN);
-    try {
-      const unity = (
-        win as Window & {
-          unityInstance?: {
-            SendMessage: (a: string, b: string, c: string) => void;
-          };
-        }
-      ).unityInstance;
-      if (msg.type === "gallery-admin-init") {
-        unity?.SendMessage(
-          "WebAdminBridge",
-          "OnJsAdminMessage",
-          JSON.stringify(msg),
-        );
-      }
-    } catch {
-      /* iframe not ready */
-    }
   }, []);
 
   const pushInit = useCallback(() => {
     postToUnity({
       type: "gallery-admin-init",
+      catalog,
       layout,
-    } as AdminBridgeMessage);
-  }, [layout, postToUnity]);
+    });
+  }, [catalog, layout, postToUnity]);
+
+  const resolveUnityCanvas = useCallback(() => {
+    const outer = iframeRef.current;
+    if (!outer?.contentDocument) return null;
+    const inner = outer.contentDocument.querySelector("iframe");
+    if (!inner?.contentDocument) return null;
+    const canvas = inner.contentDocument.querySelector(
+      "#unity-canvas",
+    ) as HTMLCanvasElement | null;
+    return canvas;
+  }, []);
+
+  const clientToUnityScreen = useCallback(
+    (clientX: number, clientY: number) => {
+      const canvas = resolveUnityCanvas();
+      if (!canvas) return null;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+      const scaleX = canvas.width / rect.width;
+      const scaleY = canvas.height / rect.height;
+      const x = (clientX - rect.left) * scaleX;
+      const yFromTop = (clientY - rect.top) * scaleY;
+      const y = canvas.height - yFromTop;
+      return { x, y };
+    },
+    [resolveUnityCanvas],
+  );
+
+  const pointOverUnity = useCallback(
+    (clientX: number, clientY: number) => {
+      const canvas = resolveUnityCanvas();
+      if (!canvas) return false;
+      const rect = canvas.getBoundingClientRect();
+      return (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      );
+    },
+    [resolveUnityCanvas],
+  );
 
   useEffect(() => {
     setUnityReady(false);
@@ -313,31 +345,64 @@ export function AdminBuildBridge({
     return art.type === "model" ? "sculpture" : "painting";
   }
 
-  function beginDrag(art: Artwork) {
-    dragArtRef.current = art;
-    postToUnity({
-      type: "gallery-admin-begin-drag",
-      artworkId: art.id,
-      kind: kindForArt(art),
-      frameId:
-        art.type === "model"
-          ? "none"
-          : art.frameId && art.frameId !== "none"
-            ? art.frameId
-            : paletteFrame,
-    });
-  }
+  const sendDragMove = useCallback(
+    (clientX: number, clientY: number) => {
+      const screen = clientToUnityScreen(clientX, clientY);
+      if (!screen) return;
+      postToUnity({
+        type: "gallery-admin-drag-move",
+        screenX: screen.x,
+        screenY: screen.y,
+      });
+    },
+    [clientToUnityScreen, postToUnity],
+  );
 
-  function endDrag(commit: boolean) {
-    const art = dragArtRef.current;
-    if (!art) return;
-    postToUnity({
-      type: "gallery-admin-end-drag",
-      artworkId: art.id,
-      commit,
-    });
-    dragArtRef.current = null;
-  }
+  const endDrag = useCallback(
+    (commit: boolean) => {
+      const art = dragArtRef.current;
+      if (!art || !dragActiveRef.current) return;
+      postToUnity({
+        type: "gallery-admin-end-drag",
+        artworkId: art.id,
+        commit,
+      });
+      dragArtRef.current = null;
+      dragActiveRef.current = false;
+    },
+    [postToUnity],
+  );
+
+  const beginDrag = useCallback(
+    (art: Artwork, e: ReactPointerEvent) => {
+      dragArtRef.current = art;
+      dragActiveRef.current = true;
+      postToUnity({
+        type: "gallery-admin-begin-drag",
+        artworkId: art.id,
+        kind: kindForArt(art),
+        frameId:
+          art.type === "model"
+            ? "none"
+            : art.frameId && art.frameId !== "none"
+              ? art.frameId
+              : paletteFrame,
+      });
+      sendDragMove(e.clientX, e.clientY);
+
+      const onMove = (ev: PointerEvent) => sendDragMove(ev.clientX, ev.clientY);
+      const onUp = (ev: PointerEvent) => {
+        endDrag(pointOverUnity(ev.clientX, ev.clientY));
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [endDrag, paletteFrame, pointOverUnity, postToUnity, sendDragMove],
+  );
 
   function removePlacement(artworkId: string) {
     postToUnity({ type: "gallery-admin-remove", artworkId });
@@ -358,13 +423,7 @@ export function AdminBuildBridge({
   }
 
   return (
-    <div
-      className="grid min-h-[min(80vh,900px)] grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]"
-      onPointerUp={() => endDrag(true)}
-      onPointerLeave={() => {
-        if (dragArtRef.current) endDrag(false);
-      }}
-    >
+    <div className="grid min-h-[calc(100dvh-11rem)] grid-cols-1 gap-3 lg:grid-cols-[auto_1fr]">
       <ArtBuildPalette
         artworks={published}
         locale={locale}
@@ -376,17 +435,23 @@ export function AdminBuildBridge({
         onSetFrame={setFrame}
         disabled={!unityReady}
       />
-      <div className="relative min-h-[480px] border border-[var(--line)] bg-black">
-        <div className="absolute inset-x-0 top-0 z-10 border-b border-[var(--line)] bg-[#1a1612]/90 px-3 py-1.5 text-xs text-[var(--paper-dim)]">
-          Unity build mode
-          {!unityReady ? " · waiting for scene…" : " · drag from palette"}
+      <div className="relative min-h-[calc(100dvh-14rem)] border border-[var(--line)] bg-black">
+        <div className="absolute inset-x-0 top-0 z-10 space-y-0.5 border-b border-[var(--line)] bg-[#1a1612]/95 px-3 py-2 text-xs text-[var(--paper-dim)]">
+          <div>
+            Unity build mode
+            {!unityReady ? " · loading scene…" : " · ready"}
+          </div>
+          <p className="text-[0.7rem] leading-snug">
+            Drag a work onto a wall or the floor. Move the plan: right mouse or
+            Space+drag · Zoom: scroll. Shift+drag rotates view.
+          </p>
         </div>
         <iframe
           ref={iframeRef}
           key={`admin-build-${iframeKey}-${locale}-${token}`}
           title="Admin 3D placement"
           src={iframeSrc}
-          className="h-[min(80vh,900px)] w-full"
+          className="h-[calc(100dvh-14rem)] min-h-[420px] w-full"
           allow="autoplay; fullscreen"
         />
       </div>

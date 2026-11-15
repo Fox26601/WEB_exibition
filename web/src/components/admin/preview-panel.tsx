@@ -426,6 +426,24 @@ export function PreviewPanel() {
         </div>
       )}
 
+      {wizardStep === "place3d" ? (
+        <details className="mt-4 border border-[var(--line)] bg-[#1a1612] px-4 py-3 text-sm text-[var(--paper-dim)]">
+          <summary className="cursor-pointer font-medium text-[var(--paper)]">
+            Manage artworks ({allArts.length})
+          </summary>
+          <p className="mt-2">
+            Upload and publish on step 1 for a larger editor. Use the palette in
+            3D build for placement.
+          </p>
+          <button
+            type="button"
+            className="btn btn-ghost mt-2 !text-xs"
+            onClick={goBackToPlan}
+          >
+            Back to plan &amp; artworks
+          </button>
+        </details>
+      ) : (
       <div className="mt-8">
         <h2 className="mb-3 font-[family-name:var(--font-display)] text-xl font-semibold">
           Artworks ({allArts.length})
@@ -544,6 +562,7 @@ export function PreviewPanel() {
           </p>
         ) : null}
       </div>
+      )}
 
       {editing ? (
         <PreviewArtworkEditor

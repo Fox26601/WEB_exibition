@@ -4,21 +4,21 @@ using UnityEngine;
 namespace Gallery.Admin
 {
     /// <summary>
-    /// Orbit / pan / zoom camera for admin build mode (Sims-style top view).
+    /// Fixed isometric pan/zoom for admin build mode. Orbit is optional (Shift+LMB).
     /// </summary>
     public class AdminSimsCamera : MonoBehaviour
     {
-        [SerializeField] float orbitSensitivity = 0.35f;
         [SerializeField] float panSensitivity = 0.012f;
         [SerializeField] float zoomSensitivity = 1.8f;
-        [SerializeField] float minPitch = 25f;
-        [SerializeField] float maxPitch = 72f;
+        [SerializeField] float minPitch = 44f;
+        [SerializeField] float maxPitch = 44f;
         [SerializeField] float minDistance = 4f;
         [SerializeField] float maxDistance = 80f;
+        [SerializeField] float orbitSensitivity = 0.35f;
 
         Transform _pivot;
         float _yaw = 35f;
-        float _pitch = 42f;
+        float _pitch = 44f;
         float _distance = 22f;
         Vector3 _panOffset;
 
@@ -40,14 +40,24 @@ namespace Gallery.Admin
         {
             if (_pivot == null) return;
 
-            if (Input.GetMouseButton(1))
+            var pan =
+                Input.GetMouseButton(1) ||
+                Input.GetMouseButton(2) ||
+                (Input.GetKey(KeyCode.Space) && Input.GetMouseButton(0));
+
+            if (pan)
             {
                 var dx = Input.GetAxis("Mouse X");
                 var dz = Input.GetAxis("Mouse Y");
                 _panOffset += (_pivot.right * -dx + _pivot.forward * -dz) * panSensitivity * _distance;
             }
 
-            if (Input.GetMouseButton(0))
+            var orbit =
+                Input.GetMouseButton(0) &&
+                !Input.GetKey(KeyCode.Space) &&
+                (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
+
+            if (orbit)
             {
                 _yaw += Input.GetAxis("Mouse X") * orbitSensitivity;
                 _pitch -= Input.GetAxis("Mouse Y") * orbitSensitivity;

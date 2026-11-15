@@ -54,6 +54,9 @@ namespace Gallery.Admin
                     case "gallery-admin-begin-drag":
                         _placement?.BeginDrag(JsonUtility.FromJson<AdminDragMessage>(json));
                         break;
+                    case "gallery-admin-drag-move":
+                        _placement?.DragMove(JsonUtility.FromJson<AdminDragMoveMessage>(json));
+                        break;
                     case "gallery-admin-end-drag":
                         _placement?.EndDrag(JsonUtility.FromJson<AdminEndDragMessage>(json));
                         break;
@@ -108,6 +111,14 @@ namespace Gallery.Admin
         public string artworkId;
         public string kind;
         public string frameId;
+    }
+
+    [Serializable]
+    public class AdminDragMoveMessage
+    {
+        public string type;
+        public float screenX;
+        public float screenY;
     }
 
     [Serializable]

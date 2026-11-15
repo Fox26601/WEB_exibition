@@ -18,6 +18,8 @@ namespace Gallery.Admin
         GameObject _ghost;
         AdminDragMessage _activeDrag;
         bool _dragging;
+        bool _useExternalPointer;
+        Vector2 _externalScreen;
 
         public void Initialize(
             RoomBuilder room,
@@ -49,13 +51,23 @@ namespace Gallery.Admin
                 return;
             _activeDrag = msg;
             _dragging = true;
+            _useExternalPointer = true;
             EnsureGhost(msg);
+        }
+
+        public void DragMove(AdminDragMoveMessage msg)
+        {
+            if (!_dragging || msg == null) return;
+            _useExternalPointer = true;
+            _externalScreen = new Vector2(msg.screenX, msg.screenY);
+            UpdateGhostFromRay();
         }
 
         public void EndDrag(AdminEndDragMessage msg)
         {
             if (!_dragging || msg == null) return;
             _dragging = false;
+            _useExternalPointer = false;
             if (msg.commit && _ghost != null && _activeDrag != null)
             {
                 TryCommitPlacement(_activeDrag, _ghost.transform.position);
@@ -90,8 +102,48 @@ namespace Gallery.Admin
 
         void Update()
         {
-            if (!_dragging || _ghost == null || _camera == null) return;
+            if (_dragging && _ghost != null && _camera != null)
+            {
+                if (!_useExternalPointer)
+                    UpdateGhostFromRay();
+                return;
+            }
+
+            if (_camera == null || _dragging) return;
+            if (!Input.GetMouseButtonDown(0)) return;
+            if (Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+                return;
+
+            TryPickExistingArtwork();
+        }
+
+        void TryPickExistingArtwork()
+        {
             var ray = _camera.ScreenPointToRay(Input.mousePosition);
+            if (!Physics.Raycast(ray, out var hit, 250f))
+                return;
+
+            var view = hit.collider.GetComponentInParent<ArtworkView>();
+            if (view?.Entry == null || string.IsNullOrEmpty(view.Entry.id))
+                return;
+
+            _activeDrag = new AdminDragMessage
+            {
+                artworkId = view.Entry.id,
+                kind = view.IsSculpture ? "sculpture" : "painting",
+                frameId = view.FrameId,
+            };
+            _dragging = true;
+            _useExternalPointer = false;
+            EnsureGhost(_activeDrag);
+            UpdateGhostFromRay();
+        }
+
+        void UpdateGhostFromRay()
+        {
+            if (_ghost == null || _camera == null) return;
+            var screen = _useExternalPointer ? _externalScreen : (Vector2)Input.mousePosition;
+            var ray = _camera.ScreenPointToRay(new Vector3(screen.x, screen.y, 0f));
             if (!Physics.Raycast(ray, out var hit, 250f))
                 return;
 
@@ -100,6 +152,8 @@ namespace Gallery.Admin
                 string.Equals(_activeDrag.kind, "painting", System.StringComparison.OrdinalIgnoreCase))
             {
                 var normal = hit.normal;
+                if (normal.sqrMagnitude < 0.01f)
+                    normal = Vector3.forward;
                 _ghost.transform.rotation = Quaternion.LookRotation(-normal, Vector3.up);
             }
         }
