@@ -87,7 +87,7 @@ This populates `web/public/unity/` (expects `Build/` among other export files).
 
 1. Set **Root Directory** to `web`.
 2. Add the env vars above.
-3. **GitHub previews:** repo-root `vercel.json` (`npm install --prefix web`). **CLI from `web/`:** `web/vercel.json`. Do not set dashboard Root Directory to `web` while repo-root `--prefix web` commands remain (double-prefix install).
+3. **GitHub previews:** repo-root `package.json` workspaces + `vercel.json` (`npm install`, `npm run build --workspace=web`). **CLI from `web/`:** `web/vercel.json` with default commands.
 
 ```bash
 cd web && npm run build
