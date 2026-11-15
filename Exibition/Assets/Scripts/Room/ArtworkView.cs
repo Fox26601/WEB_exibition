@@ -54,10 +54,7 @@ namespace Gallery.Room
             Object.Destroy(canvas.GetComponent<Collider>());
 
             _canvasRenderer = canvas.GetComponent<MeshRenderer>();
-            // Solid Unlit color first (always visible), then bind wall texture when present.
-            var placeholderTint = Color.HSVToRGB((Index * 0.19f + 0.08f) % 1f, 0.35f, 0.75f);
-            _canvasMaterial = RuntimeMaterials.Create(placeholderTint);
-            _canvasRenderer.material = _canvasMaterial;
+            // Solid Unlit tint until a remote wall texture loads (textured shaders are flaky on WebGL).
             ApplyPlaceholder();
 
             if (IsVideo)
@@ -78,7 +75,13 @@ namespace Gallery.Room
 
         public void ApplyTexture(Texture2D texture)
         {
-            if (_canvasMaterial == null) return;
+            if (_canvasRenderer == null) return;
+
+            if (texture == null)
+            {
+                ApplyPlaceholder();
+                return;
+            }
 
             if (_loadedTexture != null && _loadedTexture != texture)
             {
@@ -87,16 +90,20 @@ namespace Gallery.Room
             }
 
             _loadedTexture = texture;
-            HasTexture = texture != null;
+            HasTexture = true;
 
-            if (texture == null)
+            var texShader = Shader.Find("Unlit/Texture") ?? Shader.Find("Unlit/Transparent");
+            if (texShader != null)
             {
-                ApplyPlaceholder();
-                return;
+                _canvasMaterial = new Material(texShader);
+                _canvasMaterial.mainTexture = texture;
+                if (_canvasMaterial.HasProperty("_MainTex"))
+                    _canvasMaterial.SetTexture("_MainTex", texture);
+                if (_canvasMaterial.HasProperty("_Color"))
+                    _canvasMaterial.SetColor("_Color", Color.white);
+                _canvasRenderer.material = _canvasMaterial;
             }
-
-            BindTexture(texture);
-            SetColor(Color.white);
+            // else keep the Unlit tint placeholder — still counts as loaded to stop retries
         }
 
         public void UnloadTexture()
@@ -113,16 +120,16 @@ namespace Gallery.Room
 
         void ApplyPlaceholder()
         {
-            if (_canvasMaterial == null) return;
-            // Prefer a textured material when the shader exists; otherwise keep solid tint.
-            var textured = RuntimeMaterials.CreateTextured(Color.white);
-            var placeholder = MakeEmbeddedPlaceholder(Entry, Index);
-            _loadedTexture = placeholder;
-            _canvasMaterial = textured;
-            if (_canvasRenderer != null)
-                _canvasRenderer.material = _canvasMaterial;
-            BindTexture(placeholder);
-            SetColor(Color.white);
+            if (_canvasRenderer == null) return;
+            if (_loadedTexture != null)
+            {
+                Destroy(_loadedTexture);
+                _loadedTexture = null;
+            }
+
+            var tint = Color.HSVToRGB((Index * 0.19f + 0.08f) % 1f, 0.45f, 0.82f);
+            _canvasMaterial = RuntimeMaterials.Create(tint);
+            _canvasRenderer.material = _canvasMaterial;
             HasTexture = false;
         }
 
