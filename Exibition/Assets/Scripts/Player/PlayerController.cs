@@ -31,16 +31,25 @@ namespace Gallery.Player
         Vector2 _uiMove;
         bool _lookDragging;
         Vector2 _lastLookPos;
+        float _walkMinZ = 0.4f;
+        float _walkMaxZ = 8f;
 
         public Camera PlayerCamera => _camera;
         public bool InputBlocked { get; set; }
 
         public void Configure(float roomLength, bool mobile)
         {
+            ConfigureSpawn(roomLength, mobile, spawnZ: 1.2f, walkMinZ: 0.4f, walkMaxZ: Mathf.Max(Room.RoomBuilder.L0, roomLength) - 0.4f, yaw: 0f);
+        }
+
+        public void ConfigureSpawn(float roomLength, bool mobile, float spawnZ, float walkMinZ, float walkMaxZ, float yaw = 0f)
+        {
             _roomLength = Mathf.Max(Room.RoomBuilder.L0, roomLength);
             _mobile = mobile;
-            transform.position = new Vector3(0f, eyeHeight, 1.2f);
-            _yaw = 0f;
+            _walkMinZ = walkMinZ;
+            _walkMaxZ = Mathf.Max(walkMinZ + 1f, walkMaxZ);
+            transform.position = new Vector3(0f, eyeHeight, spawnZ);
+            _yaw = yaw;
             _pitch = 0f;
             ApplyLook();
         }
@@ -163,7 +172,7 @@ namespace Gallery.Player
 
             var half = Room.RoomBuilder.Width * 0.5f - radius;
             next.x = Mathf.Clamp(next.x, -half, half);
-            next.z = Mathf.Clamp(next.z, radius + 0.2f, _roomLength - radius - 0.2f);
+            next.z = Mathf.Clamp(next.z, _walkMinZ, _walkMaxZ);
             next.y = eyeHeight;
             transform.position = next;
         }

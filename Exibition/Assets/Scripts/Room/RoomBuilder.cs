@@ -22,10 +22,16 @@ namespace Gallery.Room
 
         Transform _root;
         float _length = L0;
+        float _galleryStartZ;
+        float _galleryEndZ = L0;
+        float _layoutMinZ = float.NaN;
         readonly Dictionary<string, Vector3[]> _roomVerts = new Dictionary<string, Vector3[]>();
         GalleryLayoutData _layout;
 
         public float Length => _length;
+        /// <summary>World Z where the exhibition arch / gallery threshold sits.</summary>
+        public float GalleryStartZ => _galleryStartZ;
+        public float GalleryEndZ => _galleryEndZ;
         public static float L0 => MarginEnds * 2f;
         public GalleryLayoutData ActiveLayout => _layout;
         public bool UsingLayout => _layout != null && _layout.HasRooms;
@@ -66,12 +72,14 @@ namespace Gallery.Room
         {
             _layout = null;
             _roomVerts.Clear();
+            _galleryStartZ = 0f;
             _length = ComputeLength(artworkCount);
+            _galleryEndZ = _galleryStartZ + _length;
             Clear();
 
             _root = new GameObject("Room").transform;
             _root.SetParent(transform, false);
-            BuildRectCorridor(_length);
+            BuildRectCorridor(_length, openNearDoorway: true);
         }
 
         public void BuildFromCatalog(CatalogData catalog)
@@ -109,6 +117,7 @@ namespace Gallery.Room
             float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
             float minZ = float.PositiveInfinity, maxZ = float.NegativeInfinity;
 
+            // First pass: resolve verts + bounds so entrance doorway can open at min-Z.
             foreach (var room in layout.rooms)
             {
                 if (room == null) continue;
@@ -121,17 +130,28 @@ namespace Gallery.Room
                     minZ = Mathf.Min(minZ, verts[i].z);
                     maxZ = Mathf.Max(maxZ, verts[i].z);
                 }
-
-                BuildPolygonRoom(room, verts, layout);
             }
 
             if (float.IsInfinity(minZ) || float.IsInfinity(maxZ))
             {
+                _galleryStartZ = 0f;
+                _galleryEndZ = L0;
+                _layoutMinZ = 0f;
                 _length = L0;
             }
             else
             {
+                _galleryStartZ = minZ;
+                _galleryEndZ = maxZ;
+                _layoutMinZ = minZ;
                 _length = Mathf.Max(L0, maxZ - minZ + 2f);
+            }
+
+            foreach (var room in layout.rooms)
+            {
+                if (room == null) continue;
+                if (!_roomVerts.TryGetValue(room.id ?? "", out var verts)) continue;
+                BuildPolygonRoom(room, verts, layout);
             }
         }
 
@@ -176,7 +196,7 @@ namespace Gallery.Room
             return true;
         }
 
-        void BuildRectCorridor(float length)
+        void BuildRectCorridor(float length, bool openNearDoorway = false)
         {
             CreateBox("Floor", new Vector3(0f, -0.05f, length * 0.5f), new Vector3(Width, 0.1f, length), floorColor);
             var rim = 0.55f;
@@ -189,9 +209,31 @@ namespace Gallery.Room
             CreateBox("CeilRight", new Vector3(Width * 0.5f - rim * 0.5f, ceilY, length * 0.5f), new Vector3(rim, 0.1f, openL), ceilingColor);
             CreateBox("WallLeft", new Vector3(-Width * 0.5f, Height * 0.5f, length * 0.5f), new Vector3(WallThickness, Height, length), wallColor);
             CreateBox("WallRight", new Vector3(Width * 0.5f, Height * 0.5f, length * 0.5f), new Vector3(WallThickness, Height, length), wallColor);
-            CreateBox("WallNear", new Vector3(0f, Height * 0.5f, 0f), new Vector3(Width, Height, WallThickness), wallColor);
+
+            if (openNearDoorway)
+            {
+                // Doorway cut for entrance arch (matches EntranceBuilder.ArchWidth).
+                const float doorW = 2.4f;
+                var side = (Width - doorW) * 0.5f;
+                if (side > 0.05f)
+                {
+                    CreateBox("WallNearL", new Vector3(-(doorW * 0.5f + side * 0.5f), Height * 0.5f, 0f),
+                        new Vector3(side, Height, WallThickness), wallColor);
+                    CreateBox("WallNearR", new Vector3(doorW * 0.5f + side * 0.5f, Height * 0.5f, 0f),
+                        new Vector3(side, Height, WallThickness), wallColor);
+                }
+
+                var lintelH = Mathf.Max(0.2f, Height - 2.6f);
+                CreateBox("WallNearLintel", new Vector3(0f, 2.6f + lintelH * 0.5f, 0f),
+                    new Vector3(doorW, lintelH, WallThickness), wallColor);
+            }
+            else
+            {
+                CreateBox("WallNear", new Vector3(0f, Height * 0.5f, 0f), new Vector3(Width, Height, WallThickness), wallColor);
+                CreateBox("DoorPortal", new Vector3(0f, 1.1f, -0.02f), new Vector3(1.2f, 2.2f, 0.08f), new Color(0.25f, 0.25f, 0.28f));
+            }
+
             CreateBox("WallFar", new Vector3(0f, Height * 0.5f, length), new Vector3(Width, Height, WallThickness), wallColor);
-            CreateBox("DoorPortal", new Vector3(0f, 1.1f, -0.02f), new Vector3(1.2f, 2.2f, 0.08f), new Color(0.25f, 0.25f, 0.28f));
         }
 
         void BuildPolygonRoom(GalleryRoomData room, Vector3[] verts, GalleryLayoutData layout)
@@ -230,6 +272,8 @@ namespace Gallery.Room
                 var a = verts[i];
                 var b = verts[(i + 1) % verts.Length];
                 var doorway = FindDoorwayWidth(layout, room.id, i);
+                if (doorway <= 0.01f && IsEntranceEdge(a, b))
+                    doorway = 2.4f;
                 BuildWallSegment(roomRoot, a, b, i, doorway);
             }
 
@@ -255,6 +299,16 @@ namespace Gallery.Room
             }
 
             return 0f;
+        }
+
+        bool IsEntranceEdge(Vector3 a, Vector3 b)
+        {
+            if (float.IsNaN(_layoutMinZ)) return false;
+            var midZ = (a.z + b.z) * 0.5f;
+            if (midZ > _layoutMinZ + 0.35f) return false;
+            var edge = b - a;
+            // Prefer edges that run mostly along X (face ±Z).
+            return Mathf.Abs(edge.x) >= Mathf.Abs(edge.z) * 0.6f;
         }
 
         void BuildWallSegment(Transform parent, Vector3 a, Vector3 b, int edgeIndex, float doorwayWidth)

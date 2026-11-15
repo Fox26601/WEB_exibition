@@ -1,46 +1,146 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { CatalogSettings } from "@/lib/catalog-types";
-import { LOCALES, emptyLocalized } from "@/lib/catalog-types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { BookletPage, CatalogSettings } from "@/lib/catalog-types";
+import {
+  LOCALES,
+  emptyBookletPage,
+  emptyDonate,
+  emptyEntrance,
+  emptyLocalized,
+  normalizeSettings,
+} from "@/lib/catalog-types";
+
+const AUTOSAVE_MS = 700;
 
 export function SettingsForm() {
   const [settings, setSettings] = useState<CatalogSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [posterBusy, setPosterBusy] = useState(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipAutosave = useRef(true);
 
   useEffect(() => {
     fetch("/api/admin/settings")
       .then((r) => r.json())
-      .then(setSettings)
+      .then((data) => {
+        setSettings(normalizeSettings(data));
+        skipAutosave.current = true;
+      })
       .catch(() =>
-        setSettings({
-          poster: emptyLocalized(),
-          instagram: "",
-          email: "",
-          bio: emptyLocalized(),
-        }),
+        setSettings(
+          normalizeSettings({
+            poster: emptyLocalized(),
+            instagram: "",
+            email: "",
+            bio: emptyLocalized(),
+            entrance: emptyEntrance(),
+            aboutArtist: emptyLocalized(),
+            aboutCurator: emptyLocalized(),
+            donate: emptyDonate(),
+          }),
+        ),
       );
   }, []);
 
-  async function save() {
-    if (!settings) return;
+  const persist = useCallback(async (next: CatalogSettings, label: string) => {
     setBusy(true);
     setMessage("");
     try {
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(normalizeSettings(next)),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(JSON.stringify(data.error));
-      setSettings(data.settings);
-      setMessage("Settings saved (draft). Publish catalog to push live.");
+      setSettings(normalizeSettings(data.settings));
+      setMessage(label);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
       setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!settings) return;
+    if (skipAutosave.current) {
+      skipAutosave.current = false;
+      return;
+    }
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      void persist(settings, "Settings autosaved (draft). Publish catalog to push live.");
+    }, AUTOSAVE_MS);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [settings, persist]);
+
+  function patch(partial: Partial<CatalogSettings>) {
+    setSettings((prev) => (prev ? { ...prev, ...partial } : prev));
+  }
+
+  function updateBookletPage(index: number, page: BookletPage) {
+    if (!settings) return;
+    const booklet = settings.entrance.booklet.slice();
+    booklet[index] = page;
+    patch({ entrance: { ...settings.entrance, booklet } });
+  }
+
+  function addBookletPage() {
+    if (!settings) return;
+    const n = settings.entrance.booklet.length;
+    const key = n === 0 ? "intro" : `hall-${n}`;
+    patch({
+      entrance: {
+        ...settings.entrance,
+        booklet: [...settings.entrance.booklet, emptyBookletPage(key)],
+      },
+    });
+  }
+
+  function removeBookletPage(index: number) {
+    if (!settings) return;
+    const booklet = settings.entrance.booklet.filter((_, i) => i !== index);
+    patch({
+      entrance: {
+        ...settings.entrance,
+        booklet: booklet.length ? booklet : [emptyBookletPage("intro")],
+      },
+    });
+  }
+
+  async function onPosterFile(file: File | null) {
+    if (!file || !settings) return;
+    if (file.size > 8 * 1024 * 1024) {
+      setMessage("Poster exceeds 8MB");
+      return;
+    }
+    setPosterBusy(true);
+    setMessage("Uploading entrance poster…");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/admin/process-image", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Process failed");
+      patch({
+        entrance: {
+          ...settings.entrance,
+          posterUrl: data.urlFull || data.urlWall,
+        },
+      });
+      setMessage("Entrance poster set (draft).");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Error");
+    } finally {
+      setPosterBusy(false);
     }
   }
 
@@ -65,8 +165,7 @@ export function SettingsForm() {
               <input
                 value={settings.poster[locale]}
                 onChange={(e) =>
-                  setSettings({
-                    ...settings,
+                  patch({
                     poster: { ...settings.poster, [locale]: e.target.value },
                   })
                 }
@@ -81,18 +180,14 @@ export function SettingsForm() {
           <label>Instagram URL</label>
           <input
             value={settings.instagram}
-            onChange={(e) =>
-              setSettings({ ...settings, instagram: e.target.value })
-            }
+            onChange={(e) => patch({ instagram: e.target.value })}
           />
         </div>
         <div>
           <label>Email</label>
           <input
             value={settings.email}
-            onChange={(e) =>
-              setSettings({ ...settings, email: e.target.value })
-            }
+            onChange={(e) => patch({ email: e.target.value })}
           />
         </div>
       </section>
@@ -109,9 +204,202 @@ export function SettingsForm() {
                 rows={5}
                 value={settings.bio[locale]}
                 onChange={(e) =>
-                  setSettings({
-                    ...settings,
+                  patch({
                     bio: { ...settings.bio, [locale]: e.target.value },
+                  })
+                }
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="mb-3 text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
+          Entrance poster
+        </h2>
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <input
+            type="file"
+            accept="image/*"
+            disabled={posterBusy}
+            onChange={(e) => void onPosterFile(e.target.files?.[0] ?? null)}
+          />
+          {settings.entrance.posterUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={settings.entrance.posterUrl}
+              alt=""
+              className="h-20 w-auto border border-[var(--line)] object-cover"
+            />
+          ) : null}
+        </div>
+        <label>Poster URL</label>
+        <input
+          value={settings.entrance.posterUrl}
+          onChange={(e) =>
+            patch({
+              entrance: { ...settings.entrance, posterUrl: e.target.value },
+            })
+          }
+        />
+      </section>
+
+      <section className="mb-8">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
+            Exhibition booklet
+          </h2>
+          <button type="button" className="btn !py-1.5 !text-xs" onClick={addBookletPage}>
+            Add page
+          </button>
+        </div>
+        <div className="space-y-6">
+          {settings.entrance.booklet.map((page, index) => (
+            <div
+              key={`booklet-${index}-${page.key}`}
+              className="border border-[var(--line)] p-4"
+            >
+              <div className="mb-3 flex flex-wrap items-end gap-3">
+                <div className="min-w-[10rem] flex-1">
+                  <label>Page key</label>
+                  <input
+                    value={page.key}
+                    onChange={(e) =>
+                      updateBookletPage(index, { ...page, key: e.target.value })
+                    }
+                    placeholder="intro / hall-1 / room id"
+                  />
+                </div>
+                {settings.entrance.booklet.length > 1 ? (
+                  <button
+                    type="button"
+                    className="btn !py-1.5 !text-xs"
+                    onClick={() => removeBookletPage(index)}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+              <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                {LOCALES.map((locale) => (
+                  <div key={`bt-${index}-${locale}`}>
+                    <label>Title ({locale})</label>
+                    <input
+                      value={page.title[locale]}
+                      onChange={(e) =>
+                        updateBookletPage(index, {
+                          ...page,
+                          title: { ...page.title, [locale]: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {LOCALES.map((locale) => (
+                  <div key={`bb-${index}-${locale}`}>
+                    <label>Body ({locale})</label>
+                    <textarea
+                      rows={4}
+                      value={page.body[locale]}
+                      onChange={(e) =>
+                        updateBookletPage(index, {
+                          ...page,
+                          body: { ...page.body, [locale]: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="mb-3 text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
+          About artist
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {LOCALES.map((locale) => (
+            <div key={`aa-${locale}`}>
+              <label>About artist ({locale})</label>
+              <textarea
+                rows={4}
+                value={settings.aboutArtist[locale]}
+                onChange={(e) =>
+                  patch({
+                    aboutArtist: {
+                      ...settings.aboutArtist,
+                      [locale]: e.target.value,
+                    },
+                  })
+                }
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="mb-3 text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
+          About curator
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {LOCALES.map((locale) => (
+            <div key={`ac-${locale}`}>
+              <label>About curator ({locale})</label>
+              <textarea
+                rows={4}
+                value={settings.aboutCurator[locale]}
+                onChange={(e) =>
+                  patch({
+                    aboutCurator: {
+                      ...settings.aboutCurator,
+                      [locale]: e.target.value,
+                    },
+                  })
+                }
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-8">
+        <h2 className="mb-3 text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
+          Donate
+        </h2>
+        <div className="mb-3">
+          <label>Donate URL</label>
+          <input
+            value={settings.donate.url}
+            onChange={(e) =>
+              patch({
+                donate: { ...settings.donate, url: e.target.value },
+              })
+            }
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {LOCALES.map((locale) => (
+            <div key={`dn-${locale}`}>
+              <label>Donate text ({locale})</label>
+              <textarea
+                rows={3}
+                value={settings.donate.text[locale]}
+                onChange={(e) =>
+                  patch({
+                    donate: {
+                      ...settings.donate,
+                      text: {
+                        ...settings.donate.text,
+                        [locale]: e.target.value,
+                      },
+                    },
                   })
                 }
               />
@@ -128,7 +416,12 @@ export function SettingsForm() {
         type="button"
         className="btn btn-solid"
         disabled={busy}
-        onClick={save}
+        onClick={() =>
+          void persist(
+            settings,
+            "Settings saved (draft). Publish catalog to push live.",
+          )
+        }
       >
         Save settings
       </button>

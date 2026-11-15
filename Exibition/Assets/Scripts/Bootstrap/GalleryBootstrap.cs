@@ -1,4 +1,5 @@
 using Gallery.Catalog;
+using Gallery.Entrance;
 using Gallery.Media;
 using Gallery.Player;
 using Gallery.Quality;
@@ -10,7 +11,7 @@ using UnityEngine.EventSystems;
 namespace Gallery.Bootstrap
 {
     /// <summary>
-    /// Runtime entry: quality tier → catalog fetch → room + artworks + player + bridges.
+    /// Runtime entry: quality tier → catalog fetch → entrance + room + artworks + player + bridges.
     /// Attach to an empty GameObject in Scenes/Gallery (or let RuntimeInitialize create it).
     /// </summary>
     public class GalleryBootstrap : MonoBehaviour
@@ -40,6 +41,9 @@ namespace Gallery.Bootstrap
             var roomGo = new GameObject("RoomBuilder");
             var room = roomGo.AddComponent<RoomBuilder>();
 
+            var entranceGo = new GameObject("EntranceBuilder");
+            var entrance = entranceGo.AddComponent<EntranceBuilder>();
+
             var spawnGo = new GameObject("ArtworkSpawner");
             var spawner = spawnGo.AddComponent<ArtworkSpawner>();
 
@@ -58,21 +62,36 @@ namespace Gallery.Bootstrap
             StarSkybox.Apply(cam);
             spawner.Initialize(room, player.transform);
 
+            var bookletGo = new GameObject("BookletController");
+            var booklet = bookletGo.AddComponent<BookletController>();
+            booklet.Initialize(player);
+
             var localeGo = new GameObject("LocaleUI");
             var locale = localeGo.AddComponent<LocaleUI>();
 
             var rayGo = new GameObject("InteractionRaycaster");
             var ray = rayGo.AddComponent<InteractionRaycaster>();
-            ray.Initialize(player, locale, media);
+            ray.Initialize(player, locale, media, booklet);
             locale.Initialize(loader.InitialLang, ray);
 
             loader.Loaded += catalog =>
             {
                 locale.Initialize(loader.InitialLang, ray);
                 locale.BindCatalog(catalog);
-                // Layout rooms when present; otherwise rect L/R from non-model artwork count.
                 room.BuildFromCatalog(catalog);
-                player.Configure(room.Length, QualityTier.IsMobileTier);
+                entrance.Build(catalog, room.GalleryStartZ);
+
+                var walkMin = entrance.WalkMinZ;
+                var walkMax = Mathf.Max(walkMin + 2f, room.GalleryEndZ - 0.35f);
+                player.ConfigureSpawn(
+                    room.Length,
+                    QualityTier.IsMobileTier,
+                    spawnZ: entrance.SpawnZ,
+                    walkMinZ: walkMin,
+                    walkMaxZ: walkMax,
+                    yaw: 0f);
+
+                booklet.Bind(catalog, entrance.Pedestal, loader.InitialLang);
                 spawner.Initialize(room, player.transform);
                 spawner.Spawn(catalog);
                 StarSkybox.Apply(cam);
@@ -82,7 +101,15 @@ namespace Gallery.Bootstrap
             {
                 Debug.LogError(err);
                 room.Build(0);
-                player.Configure(room.Length, QualityTier.IsMobileTier);
+                entrance.Build(null, room.GalleryStartZ);
+                player.ConfigureSpawn(
+                    room.Length,
+                    QualityTier.IsMobileTier,
+                    spawnZ: entrance.SpawnZ,
+                    walkMinZ: entrance.WalkMinZ,
+                    walkMaxZ: Mathf.Max(entrance.WalkMinZ + 2f, room.GalleryEndZ - 0.35f),
+                    yaw: 0f);
+                booklet.Bind(null, entrance.Pedestal, loader.InitialLang);
                 StarSkybox.Apply(cam);
             };
 
@@ -110,7 +137,6 @@ namespace Gallery.Bootstrap
             light.shadows = QualityTier.IsMobileTier ? LightShadows.None : LightShadows.Hard;
             lightGo.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
 
-            // Soft fill so Unlit/lit walls stay readable under the night skybox.
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(0.62f, 0.64f, 0.70f);
         }

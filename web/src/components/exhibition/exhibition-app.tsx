@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Artwork, Catalog } from "@/lib/catalog-types";
+import { normalizeSettings } from "@/lib/catalog-types";
 import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
 import { GalleryScene } from "./gallery-scene";
+
+type InfoModal = "artist" | "curator" | "donate" | "links" | null;
 
 export function ExhibitionApp({
   unityAvailable = false,
@@ -25,6 +28,8 @@ export function ExhibitionApp({
   } | null>(null);
   const [catalogKind, setCatalogKind] = useState<"live" | "draft">("live");
   const [token, setToken] = useState<string | null>(null);
+  const [infoModal, setInfoModal] = useState<InfoModal>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -41,7 +46,9 @@ export function ExhibitionApp({
         if (!r.ok) throw new Error(r.status === 403 ? "Forbidden" : "Failed");
         return r.json();
       })
-      .then(setCatalog)
+      .then((data: Catalog) =>
+        setCatalog({ ...data, settings: normalizeSettings(data.settings) }),
+      )
       .catch((e) => setError(e instanceof Error ? e.message : "Error"));
   }, []);
 
@@ -51,6 +58,7 @@ export function ExhibitionApp({
         setImageOverlay(null);
         setVideoOverlay(null);
         setInfoOpen(false);
+        setInfoModal(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -59,13 +67,31 @@ export function ExhibitionApp({
 
   const artworks = useMemo(() => {
     if (!catalog) return [];
-    // Live API already returns published-only; draft preview matches schematic (published).
     return catalog.artworks
       .filter((a) => a.published)
       .sort((a, b) => a.sort - b.sort);
   }, [catalog]);
 
   const copy = UI[locale];
+  const settings = catalog ? normalizeSettings(catalog.settings) : null;
+
+  function postToggleBooklet() {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: "gallery-toggle-booklet" }, window.location.origin);
+    try {
+      const unity = (
+        win as Window & {
+          unityInstance?: {
+            SendMessage: (a: string, b: string, c: string) => void;
+          };
+        }
+      ).unityInstance;
+      unity?.SendMessage("BookletController", "OnJsToggleBooklet", "");
+    } catch {
+      /* unity not ready */
+    }
+  }
 
   if (error) {
     return (
@@ -80,7 +106,7 @@ export function ExhibitionApp({
     );
   }
 
-  if (!catalog) {
+  if (!catalog || !settings) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black text-[var(--paper-dim)]">
         Loading exhibition…
@@ -88,12 +114,31 @@ export function ExhibitionApp({
     );
   }
 
+  const modalTitle =
+    infoModal === "artist"
+      ? copy.aboutArtist
+      : infoModal === "curator"
+        ? copy.aboutCurator
+        : infoModal === "donate"
+          ? copy.donate
+          : infoModal === "links"
+            ? copy.links
+            : "";
+
+  const modalBody =
+    infoModal === "artist"
+      ? pickLocalized(settings.aboutArtist, locale)
+      : infoModal === "curator"
+        ? pickLocalized(settings.aboutCurator, locale)
+        : infoModal === "donate"
+          ? pickLocalized(settings.donate.text, locale)
+          : "";
+
   return (
     <div
       dir={dir}
       className="relative h-[100dvh] w-full overflow-hidden bg-black"
     >
-      {/* Single chrome layer: HTML owns exit + lang when Unity is embedded (Unity skips its lang row). */}
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 grid grid-cols-[1fr_auto_1fr] items-center gap-3 p-3 sm:p-4">
         <div className="pointer-events-auto justify-self-start">
           <Link
@@ -106,13 +151,52 @@ export function ExhibitionApp({
         <span className="pointer-events-none justify-self-center font-[family-name:var(--font-display)] text-sm font-semibold tracking-wide text-white/90">
           Atelier
         </span>
-        <div className="pointer-events-auto justify-self-end rounded bg-black/40 px-2 py-1 backdrop-blur-sm">
+        <div className="pointer-events-auto justify-self-end" />
+      </div>
+
+      {/* Right chrome: language + about / donate / links */}
+      <div className="pointer-events-none absolute end-3 top-16 z-20 flex flex-col items-end gap-2 sm:end-4 sm:top-20">
+        <div className="pointer-events-auto rounded bg-black/40 px-2 py-1 backdrop-blur-sm">
           <LangSwitcher value={locale} onChange={setLocale} />
         </div>
+        {(
+          [
+            ["artist", copy.aboutArtist],
+            ["curator", copy.aboutCurator],
+            ["donate", copy.donate],
+            ["links", copy.links],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className="pointer-events-auto btn btn-ghost !border-white/20 !py-1.5 !px-3 !text-[0.65rem] !normal-case !tracking-wide !text-white/85"
+            onClick={() => setInfoModal(id)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {unityAvailable ? (
-        <UnityEmbed catalogKind={catalogKind} token={token} lang={locale} />
+        <div className="pointer-events-none absolute bottom-5 start-1/2 z-20 -translate-x-1/2 sm:hidden">
+          <button
+            type="button"
+            className="pointer-events-auto btn btn-solid !py-2 !px-5"
+            onClick={postToggleBooklet}
+          >
+            {copy.map}
+          </button>
+        </div>
+      ) : null}
+
+      {unityAvailable ? (
+        <UnityEmbed
+          catalogKind={catalogKind}
+          token={token}
+          lang={locale}
+          iframeRef={iframeRef}
+        />
       ) : (
         <GalleryScene
           artworks={artworks}
@@ -125,7 +209,6 @@ export function ExhibitionApp({
         />
       )}
 
-      {/* Selection chrome is Unity-owned when embedded; HTML only for Three.js stub. */}
       {!unityAvailable && selected && !infoOpen && !imageOverlay && !videoOverlay ? (
         <div className="absolute bottom-24 start-1/2 z-20 flex -translate-x-1/2 gap-2 sm:bottom-8">
           <button
@@ -165,6 +248,62 @@ export function ExhibitionApp({
               type="button"
               className="btn mt-6"
               onClick={() => setInfoOpen(false)}
+            >
+              {copy.close}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {infoModal ? (
+        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+          <div className="max-h-[70vh] w-full max-w-lg overflow-y-auto border border-[var(--line)] bg-[#12100e] p-6">
+            <h2 className="mb-3 font-[family-name:var(--font-display)] text-2xl font-bold">
+              {modalTitle}
+            </h2>
+            {infoModal === "links" ? (
+              <div className="space-y-3 text-[var(--paper-dim)]">
+                {settings.email ? (
+                  <a
+                    href={`mailto:${settings.email}`}
+                    className="block hover:text-[var(--amber-bright)]"
+                  >
+                    {copy.email}: {settings.email}
+                  </a>
+                ) : null}
+                {settings.instagram ? (
+                  <a
+                    href={settings.instagram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block hover:text-[var(--amber-bright)]"
+                  >
+                    {copy.instagram}
+                  </a>
+                ) : null}
+                {!settings.email && !settings.instagram ? (
+                  <p>No links yet.</p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="whitespace-pre-wrap leading-relaxed text-[var(--paper-dim)]">
+                {modalBody || "—"}
+              </p>
+            )}
+            {infoModal === "donate" && settings.donate.url ? (
+              <a
+                href={settings.donate.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-solid mt-6 inline-flex"
+              >
+                {copy.donate}
+              </a>
+            ) : null}
+            <button
+              type="button"
+              className="btn mt-6"
+              onClick={() => setInfoModal(null)}
             >
               {copy.close}
             </button>
@@ -221,13 +360,14 @@ function UnityEmbed({
   catalogKind,
   token,
   lang,
+  iframeRef,
 }: {
   catalogKind: string;
   token: string | null;
   lang: string;
+  iframeRef: React.RefObject<HTMLIFrameElement | null>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -237,18 +377,23 @@ function UnityEmbed({
     el.dataset.lang = lang;
   }, [catalogKind, token, lang]);
 
-  // Live language without remounting WebGL (titles/info update via LocaleUI).
   useEffect(() => {
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     win.postMessage({ type: "gallery-set-lang", lang }, window.location.origin);
     try {
-      const unity = (win as Window & { unityInstance?: { SendMessage: (a: string, b: string, c: string) => void } }).unityInstance;
+      const unity = (
+        win as Window & {
+          unityInstance?: {
+            SendMessage: (a: string, b: string, c: string) => void;
+          };
+        }
+      ).unityInstance;
       unity?.SendMessage("LocaleUI", "OnJsSetLanguage", lang);
     } catch {
-      /* unity not ready yet — initial ?lang= covers first paint */
+      /* unity not ready yet */
     }
-  }, [lang]);
+  }, [lang, iframeRef]);
 
   const qs = new URLSearchParams({ catalog: catalogKind, lang });
   if (token) qs.set("token", token);

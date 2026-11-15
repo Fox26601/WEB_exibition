@@ -87,11 +87,32 @@ export interface GalleryLayout {
   placements: ArtworkPlacement[];
 }
 
+export interface BookletPage {
+  /** "intro", layout room id, or "hall-1"… for rect fallback. */
+  key: string;
+  title: LocalizedString;
+  body: LocalizedString;
+}
+
+export interface EntranceSettings {
+  posterUrl: string;
+  booklet: BookletPage[];
+}
+
+export interface DonateSettings {
+  text: LocalizedString;
+  url: string;
+}
+
 export interface CatalogSettings {
   poster: LocalizedString;
   instagram: string;
   email: string;
   bio: LocalizedString;
+  entrance: EntranceSettings;
+  aboutArtist: LocalizedString;
+  aboutCurator: LocalizedString;
+  donate: DonateSettings;
 }
 
 export interface Catalog {
@@ -105,6 +126,78 @@ export interface Catalog {
 
 export function emptyLocalized(fallback = ""): LocalizedString {
   return { en: fallback, ru: fallback, uk: fallback, he: fallback };
+}
+
+export function emptyBookletPage(key: string): BookletPage {
+  return {
+    key,
+    title: emptyLocalized(key === "intro" ? "Exhibition" : key),
+    body: emptyLocalized(),
+  };
+}
+
+export function emptyEntrance(): EntranceSettings {
+  return {
+    posterUrl: "",
+    booklet: [emptyBookletPage("intro")],
+  };
+}
+
+export function emptyDonate(): DonateSettings {
+  return { text: emptyLocalized(), url: "" };
+}
+
+export function normalizeLocalized(
+  value?: Partial<LocalizedString> | null,
+  fallback = "",
+): LocalizedString {
+  return {
+    en: value?.en ?? fallback,
+    ru: value?.ru ?? fallback,
+    uk: value?.uk ?? fallback,
+    he: value?.he ?? fallback,
+  };
+}
+
+export function normalizeEntrance(
+  entrance?: Partial<EntranceSettings> | null,
+): EntranceSettings {
+  const booklet = Array.isArray(entrance?.booklet)
+    ? entrance!.booklet.map((page, i) => ({
+        key: page?.key || (i === 0 ? "intro" : `hall-${i}`),
+        title: normalizeLocalized(page?.title),
+        body: normalizeLocalized(page?.body),
+      }))
+    : [];
+  if (booklet.length === 0) booklet.push(emptyBookletPage("intro"));
+  return {
+    posterUrl: entrance?.posterUrl ?? "",
+    booklet,
+  };
+}
+
+export function normalizeDonate(
+  donate?: Partial<DonateSettings> | null,
+): DonateSettings {
+  return {
+    text: normalizeLocalized(donate?.text),
+    url: donate?.url ?? "",
+  };
+}
+
+export function normalizeSettings(
+  settings?: Partial<CatalogSettings> | null,
+): CatalogSettings {
+  return {
+    poster: normalizeLocalized(settings?.poster, "Exhibition"),
+    instagram: settings?.instagram ?? "",
+    email: settings?.email ?? "",
+    bio: normalizeLocalized(settings?.bio),
+    entrance: normalizeEntrance(settings?.entrance),
+    aboutArtist: normalizeLocalized(settings?.aboutArtist),
+    aboutCurator: normalizeLocalized(settings?.aboutCurator),
+    donate: normalizeDonate(settings?.donate),
+  };
 }
 
 export function emptyLayout(): GalleryLayout {
@@ -202,6 +295,62 @@ export function createDefaultCatalog(): Catalog {
         ru: "Пробный каталог для первого запуска.",
         uk: "Пробний каталог для першого запуску.",
         he: "קטלוג לדוגמה להפעלה ראשונה.",
+      },
+      entrance: {
+        posterUrl: "/samples/sample-01.jpg",
+        booklet: [
+          {
+            key: "intro",
+            title: {
+              en: "Welcome",
+              ru: "Добро пожаловать",
+              uk: "Ласкаво просимо",
+              he: "ברוכים הבאים",
+            },
+            body: {
+              en: "Pick up the booklet at the entrance pedestal. Press Q (or Map on mobile) to open it.",
+              ru: "Возьмите буклет у пьедестала у входа. Q (или Map на мобильном) открывает его.",
+              uk: "Візьміть буклет біля п'єдесталу. Q (або Map на мобільному) відкриває його.",
+              he: "קחו את החוברת מהכן בכניסה. Q (או Map במובייל) פותח אותה.",
+            },
+          },
+          {
+            key: "hall-1",
+            title: {
+              en: "Main hall",
+              ru: "Главный зал",
+              uk: "Головна зала",
+              he: "האולם הראשי",
+            },
+            body: {
+              en: "Works hang along the corridor walls beyond the arch.",
+              ru: "Работы на стенах коридора за аркой.",
+              uk: "Роботи на стінах коридору за аркою.",
+              he: "היצירות על קירות המסדרון מעבר לקשת.",
+            },
+          },
+        ],
+      },
+      aboutArtist: {
+        en: "About the artist — edit in admin settings.",
+        ru: "Об художнике — редактируется в админке.",
+        uk: "Про художника — редагується в адмінці.",
+        he: "על האמן — ניתן לערוך בהגדרות.",
+      },
+      aboutCurator: {
+        en: "About the curator — edit in admin settings.",
+        ru: "О кураторе — редактируется в админке.",
+        uk: "Про куратора — редагується в адмінці.",
+        he: "על האוצר — ניתן לערוך בהגדרות.",
+      },
+      donate: {
+        text: {
+          en: "Support the exhibition.",
+          ru: "Поддержите выставку.",
+          uk: "Підтримайте виставку.",
+          he: "תמכו בתערוכה.",
+        },
+        url: "",
       },
     },
     layout: emptyLayout(),
