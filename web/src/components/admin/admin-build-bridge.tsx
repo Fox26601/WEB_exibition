@@ -18,25 +18,30 @@ import type {
 import { FRAME_IDS } from "@/lib/catalog-types";
 import { pickLocalized } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n";
+import { mapPointerThroughExhibitionIframe } from "@/lib/unity-pointer-map";
 
 const ADMIN_ORIGIN =
   typeof window !== "undefined" ? window.location.origin : "";
 
 export type AdminDragKind = "painting" | "sculpture";
 
+export type AdminPointerPayload = {
+  screenX: number;
+  screenY: number;
+  normU: number;
+  normV: number;
+  overCanvas: boolean;
+};
+
 export type AdminBridgeMessage =
   | { type: "gallery-admin-init"; catalog: Catalog; layout: GalleryLayout }
-  | {
+  | ({
       type: "gallery-admin-begin-drag";
       artworkId: string;
       kind: AdminDragKind;
       frameId: FrameId;
-    }
-  | {
-      type: "gallery-admin-drag-move";
-      screenX: number;
-      screenY: number;
-    }
+    } & AdminPointerPayload)
+  | ({ type: "gallery-admin-drag-move" } & AdminPointerPayload)
   | { type: "gallery-admin-end-drag"; artworkId: string; commit: boolean }
   | { type: "gallery-admin-remove"; artworkId: string }
   | {
@@ -224,6 +229,44 @@ function PaletteItem({
   );
 }
 
+type DragOverlayState = {
+  art: Artwork;
+  x: number;
+  y: number;
+};
+
+function DragOverlay({ overlay }: { overlay: DragOverlayState | null }) {
+  if (!overlay) return null;
+  const { art, x, y } = overlay;
+  return (
+    <div
+      className="pointer-events-none fixed z-[9999]"
+      style={{
+        left: x + 12,
+        top: y + 12,
+        width: 72,
+        height: 72,
+      }}
+      aria-hidden
+    >
+      <div className="h-full w-full overflow-hidden border-2 border-[var(--amber-bright)] bg-[#0e0c0a] shadow-lg">
+        {art.type === "model" ? (
+          <div className="flex h-full items-center justify-center text-[0.65rem] text-[var(--paper-dim)]">
+            GLB
+          </div>
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={art.urlWall || art.urlPoster || ""}
+            alt=""
+            className="h-full w-full object-cover opacity-90"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AdminBuildBridge({
   catalog,
   layout,
@@ -237,6 +280,7 @@ export function AdminBuildBridge({
   const [paletteFrame, setPaletteFrame] = useState<FrameId>("wood");
   const dragArtRef = useRef<Artwork | null>(null);
   const dragActiveRef = useRef(false);
+  const [dragOverlay, setDragOverlay] = useState<DragOverlayState | null>(null);
 
   const published = useMemo(
     () =>
@@ -270,46 +314,23 @@ export function AdminBuildBridge({
     });
   }, [catalog, layout, postToUnity]);
 
-  const resolveUnityCanvas = useCallback(() => {
-    const outer = iframeRef.current;
-    if (!outer?.contentDocument) return null;
-    const inner = outer.contentDocument.querySelector("iframe");
-    if (!inner?.contentDocument) return null;
-    const canvas = inner.contentDocument.querySelector(
-      "#unity-canvas",
-    ) as HTMLCanvasElement | null;
-    return canvas;
-  }, []);
-
-  const clientToUnityScreen = useCallback(
-    (clientX: number, clientY: number) => {
-      const canvas = resolveUnityCanvas();
-      if (!canvas) return null;
-      const rect = canvas.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return null;
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      const x = (clientX - rect.left) * scaleX;
-      const yFromTop = (clientY - rect.top) * scaleY;
-      const y = canvas.height - yFromTop;
-      return { x, y };
-    },
-    [resolveUnityCanvas],
-  );
-
-  const pointOverUnity = useCallback(
-    (clientX: number, clientY: number) => {
-      const canvas = resolveUnityCanvas();
-      if (!canvas) return false;
-      const rect = canvas.getBoundingClientRect();
-      return (
-        clientX >= rect.left &&
-        clientX <= rect.right &&
-        clientY >= rect.top &&
-        clientY <= rect.bottom
+  const mapPointer = useCallback(
+    (clientX: number, clientY: number): AdminPointerPayload | null => {
+      const mapped = mapPointerThroughExhibitionIframe(
+        clientX,
+        clientY,
+        iframeRef.current,
       );
+      if (!mapped) return null;
+      return {
+        screenX: mapped.screenX,
+        screenY: mapped.screenY,
+        normU: mapped.normU,
+        normV: mapped.normV,
+        overCanvas: mapped.overCanvas,
+      };
     },
-    [resolveUnityCanvas],
+    [],
   );
 
   useEffect(() => {
@@ -347,21 +368,22 @@ export function AdminBuildBridge({
 
   const sendDragMove = useCallback(
     (clientX: number, clientY: number) => {
-      const screen = clientToUnityScreen(clientX, clientY);
-      if (!screen) return;
+      const pointer = mapPointer(clientX, clientY);
+      if (!pointer) return;
       postToUnity({
         type: "gallery-admin-drag-move",
-        screenX: screen.x,
-        screenY: screen.y,
+        ...pointer,
       });
     },
-    [clientToUnityScreen, postToUnity],
+    [mapPointer, postToUnity],
   );
 
   const endDrag = useCallback(
-    (commit: boolean) => {
+    (clientX: number, clientY: number) => {
       const art = dragArtRef.current;
       if (!art || !dragActiveRef.current) return;
+      const pointer = mapPointer(clientX, clientY);
+      const commit = pointer?.overCanvas === true;
       postToUnity({
         type: "gallery-admin-end-drag",
         artworkId: art.id,
@@ -369,14 +391,26 @@ export function AdminBuildBridge({
       });
       dragArtRef.current = null;
       dragActiveRef.current = false;
+      setDragOverlay(null);
     },
-    [postToUnity],
+    [mapPointer, postToUnity],
   );
 
   const beginDrag = useCallback(
     (art: Artwork, e: ReactPointerEvent) => {
       dragArtRef.current = art;
       dragActiveRef.current = true;
+      setDragOverlay({ art, x: e.clientX, y: e.clientY });
+
+      const pointer =
+        mapPointer(e.clientX, e.clientY) ?? {
+          screenX: 0,
+          screenY: 0,
+          normU: 0,
+          normV: 0,
+          overCanvas: false,
+        };
+
       postToUnity({
         type: "gallery-admin-begin-drag",
         artworkId: art.id,
@@ -387,12 +421,15 @@ export function AdminBuildBridge({
             : art.frameId && art.frameId !== "none"
               ? art.frameId
               : paletteFrame,
+        ...pointer,
       });
-      sendDragMove(e.clientX, e.clientY);
 
-      const onMove = (ev: PointerEvent) => sendDragMove(ev.clientX, ev.clientY);
+      const onMove = (ev: PointerEvent) => {
+        setDragOverlay({ art, x: ev.clientX, y: ev.clientY });
+        sendDragMove(ev.clientX, ev.clientY);
+      };
       const onUp = (ev: PointerEvent) => {
-        endDrag(pointOverUnity(ev.clientX, ev.clientY));
+        endDrag(ev.clientX, ev.clientY);
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         window.removeEventListener("pointercancel", onUp);
@@ -401,7 +438,7 @@ export function AdminBuildBridge({
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
     },
-    [endDrag, paletteFrame, pointOverUnity, postToUnity, sendDragMove],
+    [endDrag, mapPointer, paletteFrame, postToUnity, sendDragMove],
   );
 
   function removePlacement(artworkId: string) {
@@ -424,6 +461,7 @@ export function AdminBuildBridge({
 
   return (
     <div className="grid min-h-[calc(100dvh-11rem)] grid-cols-1 gap-3 lg:grid-cols-[auto_1fr]">
+      <DragOverlay overlay={dragOverlay} />
       <ArtBuildPalette
         artworks={published}
         locale={locale}
@@ -442,8 +480,8 @@ export function AdminBuildBridge({
             {!unityReady ? " · загрузка…" : " · готово"}
           </h3>
           <p className="m-0 max-w-md text-[0.7rem] leading-snug">
-            Перетащите работу из списка на стену или пол. Короткий клик по
-            размещённой работе — сдвинуть.
+            Перетащите работу из списка — превью у курсора, отпустите над
+            сценой. Клик по размещённой работе — сдвинуть.
           </p>
         </div>
         <div

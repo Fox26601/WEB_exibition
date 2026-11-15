@@ -19,6 +19,7 @@ namespace Gallery.Admin
         AdminDragMessage _activeDrag;
         bool _dragging;
         bool _useExternalPointer;
+        bool _externalOverCanvas;
         Vector2 _externalScreen;
         Vector2 _pointerDown;
         bool _awaitingClickPick;
@@ -60,14 +61,37 @@ namespace Gallery.Admin
             BlocksCameraInput = true;
             _useExternalPointer = true;
             EnsureGhost(msg);
+            ApplyExternalPointer(msg);
+            UpdateGhostFromRay();
         }
 
         public void DragMove(AdminDragMoveMessage msg)
         {
             if (!_dragging || msg == null) return;
             _useExternalPointer = true;
-            _externalScreen = new Vector2(msg.screenX, msg.screenY);
+            ApplyExternalPointer(msg);
             UpdateGhostFromRay();
+        }
+
+        void ApplyExternalPointer(AdminDragMessage msg)
+        {
+            if (msg == null) return;
+            _externalOverCanvas = msg.overCanvas;
+            _externalScreen = ResolveScreenPixels(msg.screenX, msg.screenY, msg.normU, msg.normV);
+        }
+
+        void ApplyExternalPointer(AdminDragMoveMessage msg)
+        {
+            if (msg == null) return;
+            _externalOverCanvas = msg.overCanvas;
+            _externalScreen = ResolveScreenPixels(msg.screenX, msg.screenY, msg.normU, msg.normV);
+        }
+
+        static Vector2 ResolveScreenPixels(float screenX, float screenY, float normU, float normV)
+        {
+            if (screenX > 0f || screenY > 0f)
+                return new Vector2(screenX, screenY);
+            return new Vector2(normU * Screen.width, normV * Screen.height);
         }
 
         public void EndDrag(AdminEndDragMessage msg)
@@ -169,16 +193,31 @@ namespace Gallery.Admin
         void UpdateGhostFromRay()
         {
             if (_ghost == null || _camera == null) return;
-            var screen = _useExternalPointer ? _externalScreen : (Vector2)Input.mousePosition;
-            var ray = _camera.ScreenPointToRay(new Vector3(screen.x, screen.y, 0f));
-            if (!Physics.Raycast(ray, out var hit, 250f))
-                return;
 
-            _ghost.transform.position = hit.point;
-            if (_activeDrag != null &&
-                string.Equals(_activeDrag.kind, "painting", System.StringComparison.OrdinalIgnoreCase))
+            if (_useExternalPointer && !_externalOverCanvas)
             {
-                var normal = hit.normal;
+                _ghost.SetActive(false);
+                return;
+            }
+
+            _ghost.SetActive(true);
+            var screen = _useExternalPointer ? _externalScreen : (Vector2)Input.mousePosition;
+            var kind = _activeDrag?.kind ?? "painting";
+            if (!AdminPlacementRaycaster.TryResolvePlacementPoint(
+                    _camera,
+                    _room,
+                    screen,
+                    !_useExternalPointer || _externalOverCanvas,
+                    kind,
+                    out var point,
+                    out var normal))
+            {
+                return;
+            }
+
+            _ghost.transform.position = point;
+            if (string.Equals(kind, "painting", System.StringComparison.OrdinalIgnoreCase))
+            {
                 if (normal.sqrMagnitude < 0.01f)
                     normal = Vector3.forward;
                 _ghost.transform.rotation = Quaternion.LookRotation(-normal, Vector3.up);
