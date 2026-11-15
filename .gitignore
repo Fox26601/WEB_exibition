@@ -3,6 +3,8 @@
 **/.DS_Store
 
 # Node / Next (web app)
+.next/
+package-lock.json
 node_modules/
 web/node_modules/
 web/.next/

@@ -1,8 +1,0 @@
-{
-  "private": true,
-  "description": "Repo-root hook for Vercel when Root Directory is not set to web/",
-  "scripts": {
-    "postinstall": "npm install --prefix web",
-    "build": "npm run build --prefix web"
-  }
-}
