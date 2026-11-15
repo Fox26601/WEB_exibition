@@ -89,7 +89,8 @@ namespace Gallery.Bootstrap
                     spawnZ: entrance.SpawnZ,
                     walkMinZ: walkMin,
                     walkMaxZ: walkMax,
-                    yaw: 0f);
+                    yaw: entrance.SpawnYaw,
+                    spawnX: entrance.SpawnX);
 
                 booklet.Bind(catalog, entrance.Pedestal, loader.InitialLang);
                 spawner.Initialize(room, player.transform);
@@ -108,7 +109,8 @@ namespace Gallery.Bootstrap
                     spawnZ: entrance.SpawnZ,
                     walkMinZ: entrance.WalkMinZ,
                     walkMaxZ: Mathf.Max(entrance.WalkMinZ + 2f, room.GalleryEndZ - 0.35f),
-                    yaw: 0f);
+                    yaw: entrance.SpawnYaw,
+                    spawnX: entrance.SpawnX);
                 booklet.Bind(null, entrance.Pedestal, loader.InitialLang);
                 StarSkybox.Apply(cam);
             };

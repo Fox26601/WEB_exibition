@@ -11,21 +11,31 @@ import {
 import type {
   Artwork,
   FrameId,
+  GalleryEntrancePose,
   GalleryLayout,
   GalleryRoom,
   PlacementKind,
   RoomShape,
   ArtworkPlacement,
 } from "@/lib/catalog-types";
-import { FRAME_IDS, ROOM_SHAPES, emptyLayout } from "@/lib/catalog-types";
+import {
+  ENTRANCE_ROOM_ID,
+  FRAME_IDS,
+  ROOM_SHAPES,
+  normalizeLayout,
+} from "@/lib/catalog-types";
 import {
   defaultRoomTransform,
+  entranceAsRoom,
+  entranceWorldVertices,
   findRoomAtPoint,
   nearestWall,
   placementConflicts,
   pointInPolygon,
   recomputeConnections,
   roomWorldVertices,
+  roomsWithEntrance,
+  softSnapEntrance,
   softSnapRoom,
   yawFromEdge,
   type Vec2,
@@ -47,6 +57,9 @@ const SCALE = 36;
 const PAD = 40;
 const VIEW_W = 720;
 const VIEW_H = 520;
+const MOVE_GAIN = 0.45;
+const STRETCH_GAIN = 0.25;
+const DRAG_THRESHOLD_PX = 6;
 
 function worldToSvg(p: Vec2, origin: Vec2): { x: number; y: number } {
   return {
@@ -73,27 +86,43 @@ function svgToWorld(
   };
 }
 
-function boundsOrigin(rooms: GalleryRoom[]): Vec2 {
-  if (rooms.length === 0) return { x: -4, z: -1 };
+function boundsOrigin(
+  rooms: GalleryRoom[],
+  entrance: GalleryEntrancePose,
+): Vec2 {
   let minX = Infinity;
   let minZ = Infinity;
-  for (const room of rooms) {
-    for (const v of roomWorldVertices(room)) {
+  const consider = (verts: Vec2[]) => {
+    for (const v of verts) {
       minX = Math.min(minX, v.x);
       minZ = Math.min(minZ, v.z);
     }
+  };
+  for (const room of rooms) consider(roomWorldVertices(room));
+  consider(entranceWorldVertices(entrance));
+  if (!Number.isFinite(minX) || !Number.isFinite(minZ)) {
+    return { x: -4, z: -1 };
   }
   return { x: minX - 1.5, z: minZ - 1.5 };
 }
 
-function polygonPath(room: GalleryRoom, origin: Vec2): string {
-  const verts = roomWorldVertices(room);
-  return verts
-    .map((v, i) => {
-      const p = worldToSvg(v, origin);
-      return `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`;
-    })
-    .join(" ") + " Z";
+function polygonPath(verts: Vec2[], origin: Vec2): string {
+  return (
+    verts
+      .map((v, i) => {
+        const p = worldToSvg(v, origin);
+        return `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+      })
+      .join(" ") + " Z"
+  );
+}
+
+function roomCentroid(verts: Vec2[]): Vec2 {
+  const n = Math.max(1, verts.length);
+  return {
+    x: verts.reduce((s, v) => s + v.x, 0) / n,
+    z: verts.reduce((s, v) => s + v.z, 0) / n,
+  };
 }
 
 export function GalleryLayoutEditor({
@@ -121,7 +150,11 @@ export function GalleryLayoutEditor({
   const layoutLiveRef = useRef(layout);
   layoutLiveRef.current = layout;
 
-  const origin = useMemo(() => boundsOrigin(layout.rooms), [layout.rooms]);
+  const normalized = useMemo(() => normalizeLayout(layout), [layout]);
+  const origin = useMemo(
+    () => boundsOrigin(normalized.rooms, normalized.entrance),
+    [normalized.rooms, normalized.entrance],
+  );
   const published = useMemo(
     () =>
       [...artworks]
@@ -131,14 +164,17 @@ export function GalleryLayoutEditor({
   );
 
   const placedIds = useMemo(
-    () => new Set(layout.placements.map((p) => p.artworkId)),
-    [layout.placements],
+    () => new Set(normalized.placements.map((p) => p.artworkId)),
+    [normalized.placements],
   );
 
   const commit = useCallback(
     (next: GalleryLayout) => {
-      const connections = recomputeConnections(next.rooms);
-      onLayoutChange({ ...next, connections });
+      const base = normalizeLayout(next);
+      const connections = recomputeConnections(
+        roomsWithEntrance(base.rooms, base.entrance),
+      );
+      onLayoutChange({ ...base, connections });
     },
     [onLayoutChange],
   );
@@ -147,21 +183,23 @@ export function GalleryLayoutEditor({
     const room: GalleryRoom = {
       id: crypto.randomUUID(),
       shape,
-      transform: defaultRoomTransform(shape, layout.rooms.length),
+      transform: defaultRoomTransform(shape, normalized.rooms.length),
     };
-    const snapped = softSnapRoom(room, layout.rooms);
+    const others = roomsWithEntrance(normalized.rooms, normalized.entrance);
+    const snapped = softSnapRoom(room, others);
     commit({
-      ...layout,
-      rooms: [...layout.rooms, snapped.room],
+      ...normalized,
+      rooms: [...normalized.rooms, snapped.room],
     });
     setSelectedRoomId(snapped.room.id);
   }
 
   function removeRoom(id: string) {
+    if (id === ENTRANCE_ROOM_ID) return;
     commit({
-      rooms: layout.rooms.filter((r) => r.id !== id),
-      connections: [],
-      placements: layout.placements.filter((p) => p.roomId !== id),
+      ...normalized,
+      rooms: normalized.rooms.filter((r) => r.id !== id),
+      placements: normalized.placements.filter((p) => p.roomId !== id),
     });
     if (selectedRoomId === id) setSelectedRoomId(null);
   }
@@ -169,14 +207,18 @@ export function GalleryLayoutEditor({
   type DragMode = "move" | "scale";
   const dragRef = useRef<{
     mode: DragMode;
-    roomId: string;
+    targetId: string;
     startWorld: Vec2;
+    startClientX: number;
+    startClientY: number;
     startTransform: GalleryRoom["transform"];
+    startEntrance: GalleryEntrancePose;
+    moved: boolean;
   } | null>(null);
 
-  function onRoomPointerDown(
+  function onBodyPointerDown(
     e: ReactPointerEvent,
-    roomId: string,
+    targetId: string,
     mode: DragMode,
   ) {
     if (step !== "rooms") return;
@@ -184,16 +226,45 @@ export function GalleryLayoutEditor({
     e.stopPropagation();
     const svg = svgRef.current;
     if (!svg) return;
-    const room = layout.rooms.find((r) => r.id === roomId);
+
+    if (targetId === ENTRANCE_ROOM_ID) {
+      if (mode !== "move") return;
+      const world = svgToWorld(e.clientX, e.clientY, svg, origin);
+      dragRef.current = {
+        mode: "move",
+        targetId: ENTRANCE_ROOM_ID,
+        startWorld: world,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startTransform: {
+          x: normalized.entrance.x,
+          z: normalized.entrance.z,
+          rotation: normalized.entrance.rotation,
+          scaleX: 1,
+          scaleZ: 1,
+        },
+        startEntrance: { ...normalized.entrance },
+        moved: false,
+      };
+      setSelectedRoomId(ENTRANCE_ROOM_ID);
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      return;
+    }
+
+    const room = normalized.rooms.find((r) => r.id === targetId);
     if (!room) return;
     const world = svgToWorld(e.clientX, e.clientY, svg, origin);
     dragRef.current = {
       mode,
-      roomId,
+      targetId,
       startWorld: world,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
       startTransform: { ...room.transform },
+      startEntrance: { ...normalized.entrance },
+      moved: false,
     };
-    setSelectedRoomId(roomId);
+    setSelectedRoomId(targetId);
     (e.target as Element).setPointerCapture?.(e.pointerId);
   }
 
@@ -202,12 +273,35 @@ export function GalleryLayoutEditor({
       const drag = dragRef.current;
       const svg = svgRef.current;
       if (!drag || !svg) return;
-      const current = layoutLiveRef.current;
+
+      const px = e.clientX - drag.startClientX;
+      const py = e.clientY - drag.startClientY;
+      if (
+        !drag.moved &&
+        Math.hypot(px, py) < DRAG_THRESHOLD_PX
+      ) {
+        return;
+      }
+      drag.moved = true;
+
+      const current = normalizeLayout(layoutLiveRef.current);
       const world = svgToWorld(e.clientX, e.clientY, svg, origin);
-      const dx = world.x - drag.startWorld.x;
-      const dz = world.z - drag.startWorld.z;
+      const dx = (world.x - drag.startWorld.x) * MOVE_GAIN;
+      const dz = (world.z - drag.startWorld.z) * MOVE_GAIN;
+
+      if (drag.targetId === ENTRANCE_ROOM_ID) {
+        const raw: GalleryEntrancePose = {
+          x: drag.startEntrance.x + dx,
+          z: drag.startEntrance.z + dz,
+          rotation: drag.startEntrance.rotation,
+        };
+        const entrance = softSnapEntrance(raw, current.rooms);
+        commit({ ...current, entrance });
+        return;
+      }
+
       const rooms = current.rooms.map((r) => {
-        if (r.id !== drag.roomId) return r;
+        if (r.id !== drag.targetId) return r;
         if (drag.mode === "move") {
           return {
             ...r,
@@ -219,13 +313,15 @@ export function GalleryLayoutEditor({
             vertices: undefined,
           };
         }
+        const stretchDx = (world.x - drag.startWorld.x) * STRETCH_GAIN;
+        const stretchDz = (world.z - drag.startWorld.z) * STRETCH_GAIN;
         const scaleX = Math.max(
           1.2,
-          drag.startTransform.scaleX + dx * 0.5,
+          drag.startTransform.scaleX + stretchDx,
         );
         const scaleZ = Math.max(
           1.2,
-          drag.startTransform.scaleZ + dz * 0.5,
+          drag.startTransform.scaleZ + stretchDz,
         );
         return {
           ...r,
@@ -233,19 +329,65 @@ export function GalleryLayoutEditor({
           vertices: undefined,
         };
       });
-      const moving = rooms.find((r) => r.id === drag.roomId);
+      const moving = rooms.find((r) => r.id === drag.targetId);
       if (!moving) return;
-      const others = rooms.filter((r) => r.id !== drag.roomId);
+      const others = roomsWithEntrance(
+        rooms.filter((r) => r.id !== drag.targetId),
+        current.entrance,
+      );
       const snapped =
-        drag.mode === "move" ? softSnapRoom(moving, others) : { room: moving };
+        drag.mode === "move"
+          ? softSnapRoom(moving, others)
+          : { room: moving };
       commit({
         ...current,
-        rooms: rooms.map((r) => (r.id === drag.roomId ? snapped.room : r)),
+        rooms: rooms.map((r) =>
+          r.id === drag.targetId ? snapped.room : r,
+        ),
       });
     };
 
     const onUp = () => {
+      const drag = dragRef.current;
       dragRef.current = null;
+      if (!drag || drag.moved || drag.mode !== "move") return;
+
+      const current = normalizeLayout(layoutLiveRef.current);
+
+      if (drag.targetId === ENTRANCE_ROOM_ID) {
+        const entrance: GalleryEntrancePose = {
+          ...current.entrance,
+          rotation: (current.entrance.rotation + 90) % 360,
+        };
+        const snapped = softSnapEntrance(entrance, current.rooms);
+        commit({ ...current, entrance: snapped });
+        return;
+      }
+
+      const rooms = current.rooms.map((r) => {
+        if (r.id !== drag.targetId) return r;
+        return {
+          ...r,
+          transform: {
+            ...r.transform,
+            rotation: ((r.transform.rotation || 0) + 90) % 360,
+          },
+          vertices: undefined,
+        };
+      });
+      const moving = rooms.find((r) => r.id === drag.targetId);
+      if (!moving) return;
+      const others = roomsWithEntrance(
+        rooms.filter((r) => r.id !== drag.targetId),
+        current.entrance,
+      );
+      const snapped = softSnapRoom(moving, others);
+      commit({
+        ...current,
+        rooms: rooms.map((r) =>
+          r.id === drag.targetId ? snapped.room : r,
+        ),
+      });
     };
 
     window.addEventListener("pointermove", onMove);
@@ -262,8 +404,8 @@ export function GalleryLayoutEditor({
 
   function evaluateDrop(art: Artwork, world: Vec2) {
     const kind = kindForArtwork(art);
-    const room = findRoomAtPoint(world, layout.rooms);
-    if (!room) {
+    const room = findRoomAtPoint(world, normalized.rooms);
+    if (!room || room.id === ENTRANCE_ROOM_ID) {
       return { valid: false as const, kind, x: world.x, z: world.z };
     }
 
@@ -281,7 +423,7 @@ export function GalleryLayoutEditor({
         yaw: yawFromEdge(wall.a, wall.b, true),
         frameId: art.frameId || paletteFrame,
       };
-      const valid = !placementConflicts(placement, layout, art.id);
+      const valid = !placementConflicts(placement, normalized, art.id);
       return {
         valid,
         kind,
@@ -303,7 +445,7 @@ export function GalleryLayoutEditor({
       yaw: 0,
       frameId: "none",
     };
-    const valid = !placementConflicts(placement, layout, art.id);
+    const valid = !placementConflicts(placement, normalized, art.id);
     return { valid, kind, x: world.x, z: world.z, placement };
   }
 
@@ -323,28 +465,37 @@ export function GalleryLayoutEditor({
       return;
     }
     const nextPlacements = [
-      ...layout.placements.filter((p) => p.artworkId !== dragArtId),
+      ...normalized.placements.filter((p) => p.artworkId !== dragArtId),
       ghost.placement,
     ];
-    commit({ ...layout, placements: nextPlacements });
+    commit({ ...normalized, placements: nextPlacements });
     setDragArtId(null);
     setGhost(null);
   }
 
   function removePlacement(artworkId: string) {
     commit({
-      ...layout,
-      placements: layout.placements.filter((p) => p.artworkId !== artworkId),
+      ...normalized,
+      placements: normalized.placements.filter(
+        (p) => p.artworkId !== artworkId,
+      ),
     });
   }
 
   function setPlacementFrame(artworkId: string, frameId: FrameId) {
     commit({
-      ...layout,
-      placements: layout.placements.map((p) =>
+      ...normalized,
+      placements: normalized.placements.map((p) =>
         p.artworkId === artworkId ? { ...p, frameId } : p,
       ),
     });
+  }
+
+  function resolveConnectionRoom(roomId: string): GalleryRoom | null {
+    if (roomId === ENTRANCE_ROOM_ID) {
+      return entranceAsRoom(normalized.entrance);
+    }
+    return normalized.rooms.find((r) => r.id === roomId) ?? null;
   }
 
   const statusLabel =
@@ -355,6 +506,11 @@ export function GalleryLayoutEditor({
         : saveStatus === "error"
           ? saveError || "Autosave failed"
           : "";
+
+  const entranceVerts = entranceWorldVertices(normalized.entrance);
+  const entranceSelected = selectedRoomId === ENTRANCE_ROOM_ID;
+  const canDeleteSelected =
+    selectedRoomId != null && selectedRoomId !== ENTRANCE_ROOM_ID;
 
   return (
     <div className="border border-[var(--line)] bg-[#1a1612]">
@@ -418,23 +574,25 @@ export function GalleryLayoutEditor({
               + {shape}
             </button>
           ))}
-          {selectedRoomId ? (
+          {canDeleteSelected ? (
             <button
               type="button"
               className="btn btn-danger !py-1.5 !px-3 !text-[0.7rem]"
-              onClick={() => removeRoom(selectedRoomId)}
+              onClick={() => removeRoom(selectedRoomId!)}
             >
               Delete room
             </button>
           ) : null}
-          {layout.rooms.length === 0 ? (
+          {normalized.rooms.length === 0 ? (
             <p className="w-full text-sm text-[var(--paper-dim)]">
-              Empty layout keeps the current rect L/R gallery fallback.
+              Empty rooms keep the rect L/R gallery fallback. Entrance is always
+              on the plan — drag to move, tap to rotate 90°.
             </p>
           ) : (
             <p className="w-full text-sm text-[var(--paper-dim)]">
-              Drag rooms to move; corner handle stretches. Soft snap creates mid-edge
-              doorways ({layout.connections.length}).
+              Drag rooms to move; corner handle stretches. Tap room to rotate
+              90°. Soft snap creates mid-edge doorways (
+              {normalized.connections.length}).
             </p>
           )}
         </div>
@@ -484,18 +642,47 @@ export function GalleryLayoutEditor({
             height={VIEW_H}
             fill="#0e0c0a"
           />
-          {layout.rooms.map((room) => {
+
+          <g>
+            <path
+              d={polygonPath(entranceVerts, origin)}
+              fill={entranceSelected ? "#2a3540" : "#1a222c"}
+              stroke={entranceSelected ? "#8aa0b8" : "#4a5c70"}
+              strokeWidth={entranceSelected ? 2.5 : 1.5}
+              onPointerDown={(e) =>
+                onBodyPointerDown(e, ENTRANCE_ROOM_ID, "move")
+              }
+              style={{ cursor: step === "rooms" ? "grab" : "default" }}
+            />
+            <text
+              x={worldToSvg(roomCentroid(entranceVerts), origin).x}
+              y={worldToSvg(roomCentroid(entranceVerts), origin).y}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill="#8aa0b8"
+              fontSize={11}
+              className="pointer-events-none select-none"
+            >
+              entrance
+            </text>
+          </g>
+
+          {normalized.rooms.map((room) => {
             const selected = room.id === selectedRoomId;
             const verts = roomWorldVertices(room);
             const handle = worldToSvg(verts[0] ?? { x: 0, z: 0 }, origin);
+            const c = roomCentroid(verts);
+            const label = worldToSvg(c, origin);
             return (
               <g key={room.id}>
                 <path
-                  d={polygonPath(room, origin)}
+                  d={polygonPath(verts, origin)}
                   fill={selected ? "#2a241c" : "#1c1814"}
                   stroke={selected ? "#d4a574" : "#5a4a3a"}
                   strokeWidth={selected ? 2.5 : 1.5}
-                  onPointerDown={(e) => onRoomPointerDown(e, room.id, "move")}
+                  onPointerDown={(e) =>
+                    onBodyPointerDown(e, room.id, "move")
+                  }
                   style={{ cursor: step === "rooms" ? "grab" : "default" }}
                 />
                 {step === "rooms" ? (
@@ -507,28 +694,14 @@ export function GalleryLayoutEditor({
                     stroke="#1a1612"
                     strokeWidth={1}
                     onPointerDown={(e) =>
-                      onRoomPointerDown(e, room.id, "scale")
+                      onBodyPointerDown(e, room.id, "scale")
                     }
                     style={{ cursor: "nwse-resize" }}
                   />
                 ) : null}
                 <text
-                  x={worldToSvg(
-                    {
-                      x: verts.reduce((s, v) => s + v.x, 0) / verts.length,
-                      z: verts.reduce((s, v) => s + v.z, 0) / verts.length,
-                    },
-                    origin,
-                  ).x}
-                  y={
-                    worldToSvg(
-                      {
-                        x: verts.reduce((s, v) => s + v.x, 0) / verts.length,
-                        z: verts.reduce((s, v) => s + v.z, 0) / verts.length,
-                      },
-                      origin,
-                    ).y
-                  }
+                  x={label.x}
+                  y={label.y}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   fill="#9a8b78"
@@ -541,8 +714,8 @@ export function GalleryLayoutEditor({
             );
           })}
 
-          {layout.connections.map((c, i) => {
-            const roomA = layout.rooms.find((r) => r.id === c.roomA);
+          {normalized.connections.map((c, i) => {
+            const roomA = resolveConnectionRoom(c.roomA);
             if (!roomA) return null;
             const verts = roomWorldVertices(roomA);
             const a = verts[c.edgeA % verts.length];
@@ -566,7 +739,7 @@ export function GalleryLayoutEditor({
             );
           })}
 
-          {layout.placements.map((p) => {
+          {normalized.placements.map((p) => {
             const art = artworks.find((a) => a.id === p.artworkId);
             const pos =
               p.kind === "sculpture"
@@ -575,7 +748,9 @@ export function GalleryLayoutEditor({
                     origin,
                   )
                 : (() => {
-                    const room = layout.rooms.find((r) => r.id === p.roomId);
+                    const room = normalized.rooms.find(
+                      (r) => r.id === p.roomId,
+                    );
                     if (!room || p.wallEdgeIndex == null) return null;
                     const verts = roomWorldVertices(room);
                     const a = verts[p.wallEdgeIndex % verts.length];
@@ -583,7 +758,10 @@ export function GalleryLayoutEditor({
                     if (!a || !b) return null;
                     const t = p.tAlongEdge ?? 0.5;
                     return worldToSvg(
-                      { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t },
+                      {
+                        x: a.x + (b.x - a.x) * t,
+                        z: a.z + (b.z - a.z) * t,
+                      },
                       origin,
                     );
                   })();
@@ -601,7 +779,9 @@ export function GalleryLayoutEditor({
                   onClick={() => {
                     if (step === "art") removePlacement(p.artworkId);
                   }}
-                  style={{ cursor: step === "art" ? "pointer" : "default" }}
+                  style={{
+                    cursor: step === "art" ? "pointer" : "default",
+                  }}
                 />
                 <title>
                   {art ? localeTitle(art) : p.artworkId}
@@ -617,7 +797,11 @@ export function GalleryLayoutEditor({
               y={worldToSvg({ x: ghost.x, z: ghost.z }, origin).y - 8}
               width={20}
               height={16}
-              fill={ghost.valid ? "rgba(140,190,120,0.55)" : "rgba(200,80,70,0.55)"}
+              fill={
+                ghost.valid
+                  ? "rgba(140,190,120,0.55)"
+                  : "rgba(200,80,70,0.55)"
+              }
               stroke={ghost.valid ? "#8cbe78" : "#e08a7a"}
               strokeWidth={2}
               className="pointer-events-none"
@@ -634,7 +818,7 @@ export function GalleryLayoutEditor({
           <ul className="flex gap-3 overflow-x-auto pb-2">
             {published.map((art, i) => {
               const placed = placedIds.has(art.id);
-              const placement = layout.placements.find(
+              const placement = normalized.placements.find(
                 (p) => p.artworkId === art.id,
               );
               return (
@@ -647,10 +831,12 @@ export function GalleryLayoutEditor({
                   } ${placed ? "opacity-60" : ""}`}
                   draggable={false}
                   onPointerDown={() => {
-                    if (layout.rooms.length === 0) return;
+                    if (normalized.rooms.length === 0) return;
                     setDragArtId(art.id);
                   }}
-                  style={{ cursor: layout.rooms.length ? "grab" : "not-allowed" }}
+                  style={{
+                    cursor: normalized.rooms.length ? "grab" : "not-allowed",
+                  }}
                 >
                   <span className="absolute left-1 top-1 flex h-5 w-5 items-center justify-center bg-[#0e0c0a] text-[0.65rem]">
                     {i + 1}
@@ -704,7 +890,7 @@ export function GalleryLayoutEditor({
               Publish artworks first, then place them here.
             </p>
           ) : null}
-          {layout.rooms.length === 0 ? (
+          {normalized.rooms.length === 0 ? (
             <p className="mt-2 text-sm text-[#e08a7a]">
               Add rooms in step 1 before placing art.
             </p>
@@ -716,10 +902,5 @@ export function GalleryLayoutEditor({
 }
 
 export function ensureLayout(layout?: GalleryLayout | null): GalleryLayout {
-  if (!layout) return emptyLayout();
-  return {
-    rooms: layout.rooms ?? [],
-    connections: layout.connections ?? [],
-    placements: layout.placements ?? [],
-  };
+  return normalizeLayout(layout);
 }

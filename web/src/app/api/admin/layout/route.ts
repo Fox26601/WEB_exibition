@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { loadCatalog, saveDraftLayout } from "@/lib/catalog";
 import { catalogsDifferForPublish } from "@/lib/catalog";
-import type { GalleryLayout } from "@/lib/catalog-types";
+import { normalizeLayout, type GalleryLayout } from "@/lib/catalog-types";
 
 const vecSchema = z.object({ x: z.number(), z: z.number() });
 
@@ -44,6 +44,13 @@ const layoutSchema = z.object({
       frameId: z.enum(["thin", "wood", "metal", "ornate", "none"]),
     }),
   ),
+  entrance: z
+    .object({
+      x: z.number(),
+      z: z.number(),
+      rotation: z.number(),
+    })
+    .optional(),
 });
 
 export async function GET() {
@@ -79,7 +86,7 @@ export async function PUT(req: NextRequest) {
     );
   }
 
-  const layout = parsed.data as GalleryLayout;
+  const layout = normalizeLayout(parsed.data as GalleryLayout);
   const catalog = await saveDraftLayout(layout);
   const live = await loadCatalog("live");
   return NextResponse.json({

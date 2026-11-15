@@ -156,13 +156,28 @@ namespace Gallery.Catalog
     }
 
     [Serializable]
+    public class LayoutEntranceData
+    {
+        public float x;
+        public float z = -2f;
+        public float rotation;
+    }
+
+    [Serializable]
     public class GalleryLayoutData
     {
         public GalleryRoomData[] rooms = Array.Empty<GalleryRoomData>();
         public RoomConnectionData[] connections = Array.Empty<RoomConnectionData>();
         public ArtworkPlacementData[] placements = Array.Empty<ArtworkPlacementData>();
+        public LayoutEntranceData entrance;
 
         public bool HasRooms => rooms != null && rooms.Length > 0;
+        public bool HasEntrance => entrance != null;
+    }
+
+    public static class LayoutEntranceIds
+    {
+        public const string EntranceRoomId = "__entrance";
     }
 
     [Serializable]
@@ -214,6 +229,8 @@ namespace Gallery.Catalog
                 data.layout.connections = Array.Empty<RoomConnectionData>();
             if (data.layout.placements == null)
                 data.layout.placements = Array.Empty<ArtworkPlacementData>();
+            if (data.layout.entrance == null)
+                data.layout.entrance = new LayoutEntranceData { x = 0f, z = -2f, rotation = 0f };
 
             return data;
         }

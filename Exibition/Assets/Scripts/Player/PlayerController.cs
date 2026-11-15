@@ -42,13 +42,13 @@ namespace Gallery.Player
             ConfigureSpawn(roomLength, mobile, spawnZ: 1.2f, walkMinZ: 0.4f, walkMaxZ: Mathf.Max(Room.RoomBuilder.L0, roomLength) - 0.4f, yaw: 0f);
         }
 
-        public void ConfigureSpawn(float roomLength, bool mobile, float spawnZ, float walkMinZ, float walkMaxZ, float yaw = 0f)
+        public void ConfigureSpawn(float roomLength, bool mobile, float spawnZ, float walkMinZ, float walkMaxZ, float yaw = 0f, float spawnX = 0f)
         {
             _roomLength = Mathf.Max(Room.RoomBuilder.L0, roomLength);
             _mobile = mobile;
             _walkMinZ = walkMinZ;
             _walkMaxZ = Mathf.Max(walkMinZ + 1f, walkMaxZ);
-            transform.position = new Vector3(0f, eyeHeight, spawnZ);
+            transform.position = new Vector3(spawnX, eyeHeight, spawnZ);
             _yaw = yaw;
             _pitch = 0f;
             ApplyLook();

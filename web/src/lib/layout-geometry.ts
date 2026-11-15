@@ -1,4 +1,5 @@
 import type {
+  GalleryEntrancePose,
   GalleryLayout,
   GalleryRoom,
   RoomConnection,
@@ -6,8 +7,18 @@ import type {
   RoomTransform,
   ArtworkPlacement,
 } from "./catalog-types";
+import {
+  DEFAULT_ENTRANCE_POSE,
+  ENTRANCE_ROOM_ID,
+} from "./catalog-types";
 
 export type Vec2 = { x: number; z: number };
+
+/** Schematic entrance footprint (Unity corridor depth stays 6 in world build). */
+export const ENTRANCE_WIDTH = 2.4;
+export const ENTRANCE_DEPTH = 3.0;
+/** Portal edge index for entranceWorldVertices (+local Z side). */
+export const ENTRANCE_PORTAL_EDGE = 2;
 
 /** Unit-radius regular polygon in local XZ ( circumradius ≈ 1 before scale). */
 export function shapeLocalVertices(shape: RoomShape): Vec2[] {
@@ -154,14 +165,84 @@ export function findRoomAtPoint(
   return null;
 }
 
-const SNAP_DIST = 0.55;
+const SNAP_DIST = 0.7;
+/** Edges must be nearly parallel / antiparallel before soft-snap or connection. */
+const PARALLEL_DOT_MIN = 0.85;
 
 type EdgeRef = { roomId: string; edgeIndex: number; a: Vec2; b: Vec2; mid: Vec2 };
+
+function unitEdgeDir(a: Vec2, b: Vec2): Vec2 {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const len = Math.hypot(dx, dz) || 1;
+  return { x: dx / len, z: dz / len };
+}
+
+function edgesNearlyParallel(a: EdgeRef, b: EdgeRef): boolean {
+  const da = unitEdgeDir(a.a, a.b);
+  const db = unitEdgeDir(b.a, b.b);
+  return Math.abs(da.x * db.x + da.z * db.z) >= PARALLEL_DOT_MIN;
+}
+
+/** World verts for fixed entrance footprint; portal edge faces +local Z. */
+export function entranceWorldVertices(entrance: GalleryEntrancePose): Vec2[] {
+  const hw = ENTRANCE_WIDTH / 2;
+  const hd = ENTRANCE_DEPTH / 2;
+  const t: RoomTransform = {
+    x: entrance.x,
+    z: entrance.z,
+    rotation: entrance.rotation,
+    scaleX: 1,
+    scaleZ: 1,
+  };
+  return [
+    { x: -hw, z: -hd },
+    { x: hw, z: -hd },
+    { x: hw, z: hd },
+    { x: -hw, z: hd },
+  ].map((v) => applyTransform(v, t));
+}
+
+export function entranceAsRoom(entrance?: GalleryEntrancePose | null): GalleryRoom {
+  const pose = entrance ?? DEFAULT_ENTRANCE_POSE;
+  return {
+    id: ENTRANCE_ROOM_ID,
+    shape: "square",
+    transform: {
+      x: pose.x,
+      z: pose.z,
+      rotation: pose.rotation,
+      scaleX: 1,
+      scaleZ: 1,
+    },
+    vertices: entranceWorldVertices(pose),
+  };
+}
+
+/** Real rooms plus synthetic entrance for soft snap / connections. */
+export function roomsWithEntrance(
+  rooms: GalleryRoom[],
+  entrance?: GalleryEntrancePose | null,
+): GalleryRoom[] {
+  return [...rooms, entranceAsRoom(entrance)];
+}
 
 function allEdges(rooms: GalleryRoom[]): EdgeRef[] {
   const out: EdgeRef[] = [];
   for (const room of rooms) {
     const verts = roomWorldVertices(room);
+    if (room.id === ENTRANCE_ROOM_ID) {
+      // Only the gallery-facing portal edge participates in snap / doorways.
+      const [a, b] = edgePoints(verts, ENTRANCE_PORTAL_EDGE);
+      out.push({
+        roomId: room.id,
+        edgeIndex: ENTRANCE_PORTAL_EDGE,
+        a,
+        b,
+        mid: edgeMidpoint(a, b),
+      });
+      continue;
+    }
     for (let i = 0; i < verts.length; i++) {
       const [a, b] = edgePoints(verts, i);
       out.push({
@@ -193,6 +274,7 @@ export function softSnapRoom(
 
   for (const oe of ownEdges) {
     for (const te of otherEdges) {
+      if (!edgesNearlyParallel(oe, te)) continue;
       const d = Math.hypot(oe.mid.x - te.mid.x, oe.mid.z - te.mid.z);
       if (d < bestDist) {
         bestDist = d;
@@ -223,6 +305,22 @@ export function softSnapRoom(
   };
 }
 
+/** Soft-snap entrance pose translation against room edge mids (portal only). */
+export function softSnapEntrance(
+  entrance: GalleryEntrancePose,
+  rooms: GalleryRoom[],
+): GalleryEntrancePose {
+  if (rooms.length === 0) return entrance;
+  const synthetic = entranceAsRoom(entrance);
+  const snapped = softSnapRoom(synthetic, rooms);
+  if (!snapped.snappedTo) return entrance;
+  return {
+    ...entrance,
+    x: snapped.room.transform.x,
+    z: snapped.room.transform.z,
+  };
+}
+
 export function recomputeConnections(rooms: GalleryRoom[]): RoomConnection[] {
   const edges = allEdges(rooms);
   const connections: RoomConnection[] = [];
@@ -233,18 +331,27 @@ export function recomputeConnections(rooms: GalleryRoom[]): RoomConnection[] {
       const a = edges[i];
       const b = edges[j];
       if (a.roomId === b.roomId) continue;
+      if (!edgesNearlyParallel(a, b)) continue;
       const d = Math.hypot(a.mid.x - b.mid.x, a.mid.z - b.mid.z);
       if (d > SNAP_DIST) continue;
       const key = [a.roomId, b.roomId].sort().join(":");
       if (seen.has(key)) continue;
       seen.add(key);
-      const width = Math.min(1.4, edgeLength(a.a, a.b) * 0.35, edgeLength(b.a, b.b) * 0.35);
+      const toEntrance =
+        a.roomId === ENTRANCE_ROOM_ID || b.roomId === ENTRANCE_ROOM_ID;
+      const width = toEntrance
+        ? ENTRANCE_WIDTH
+        : Math.min(
+            1.4,
+            edgeLength(a.a, a.b) * 0.35,
+            edgeLength(b.a, b.b) * 0.35,
+          );
       connections.push({
         roomA: a.roomId,
         roomB: b.roomId,
         edgeA: a.edgeIndex,
         edgeB: b.edgeIndex,
-        doorwayWidth: Math.max(0.9, width),
+        doorwayWidth: toEntrance ? ENTRANCE_WIDTH : Math.max(0.9, width),
       });
     }
   }
