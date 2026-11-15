@@ -102,7 +102,7 @@ namespace Gallery.Admin
     }
 
     [Serializable]
-    class AdminDragMessage
+    public class AdminDragMessage
     {
         public string type;
         public string artworkId;
@@ -111,7 +111,7 @@ namespace Gallery.Admin
     }
 
     [Serializable]
-    class AdminEndDragMessage
+    public class AdminEndDragMessage
     {
         public string type;
         public string artworkId;
@@ -126,7 +126,7 @@ namespace Gallery.Admin
     }
 
     [Serializable]
-    class AdminFrameMessage
+    public class AdminFrameMessage
     {
         public string type;
         public string artworkId;
