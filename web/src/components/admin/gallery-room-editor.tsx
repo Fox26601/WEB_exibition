@@ -54,10 +54,16 @@ const MOVE_GAIN = 0.45;
 const STRETCH_GAIN = 0.25;
 const DRAG_THRESHOLD_PX = 6;
 
-function worldToSvg(p: Vec2, origin: Vec2): { x: number; y: number } {
+type PanOffset = { x: number; y: number };
+
+function worldToSvg(
+  p: Vec2,
+  origin: Vec2,
+  pan: PanOffset,
+): { x: number; y: number } {
   return {
-    x: PAD + (p.x - origin.x) * SCALE,
-    y: PAD + (p.z - origin.z) * SCALE,
+    x: PAD + (p.x - origin.x) * SCALE + pan.x,
+    y: PAD + (p.z - origin.z) * SCALE + pan.y,
   };
 }
 
@@ -66,6 +72,7 @@ function svgToWorld(
   clientY: number,
   svg: SVGSVGElement,
   origin: Vec2,
+  pan: PanOffset,
 ): Vec2 {
   const pt = svg.createSVGPoint();
   pt.x = clientX;
@@ -74,10 +81,27 @@ function svgToWorld(
   if (!ctm) return { x: origin.x, z: origin.z };
   const sp = pt.matrixTransform(ctm.inverse());
   return {
-    x: origin.x + (sp.x - PAD) / SCALE,
-    z: origin.z + (sp.y - PAD) / SCALE,
+    x: origin.x + (sp.x - PAD - pan.x) / SCALE,
+    z: origin.z + (sp.y - PAD - pan.y) / SCALE,
   };
 }
+
+function clientDeltaToSvg(
+  clientDx: number,
+  clientDy: number,
+  svg: SVGSVGElement,
+): PanOffset {
+  const rect = svg.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) {
+    return { x: clientDx, y: clientDy };
+  }
+  return {
+    x: clientDx * (VIEW_W / rect.width),
+    y: clientDy * (VIEW_H / rect.height),
+  };
+}
+
+const CANVAS_PAN_ID = "__canvas_pan__";
 
 function boundsOrigin(
   rooms: GalleryRoom[],
@@ -99,11 +123,11 @@ function boundsOrigin(
   return { x: minX - 1.5, z: minZ - 1.5 };
 }
 
-function polygonPath(verts: Vec2[], origin: Vec2): string {
+function polygonPath(verts: Vec2[], origin: Vec2, pan: PanOffset): string {
   return (
     verts
       .map((v, i) => {
-        const p = worldToSvg(v, origin);
+        const p = worldToSvg(v, origin, pan);
         return `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`;
       })
       .join(" ") + " Z"
@@ -127,9 +151,12 @@ export function GalleryRoomEditor({
 }: Props) {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [selectedShape, setSelectedShape] = useState<RoomShape>("square");
+  const [panOffset, setPanOffset] = useState<PanOffset>({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement | null>(null);
   const layoutLiveRef = useRef(layout);
   layoutLiveRef.current = layout;
+  const panLiveRef = useRef(panOffset);
+  panLiveRef.current = panOffset;
 
   const normalized = useMemo(() => normalizeLayout(layout), [layout]);
   const origin = useMemo(
@@ -172,7 +199,7 @@ export function GalleryRoomEditor({
     if (selectedRoomId === id) setSelectedRoomId(null);
   }
 
-  type DragMode = "move" | "scale";
+  type DragMode = "move" | "scale" | "pan";
   const dragRef = useRef<{
     mode: DragMode;
     targetId: string;
@@ -181,8 +208,29 @@ export function GalleryRoomEditor({
     startClientY: number;
     startTransform: GalleryRoom["transform"];
     startEntrance: GalleryEntrancePose;
+    startPan: PanOffset;
     moved: boolean;
   } | null>(null);
+
+  function onCanvasPanStart(e: ReactPointerEvent<SVGRectElement>) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const svg = svgRef.current;
+    if (!svg) return;
+    dragRef.current = {
+      mode: "pan",
+      targetId: CANVAS_PAN_ID,
+      startWorld: { x: 0, z: 0 },
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startTransform: defaultRoomTransform("square", 0),
+      startEntrance: { ...normalized.entrance },
+      startPan: { ...panLiveRef.current },
+      moved: false,
+    };
+    setSelectedRoomId(null);
+    svg.setPointerCapture(e.pointerId);
+  }
 
   function onBodyPointerDown(
     e: ReactPointerEvent,
@@ -196,7 +244,13 @@ export function GalleryRoomEditor({
 
     if (targetId === ENTRANCE_ROOM_ID) {
       if (mode !== "move") return;
-      const world = svgToWorld(e.clientX, e.clientY, svg, origin);
+      const world = svgToWorld(
+        e.clientX,
+        e.clientY,
+        svg,
+        origin,
+        panLiveRef.current,
+      );
       dragRef.current = {
         mode: "move",
         targetId: ENTRANCE_ROOM_ID,
@@ -211,6 +265,7 @@ export function GalleryRoomEditor({
           scaleZ: 1,
         },
         startEntrance: { ...normalized.entrance },
+        startPan: { ...panLiveRef.current },
         moved: false,
       };
       setSelectedRoomId(ENTRANCE_ROOM_ID);
@@ -220,7 +275,13 @@ export function GalleryRoomEditor({
 
     const room = normalized.rooms.find((r) => r.id === targetId);
     if (!room) return;
-    const world = svgToWorld(e.clientX, e.clientY, svg, origin);
+    const world = svgToWorld(
+      e.clientX,
+      e.clientY,
+      svg,
+      origin,
+      panLiveRef.current,
+    );
     dragRef.current = {
       mode,
       targetId,
@@ -229,6 +290,7 @@ export function GalleryRoomEditor({
       startClientY: e.clientY,
       startTransform: { ...room.transform },
       startEntrance: { ...normalized.entrance },
+      startPan: { ...panLiveRef.current },
       moved: false,
     };
     setSelectedRoomId(targetId);
@@ -251,8 +313,23 @@ export function GalleryRoomEditor({
       }
       drag.moved = true;
 
+      if (drag.mode === "pan") {
+        const delta = clientDeltaToSvg(px, py, svg);
+        setPanOffset({
+          x: drag.startPan.x + delta.x,
+          y: drag.startPan.y + delta.y,
+        });
+        return;
+      }
+
       const current = normalizeLayout(layoutLiveRef.current);
-      const world = svgToWorld(e.clientX, e.clientY, svg, origin);
+      const world = svgToWorld(
+        e.clientX,
+        e.clientY,
+        svg,
+        origin,
+        panLiveRef.current,
+      );
       const dx = (world.x - drag.startWorld.x) * MOVE_GAIN;
       const dz = (world.z - drag.startWorld.z) * MOVE_GAIN;
 
@@ -419,18 +496,18 @@ export function GalleryRoomEditor({
       x: mid.x + intoGallery.x * 0.55,
       z: mid.z + intoGallery.z * 0.55,
     };
-    const pMid = worldToSvg(mid, origin);
-    const pSpawn = worldToSvg(spawn, origin);
-    const pArrow = worldToSvg(arrowTip, origin);
+    const pMid = worldToSvg(mid, origin, panOffset);
+    const pSpawn = worldToSvg(spawn, origin, panOffset);
+    const pArrow = worldToSvg(arrowTip, origin, panOffset);
   const edgeLines = entranceVerts.map((_, i) => {
       const [ea, eb] = edgePoints(entranceVerts, i);
-      const p1 = worldToSvg(ea, origin);
-      const p2 = worldToSvg(eb, origin);
+      const p1 = worldToSvg(ea, origin, panOffset);
+      const p2 = worldToSvg(eb, origin, panOffset);
       const isPortal = i === ENTRANCE_PORTAL_EDGE;
       return { i, p1, p2, isPortal };
     });
     return { edgeLines, pMid, pSpawn, pArrow };
-  }, [entranceVerts, origin]);
+  }, [entranceVerts, origin, panOffset]);
   const canDeleteSelected =
     selectedRoomId != null && selectedRoomId !== ENTRANCE_ROOM_ID;
 
@@ -493,11 +570,12 @@ export function GalleryRoomEditor({
             className="w-full text-sm text-[var(--paper-dim)]"
             title="Entrance: bright edge is the gallery door; spawn is outside. Snap rotates the block for you. Tap entrance for +90°."
           >
-            <span className="text-[var(--amber-bright)]">Вход:</span> широкая
-            светлая грань — дверь в галерею; точка{" "}
+            <span className="text-[var(--amber-bright)]">Вход (фойе):</span> не
+            комната из списка — портал и spawn. Светлая грань — дверь в галерею;{" "}
             <span className="text-[#8aa0b8]">spawn</span> снаружи. Подведи портал
-            к комнате (или комнату ко входу) — поворот подстроится сам. Тап по
-            блоку — поворот 90°.
+            к комнате (или комнату ко входу) — поворот подстроится сам.             Тап по
+            блоку — поворот 90°. По пустому полю — перетаскивание, чтобы
+            сдвинуть вид схемы.
             {normalized.rooms.length > 0
               ? ` Комнаты: перетаскивание, угол — stretch; дверей: ${normalized.connections.length}. Арт — на шаге 3D.`
               : " Добавьте хотя бы одну комнату перед 3D."}
@@ -518,6 +596,8 @@ export function GalleryRoomEditor({
             width={VIEW_W}
             height={VIEW_H}
             fill="#0e0c0a"
+            onPointerDown={onCanvasPanStart}
+            style={{ cursor: "grab" }}
           />
           <defs>
             <marker
@@ -534,7 +614,7 @@ export function GalleryRoomEditor({
 
           <g>
             <path
-              d={polygonPath(entranceVerts, origin)}
+              d={polygonPath(entranceVerts, origin, panOffset)}
               fill={entranceSelected ? "#2a3540" : "#1a222c"}
               stroke="none"
               onPointerDown={(e) =>
@@ -585,28 +665,32 @@ export function GalleryRoomEditor({
               spawn
             </text>
             <text
-              x={worldToSvg(roomCentroid(entranceVerts), origin).x}
-              y={worldToSvg(roomCentroid(entranceVerts), origin).y}
+              x={worldToSvg(roomCentroid(entranceVerts), origin, panOffset).x}
+              y={worldToSvg(roomCentroid(entranceVerts), origin, panOffset).y}
               textAnchor="middle"
               dominantBaseline="middle"
               fill="#8aa0b8"
               fontSize={11}
               className="pointer-events-none select-none"
             >
-              entrance
+              вход
             </text>
           </g>
 
           {normalized.rooms.map((room) => {
             const selected = room.id === selectedRoomId;
             const verts = roomWorldVertices(room);
-            const handle = worldToSvg(verts[0] ?? { x: 0, z: 0 }, origin);
+            const handle = worldToSvg(
+              verts[0] ?? { x: 0, z: 0 },
+              origin,
+              panOffset,
+            );
             const c = roomCentroid(verts);
-            const label = worldToSvg(c, origin);
+            const label = worldToSvg(c, origin, panOffset);
             return (
               <g key={room.id}>
                 <path
-                  d={polygonPath(verts, origin)}
+                  d={polygonPath(verts, origin, panOffset)}
                   fill={selected ? "#2a241c" : "#1c1814"}
                   stroke={selected ? "#d4a574" : "#5a4a3a"}
                   strokeWidth={selected ? 2.5 : 1.5}
@@ -652,6 +736,7 @@ export function GalleryRoomEditor({
             const mid = worldToSvg(
               { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 },
               origin,
+              panOffset,
             );
             return (
               <rect

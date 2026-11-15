@@ -1,4 +1,5 @@
 using System.Collections;
+using Gallery.Admin;
 using Gallery.Catalog;
 using Gallery.Room;
 using UnityEngine;
@@ -39,9 +40,47 @@ namespace Gallery.Entrance
                 : null;
 
             if (pose != null)
-                BuildFromPose(catalog, pose);
+            {
+                if (AdminBuildMode.Active)
+                    BuildFromPoseAdminPreview(catalog, pose);
+                else
+                    BuildFromPose(catalog, pose);
+            }
             else
                 BuildLegacy(catalog, galleryStartZFallback);
+        }
+
+        void BuildFromPoseAdminPreview(CatalogData catalog, LayoutEntranceData pose)
+        {
+            var rad = pose.rotation * Mathf.Deg2Rad;
+            var halfSchematic = SchematicDepth * 0.5f;
+            var portalX = pose.x - halfSchematic * Mathf.Sin(rad);
+            var portalZ = pose.z + halfSchematic * Mathf.Cos(rad);
+            var yaw = pose.rotation;
+            var intoGallery = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
+            var intoCorridor = -intoGallery;
+
+            GalleryStartZ = portalZ;
+            SpawnYaw = yaw;
+            var spawn = portal + intoCorridor * (SchematicDepth - 0.35f);
+            SpawnX = spawn.x;
+            SpawnZ = spawn.z;
+            WalkMinZ = spawn.z;
+
+            _root = new GameObject("Entrance").transform;
+            _root.SetParent(transform, false);
+            _root.position = new Vector3(portalX, 0f, portalZ);
+            _root.rotation = Quaternion.Euler(0f, yaw, 0f);
+
+            var floorColor = new Color(0.52f, 0.53f, 0.55f);
+            var trimColor = new Color(0.35f, 0.32f, 0.28f);
+
+            CreateBoxLocal(_root, "EntranceFloorAdmin",
+                new Vector3(0f, -0.05f, -SchematicDepth * 0.5f),
+                new Vector3(RoomBuilder.Width, 0.1f, SchematicDepth),
+                floorColor);
+
+            BuildArchLocal(0f, trimColor);
         }
 
         void BuildFromPose(CatalogData catalog, LayoutEntranceData pose)

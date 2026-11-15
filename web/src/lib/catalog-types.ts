@@ -247,8 +247,11 @@ export function normalizeEntrancePose(
 
 export function normalizeLayout(layout?: GalleryLayout | null): GalleryLayout {
   if (!layout) return emptyLayout();
+  const rooms = (Array.isArray(layout.rooms) ? layout.rooms : []).filter(
+    (r) => r && r.id !== ENTRANCE_ROOM_ID,
+  );
   return {
-    rooms: Array.isArray(layout.rooms) ? layout.rooms : [],
+    rooms,
     connections: Array.isArray(layout.connections) ? layout.connections : [],
     placements: Array.isArray(layout.placements) ? layout.placements : [],
     entrance: normalizeEntrancePose(layout.entrance),
