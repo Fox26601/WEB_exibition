@@ -39,8 +39,24 @@ export function GalleryScene({
 
     const length = roomLength(artworks.length);
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1612);
-    scene.fog = new THREE.Fog(0x1a1612, length * 0.6, length * 1.4);
+    // Subtle star field (mobile-safe: one small canvas texture, no post).
+    const starCanvas = document.createElement("canvas");
+    starCanvas.width = 512;
+    starCanvas.height = 512;
+    const starCtx = starCanvas.getContext("2d")!;
+    starCtx.fillStyle = "#05070f";
+    starCtx.fillRect(0, 0, 512, 512);
+    for (let i = 0; i < 120; i++) {
+      const x = Math.random() * 512;
+      const y = Math.random() * 512;
+      const v = 140 + Math.floor(Math.random() * 115);
+      starCtx.fillStyle = `rgb(${v},${v},${Math.min(255, v + 20)})`;
+      starCtx.fillRect(x, y, i % 7 === 0 ? 2 : 1, i % 7 === 0 ? 2 : 1);
+    }
+    const starTex = new THREE.CanvasTexture(starCanvas);
+    starTex.colorSpace = THREE.SRGBColorSpace;
+    scene.background = starTex;
+    scene.fog = new THREE.Fog(0x05070f, length * 0.75, length * 1.55);
 
     const camera = new THREE.PerspectiveCamera(
       70,
@@ -153,7 +169,7 @@ export function GalleryScene({
       canvas.userData.isCanvas = true;
       group.add(canvas);
 
-      const texUrl = art.urlWall || art.urlPoster;
+      const texUrl = art.urlWall || art.urlFull || art.urlPoster;
       if (texUrl) {
         loader.load(texUrl, (tex) => {
           tex.colorSpace = THREE.SRGBColorSpace;
@@ -161,6 +177,27 @@ export function GalleryScene({
           canvasMat.color.set(0xffffff);
           canvasMat.needsUpdate = true;
         });
+      } else {
+        // Embedded checker placeholder when catalog URLs are empty.
+        const ph = document.createElement("canvas");
+        ph.width = 256;
+        ph.height = 192;
+        const pctx = ph.getContext("2d")!;
+        const hue = (index * 37) % 360;
+        for (let y = 0; y < 192; y += 24) {
+          for (let x = 0; x < 256; x += 24) {
+            pctx.fillStyle =
+              (x / 24 + y / 24) % 2 === 0
+                ? `hsl(${hue} 28% 55%)`
+                : `hsl(${hue} 18% 40%)`;
+            pctx.fillRect(x, y, 24, 24);
+          }
+        }
+        const ptex = new THREE.CanvasTexture(ph);
+        ptex.colorSpace = THREE.SRGBColorSpace;
+        canvasMat.map = ptex;
+        canvasMat.color.set(0xffffff);
+        canvasMat.needsUpdate = true;
       }
 
       if (art.type === "video") {

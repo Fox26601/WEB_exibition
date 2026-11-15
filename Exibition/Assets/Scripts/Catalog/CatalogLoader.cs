@@ -129,7 +129,7 @@ namespace Gallery.Catalog
 
         string BuildCatalogUrl(string mode, string token)
         {
-            var origin = ResolveOrigin();
+            var origin = GetOrigin();
             var sb = new StringBuilder();
             sb.Append(origin);
             if (!catalogPath.StartsWith("/"))
@@ -143,10 +143,10 @@ namespace Gallery.Catalog
             return sb.ToString();
         }
 
-        static string ResolveOrigin()
+        /// <summary>Page origin for relative media URLs (/samples/…).</summary>
+        public static string GetOrigin()
         {
 #if UNITY_EDITOR
-            // Local Next.js default while editing in Editor.
             return "http://localhost:3000";
 #else
             var absolute = Application.absoluteURL;
@@ -156,6 +156,7 @@ namespace Gallery.Catalog
             try
             {
                 var uri = new Uri(absolute);
+                // iframe under /unity/index.html → still same host as the Next app.
                 return uri.GetLeftPart(UriPartial.Authority);
             }
             catch

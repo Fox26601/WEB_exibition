@@ -75,13 +75,11 @@ export function ExhibitionApp({
 
   const artworks = useMemo(() => {
     if (!catalog) return [];
-    if (catalogKind === "draft") {
-      return catalog.artworks
-        .filter((a) => a.published)
-        .sort((a, b) => a.sort - b.sort);
-    }
-    return [...catalog.artworks].sort((a, b) => a.sort - b.sort);
-  }, [catalog, catalogKind]);
+    // Live API already returns published-only; draft preview matches schematic (published).
+    return catalog.artworks
+      .filter((a) => a.published)
+      .sort((a, b) => a.sort - b.sort);
+  }, [catalog]);
 
   const copy = UI[locale];
 
@@ -111,19 +109,20 @@ export function ExhibitionApp({
       dir={direction(locale)}
       className="relative h-[100dvh] w-full overflow-hidden bg-black"
     >
-      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 p-3 sm:p-4">
-        <div className="pointer-events-auto flex items-center gap-3">
+      {/* Single chrome layer: HTML owns exit + lang when Unity is embedded (Unity skips its lang row). */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 grid grid-cols-[1fr_auto_1fr] items-center gap-3 p-3 sm:p-4">
+        <div className="pointer-events-auto justify-self-start">
           <Link
             href="/"
-            className="btn btn-ghost !border-white/20 !py-1.5 !px-3 !text-[0.65rem] !text-white/80"
+            className="btn btn-ghost !border-white/20 !py-1.5 !px-3 !text-[0.65rem] !normal-case !tracking-wide !text-white/80"
           >
             {copy.exit}
           </Link>
-          <span className="font-[family-name:var(--font-display)] text-sm font-semibold text-white/90">
-            Atelier
-          </span>
         </div>
-        <div className="pointer-events-auto flex items-center gap-2 rounded bg-black/40 px-2 py-1 backdrop-blur-sm">
+        <span className="pointer-events-none justify-self-center font-[family-name:var(--font-display)] text-sm font-semibold tracking-wide text-white/90">
+          Atelier
+        </span>
+        <div className="pointer-events-auto justify-self-end rounded bg-black/40 px-2 py-1 backdrop-blur-sm">
           <LangSwitcher value={locale} onChange={setLocale} />
         </div>
       </div>
@@ -142,7 +141,8 @@ export function ExhibitionApp({
         />
       )}
 
-      {selected && !infoOpen && !imageOverlay && !videoOverlay ? (
+      {/* Selection chrome is Unity-owned when embedded; HTML only for Three.js stub. */}
+      {!unityAvailable && selected && !infoOpen && !imageOverlay && !videoOverlay ? (
         <div className="absolute bottom-24 start-1/2 z-20 flex -translate-x-1/2 gap-2 sm:bottom-8">
           <button
             type="button"
@@ -168,7 +168,7 @@ export function ExhibitionApp({
         </div>
       ) : null}
 
-      {infoOpen && selected ? (
+      {!unityAvailable && infoOpen && selected ? (
         <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">
           <div className="max-h-[70vh] w-full max-w-lg overflow-y-auto border border-[var(--line)] bg-[#12100e] p-6">
             <h2 className="mb-3 font-[family-name:var(--font-display)] text-2xl font-bold">
@@ -259,8 +259,10 @@ function UnityEmbed({
     <div ref={ref} id="unity-canvas-wrap" className="h-full w-full">
       <iframe
         title="Unity gallery"
+        key={`unity-${catalogKind}-${lang}-${token || "live"}`}
         src={`/unity/index.html?${qs.toString()}`}
         className="h-full w-full border-0"
+        allow="autoplay; fullscreen"
       />
     </div>
   );

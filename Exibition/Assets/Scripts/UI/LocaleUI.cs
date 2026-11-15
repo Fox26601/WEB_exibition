@@ -141,19 +141,24 @@ namespace Gallery.UI
             canvasGo.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             canvasGo.AddComponent<GraphicRaycaster>();
 
-            var langRow = CreatePanel("LangRow", canvasGo.transform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-                new Vector2(0f, -24f), new Vector2(420f, 40f));
-            var langs = Languages;
-            for (var i = 0; i < langs.Length; i++)
+            // WebGL exhibition page owns exit + language chrome (HTML). Skip duplicate Unity lang UI.
+            var embedWebChrome = Application.platform == RuntimePlatform.WebGLPlayer;
+            if (!embedWebChrome)
             {
-                var code = langs[i];
-                var btn = CreateButton(langRow.transform, code.ToUpperInvariant(), new Vector2(-150f + i * 100f, 0f),
-                    () => SetLanguage(code));
-                btn.GetComponent<RectTransform>().sizeDelta = new Vector2(88f, 32f);
-            }
+                var langRow = CreatePanel("LangRow", canvasGo.transform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                    new Vector2(0f, -24f), new Vector2(420f, 40f));
+                var langs = Languages;
+                for (var i = 0; i < langs.Length; i++)
+                {
+                    var code = langs[i];
+                    var btn = CreateButton(langRow.transform, code.ToUpperInvariant(), new Vector2(-150f + i * 100f, 0f),
+                        () => SetLanguage(code));
+                    btn.GetComponent<RectTransform>().sizeDelta = new Vector2(88f, 32f);
+                }
 
-            _langLabel = CreateText(canvasGo.transform, "LangHint", 14, TextAnchor.UpperLeft,
-                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, -12f), new Vector2(200f, 28f));
+                _langLabel = CreateText(canvasGo.transform, "LangHint", 14, TextAnchor.UpperLeft,
+                    new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(12f, -12f), new Vector2(200f, 28f));
+            }
 
             _titleText = CreateText(canvasGo.transform, "Title", 18, TextAnchor.LowerCenter,
                 new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 72f), new Vector2(700f, 36f));
