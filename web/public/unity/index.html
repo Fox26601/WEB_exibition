@@ -52,16 +52,16 @@
       }
 
       var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/WebGL.loader.js?v=017";
+      var loaderUrl = buildUrl + "/WebGL.loader.js?v=018";
       var config = {
         arguments: [],
-        dataUrl: buildUrl + "/WebGL.data?v=017",
-        frameworkUrl: buildUrl + "/WebGL.framework.js?v=017",
-        codeUrl: buildUrl + "/WebGL.wasm?v=017",
+        dataUrl: buildUrl + "/WebGL.data?v=018",
+        frameworkUrl: buildUrl + "/WebGL.framework.js?v=018",
+        codeUrl: buildUrl + "/WebGL.wasm?v=018",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "DefaultCompany",
         productName: "Exibition",
-        productVersion: "0.1.7-polish",
+        productVersion: "0.1.8-preview",
         showBanner: unityShowBanner,
         webglContextAttributes: { preserveDrawingBuffer: true },
         // errorHandler: function(err, url, line) {
@@ -108,10 +108,18 @@
         createUnityInstance(canvas, config, (progress) => {
           document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
               }).then((unityInstance) => {
+                window.unityInstance = unityInstance;
                 document.querySelector("#unity-loading-bar").style.display = "none";
                 document.querySelector("#unity-fullscreen-button").onclick = () => {
                   unityInstance.SetFullscreen(1);
                 };
+                window.addEventListener("message", function (ev) {
+                  if (!ev || !ev.data || ev.data.type !== "gallery-set-lang") return;
+                  var lang = String(ev.data.lang || "en");
+                  try {
+                    unityInstance.SendMessage("LocaleUI", "OnJsSetLanguage", lang);
+                  } catch (e) {}
+                });
 
               }).catch((message) => {
                 alert(message);

@@ -1,8 +1,24 @@
 "use client";
 
+import { useCallback, useState } from "react";
+import type { Artwork } from "@/lib/catalog-types";
 import { ROOM, roomLength, slotPose } from "@/lib/room";
 
-export function RoomSchematic({ count }: { count: number }) {
+type Props = {
+  artworks: Artwork[];
+  /** Called with reordered ids (all draft arts or published-only — caller decides). */
+  onReorder?: (ids: string[]) => void;
+  highlightedId?: string | null;
+  onSelect?: (id: string) => void;
+};
+
+export function RoomSchematic({
+  artworks,
+  onReorder,
+  highlightedId,
+  onSelect,
+}: Props) {
+  const count = artworks.length;
   const length = roomLength(count);
   const scale = 28;
   const pad = 24;
@@ -11,7 +27,39 @@ export function RoomSchematic({ count }: { count: number }) {
   const svgW = w + pad * 2;
   const svgH = h + pad * 2;
 
-  const slots = Array.from({ length: count }, (_, i) => slotPose(i));
+  const slots = artworks.map((art, i) => ({
+    ...slotPose(i),
+    id: art.id,
+    label: art.title.en || art.id.slice(0, 6),
+  }));
+
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+
+  const finishDrag = useCallback(
+    (targetId: string | null) => {
+      if (!onReorder || !dragId || !targetId || dragId === targetId) {
+        setDragId(null);
+        setOverId(null);
+        return;
+      }
+      const ids = artworks.map((a) => a.id);
+      const from = ids.indexOf(dragId);
+      const to = ids.indexOf(targetId);
+      if (from < 0 || to < 0) {
+        setDragId(null);
+        setOverId(null);
+        return;
+      }
+      const next = [...ids];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      onReorder(next);
+      setDragId(null);
+      setOverId(null);
+    },
+    [artworks, dragId, onReorder],
+  );
 
   return (
     <div className="border border-[var(--line)] bg-[#1a1612] p-4">
@@ -21,11 +69,12 @@ export function RoomSchematic({ count }: { count: number }) {
         </h2>
         <p className="text-sm text-[var(--paper-dim)]">
           N={count} · L={length.toFixed(1)}m · W={ROOM.width}m
+          {onReorder ? " · drag slots to reorder" : ""}
         </p>
       </div>
       <svg
         viewBox={`0 0 ${svgW} ${svgH}`}
-        className="mx-auto max-h-80 w-full"
+        className="mx-auto max-h-80 w-full touch-none"
         role="img"
         aria-label={`Room length ${length} meters for ${count} artworks`}
       >
@@ -41,21 +90,54 @@ export function RoomSchematic({ count }: { count: number }) {
         {slots.map((s) => {
           const cx = pad + (s.x + ROOM.width / 2) * scale;
           const cy = pad + s.z * scale;
+          const active = highlightedId === s.id || dragId === s.id;
+          const dropTarget = overId === s.id && dragId && overId !== dragId;
           return (
-            <g key={s.index}>
+            <g
+              key={s.id}
+              style={{ cursor: onReorder ? "grab" : onSelect ? "pointer" : "default" }}
+              onPointerDown={(e) => {
+                if (!onReorder) {
+                  onSelect?.(s.id);
+                  return;
+                }
+                (e.currentTarget as SVGGElement).setPointerCapture?.(e.pointerId);
+                setDragId(s.id);
+                onSelect?.(s.id);
+              }}
+              onPointerEnter={() => {
+                if (dragId) setOverId(s.id);
+              }}
+              onPointerUp={() => finishDrag(overId || s.id)}
+              onPointerCancel={() => {
+                setDragId(null);
+                setOverId(null);
+              }}
+            >
               <rect
-                x={cx - 8}
-                y={cy - 6}
-                width={16}
-                height={12}
-                fill={s.wall === "left" ? "#e0a84a" : "#c9bba6"}
+                x={cx - 10}
+                y={cy - 8}
+                width={20}
+                height={16}
+                fill={
+                  dropTarget
+                    ? "#e0a84a"
+                    : active
+                      ? "#f0c878"
+                      : s.wall === "left"
+                        ? "#e0a84a"
+                        : "#c9bba6"
+                }
+                stroke={active || dropTarget ? "#fff" : "none"}
+                strokeWidth={dropTarget ? 2 : active ? 1 : 0}
               />
               <text
                 x={cx}
-                y={cy + 3}
+                y={cy + 4}
                 textAnchor="middle"
-                fontSize={8}
+                fontSize={9}
                 fill="#0e0c0a"
+                style={{ pointerEvents: "none" }}
               >
                 {s.index + 1}
               </text>

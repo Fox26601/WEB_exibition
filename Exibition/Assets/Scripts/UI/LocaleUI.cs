@@ -14,6 +14,8 @@ namespace Gallery.UI
     {
         public static readonly string[] Languages = { "en", "ru", "uk", "he" };
 
+        static LocaleUI _instance;
+
         string _lang = "en";
         ArtworkView _selected;
         CatalogData _catalog;
@@ -30,6 +32,17 @@ namespace Gallery.UI
         public bool IsInfoOpen => _panel != null && _panel.activeSelf;
         public ArtworkView Selected => _selected;
 
+        void Awake()
+        {
+            _instance = this;
+        }
+
+        void OnDestroy()
+        {
+            if (_instance == this)
+                _instance = null;
+        }
+
         public void Initialize(string initialLang, InteractionRaycaster raycaster)
         {
             _lang = CatalogLoader.NormalizeLang(initialLang);
@@ -37,6 +50,12 @@ namespace Gallery.UI
             EnsureUi();
             RefreshLangLabel();
             CloseInfo();
+        }
+
+        /// <summary>JS → Unity: parent posts language without remounting WebGL.</summary>
+        public void OnJsSetLanguage(string lang)
+        {
+            SetLanguage(lang);
         }
 
         public void BindCatalog(CatalogData catalog)
