@@ -4,47 +4,42 @@ using UnityEngine.Rendering;
 namespace Gallery.Room
 {
     /// <summary>
-    /// Subtle procedural star night sky. Prefers Skybox/Cubemap; falls back to an inverted
-    /// unlit sphere so stars still read through the gallery skylight on stripped WebGL builds.
+    /// Night sky: Skybox/Cubemap when available, plus an overhead star plane visible
+    /// through the gallery skylight (mobile-safe, no post stack).
     /// </summary>
     public static class StarSkybox
     {
         const int FaceSize = 256;
-        const int StarsPerFace = 160;
+        const int StarsPerFace = 180;
 
         static Material _skyMat;
         static Cubemap _cube;
-        static Texture2D _domeTex;
-        static GameObject _dome;
+        static Texture2D _planeTex;
+        static GameObject _starPlane;
 
         public static void Apply(Camera camera)
         {
+            var night = new Color(0.015f, 0.02f, 0.05f);
+
             if (TryApplyCubemapSkybox())
             {
                 if (camera != null)
                 {
                     camera.clearFlags = CameraClearFlags.Skybox;
-                    camera.backgroundColor = new Color(0.02f, 0.03f, 0.06f);
-                    camera.farClipPlane = Mathf.Max(camera.farClipPlane, 200f);
+                    camera.backgroundColor = night;
+                    camera.farClipPlane = Mathf.Max(camera.farClipPlane, 250f);
                 }
-
-                RenderSettings.ambientMode = AmbientMode.Flat;
-                RenderSettings.ambientLight = new Color(0.55f, 0.57f, 0.64f);
-                EnsureDome(false);
-                return;
             }
-
-            // Cubemap shader missing — solid clear + star dome mesh.
-            if (camera != null)
+            else if (camera != null)
             {
                 camera.clearFlags = CameraClearFlags.SolidColor;
-                camera.backgroundColor = new Color(0.015f, 0.02f, 0.05f);
-                camera.farClipPlane = Mathf.Max(camera.farClipPlane, 200f);
+                camera.backgroundColor = night;
+                camera.farClipPlane = Mathf.Max(camera.farClipPlane, 250f);
             }
 
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(0.55f, 0.57f, 0.64f);
-            EnsureDome(true);
+            EnsureStarPlane();
         }
 
         static bool TryApplyCubemapSkybox()
@@ -62,50 +57,41 @@ namespace Gallery.Room
                 else
                     _skyMat.SetTexture("_MainTex", _cube);
                 if (_skyMat.HasProperty("_Exposure"))
-                    _skyMat.SetFloat("_Exposure", 1.05f);
+                    _skyMat.SetFloat("_Exposure", 1.1f);
             }
 
             RenderSettings.skybox = _skyMat;
             return true;
         }
 
-        static void EnsureDome(bool enabled)
+        static void EnsureStarPlane()
         {
-            if (!enabled)
+            if (_starPlane != null)
             {
-                if (_dome != null)
-                    _dome.SetActive(false);
+                _starPlane.SetActive(true);
                 return;
             }
 
-            if (_dome != null)
-            {
-                _dome.SetActive(true);
-                return;
-            }
+            _starPlane = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            _starPlane.name = "StarSkylightPlane";
+            Object.Destroy(_starPlane.GetComponent<Collider>());
+            // Face downward above the room so the skylight shows stars.
+            _starPlane.transform.position = new Vector3(0f, 18f, 20f);
+            _starPlane.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            _starPlane.transform.localScale = new Vector3(90f, 90f, 1f);
 
-            _dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            _dome.name = "StarDome";
-            Object.Destroy(_dome.GetComponent<Collider>());
-            _dome.transform.position = Vector3.zero;
-            _dome.transform.localScale = Vector3.one * 120f;
-
-            // Invert normals via negative scale so we see stars from inside.
-            _dome.transform.localScale = new Vector3(-120f, 120f, 120f);
+            if (_planeTex == null)
+                _planeTex = BuildPlaneTexture();
 
             var mat = RuntimeMaterials.CreateTextured(Color.white);
-            if (_domeTex == null)
-                _domeTex = BuildDomeTexture();
-            mat.mainTexture = _domeTex;
+            mat.mainTexture = _planeTex;
             if (mat.HasProperty("_MainTex"))
-                mat.SetTexture("_MainTex", _domeTex);
-            mat.color = Color.white;
+                mat.SetTexture("_MainTex", _planeTex);
             if (mat.HasProperty("_Color"))
                 mat.SetColor("_Color", Color.white);
             if (mat.HasProperty("_BaseColor"))
                 mat.SetColor("_BaseColor", Color.white);
-
-            _dome.GetComponent<MeshRenderer>().material = mat;
+            _starPlane.GetComponent<MeshRenderer>().material = mat;
         }
 
         static Cubemap BuildCubemap()
@@ -119,11 +105,11 @@ namespace Gallery.Room
             return cube;
         }
 
-        static Texture2D BuildDomeTexture()
+        static Texture2D BuildPlaneTexture()
         {
             const int size = 512;
             var tex = new Texture2D(size, size, TextureFormat.RGB24, false);
-            tex.SetPixels(PaintStars(4242, size));
+            tex.SetPixels(PaintStars(7777, size));
             tex.Apply(false, true);
             tex.wrapMode = TextureWrapMode.Repeat;
             tex.filterMode = FilterMode.Bilinear;
@@ -133,7 +119,7 @@ namespace Gallery.Room
         static Color[] PaintStars(int seed, int size)
         {
             var pixels = new Color[size * size];
-            var night = new Color(0.012f, 0.016f, 0.045f);
+            var night = new Color(0.01f, 0.015f, 0.04f);
             for (var i = 0; i < pixels.Length; i++)
                 pixels[i] = night;
 
@@ -143,15 +129,12 @@ namespace Gallery.Room
             {
                 var x = rng.Next(size);
                 var y = rng.Next(size);
-                var v = 0.65f + (float)rng.NextDouble() * 0.35f;
-                pixels[y * size + x] = new Color(v, v, Mathf.Min(1f, v + 0.12f));
-
-                if (rng.NextDouble() < 0.35 && x + 1 < size && y + 1 < size)
-                {
-                    var dim = v * 0.7f;
-                    pixels[y * size + x + 1] = new Color(dim, dim, dim);
-                    pixels[(y + 1) * size + x] = new Color(dim * 0.85f, dim * 0.85f, dim * 0.9f);
-                }
+                var v = 0.7f + (float)rng.NextDouble() * 0.3f;
+                pixels[y * size + x] = new Color(v, v, Mathf.Min(1f, v + 0.15f));
+                if (x + 1 < size)
+                    pixels[y * size + x + 1] = new Color(v * 0.75f, v * 0.75f, v * 0.8f);
+                if (y + 1 < size)
+                    pixels[(y + 1) * size + x] = new Color(v * 0.6f, v * 0.6f, v * 0.7f);
             }
 
             return pixels;

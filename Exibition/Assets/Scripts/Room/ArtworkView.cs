@@ -45,11 +45,12 @@ namespace Gallery.Room
             var frameCol = frame.GetComponent<Collider>();
             frameCol.isTrigger = false;
 
-            var canvas = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            // Thin cube (not Quad) so WebGL backface culling cannot hide the picture plane.
+            var canvas = GameObject.CreatePrimitive(PrimitiveType.Cube);
             canvas.name = "Canvas";
             canvas.transform.SetParent(transform, false);
-            canvas.transform.localPosition = new Vector3(0f, 0f, -0.05f);
-            canvas.transform.localScale = new Vector3(1.52f, 1.02f, 1f);
+            canvas.transform.localPosition = new Vector3(0f, 0f, -0.12f);
+            canvas.transform.localScale = new Vector3(1.52f, 1.02f, 0.02f);
             Object.Destroy(canvas.GetComponent<Collider>());
 
             _canvasRenderer = canvas.GetComponent<MeshRenderer>();
