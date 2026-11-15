@@ -33,24 +33,24 @@ namespace Gallery.Room
 
         void BuildVisuals()
         {
-            // Backing plate (thin) + separate canvas in front to avoid WebGL z-fighting.
+            // Slot forward (+Z) faces the room center (see RoomBuilder.GetSlotPose yaw).
+            // Place the picture on +Z so it faces the player; -Z goes into the wall.
             var frame = GameObject.CreatePrimitive(PrimitiveType.Cube);
             frame.name = "Frame";
             frame.transform.SetParent(transform, false);
-            frame.transform.localPosition = new Vector3(0f, 0f, 0.01f);
-            frame.transform.localScale = new Vector3(1.78f, 1.28f, 0.04f);
+            frame.transform.localPosition = Vector3.zero;
+            frame.transform.localScale = new Vector3(1.78f, 1.28f, 0.05f);
             _frameRenderer = frame.GetComponent<MeshRenderer>();
             _frameRenderer.sharedMaterial = new Material(FrameMaterial());
             ApplyFrameColor();
             var frameCol = frame.GetComponent<Collider>();
             frameCol.isTrigger = false;
 
-            // Thick enough cube to survive WebGL depth precision at gallery distance.
             var canvas = GameObject.CreatePrimitive(PrimitiveType.Cube);
             canvas.name = "Canvas";
             canvas.transform.SetParent(transform, false);
-            canvas.transform.localPosition = new Vector3(0f, 0f, -0.14f);
-            canvas.transform.localScale = new Vector3(1.5f, 1.0f, 0.12f);
+            canvas.transform.localPosition = new Vector3(0f, 0f, 0.05f);
+            canvas.transform.localScale = new Vector3(1.5f, 1.0f, 0.08f);
             Object.Destroy(canvas.GetComponent<Collider>());
 
             _canvasRenderer = canvas.GetComponent<MeshRenderer>();
@@ -62,7 +62,7 @@ namespace Gallery.Room
                 _headphones = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 _headphones.name = "Headphones";
                 _headphones.transform.SetParent(transform, false);
-                _headphones.transform.localPosition = new Vector3(0.85f, -0.35f, -0.08f);
+                _headphones.transform.localPosition = new Vector3(0.85f, -0.35f, 0.08f);
                 _headphones.transform.localScale = Vector3.one * 0.22f;
                 _headphones.GetComponent<MeshRenderer>().sharedMaterial = FrameMaterial();
             }
