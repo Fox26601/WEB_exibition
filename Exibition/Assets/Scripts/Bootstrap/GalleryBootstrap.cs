@@ -70,9 +70,8 @@ namespace Gallery.Bootstrap
             {
                 locale.Initialize(loader.InitialLang, ray);
                 locale.BindCatalog(catalog);
-                // Room length + slot count driven by the same published N as admin schematic.
-                var n = catalog.artworks != null ? catalog.artworks.Length : 0;
-                room.Build(n);
+                // Layout rooms when present; otherwise rect L/R from non-model artwork count.
+                room.BuildFromCatalog(catalog);
                 player.Configure(room.Length, QualityTier.IsMobileTier);
                 spawner.Initialize(room, player.transform);
                 spawner.Spawn(catalog);

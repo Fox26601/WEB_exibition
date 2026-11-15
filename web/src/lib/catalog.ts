@@ -1,8 +1,11 @@
 import {
   createDefaultCatalog,
+  emptyLayout,
+  normalizeLayout,
   type Catalog,
   type Artwork,
   type CatalogSettings,
+  type GalleryLayout,
 } from "./catalog-types";
 import { readBlobText, writeBlobText } from "./blob-store";
 
@@ -42,6 +45,7 @@ export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
 /** Fill empty sample media URLs from defaults (in-memory) so seed catalogs texture in 3D. */
 function ensureSampleMedia(catalog: Catalog): Catalog {
   const defaults = createDefaultCatalog();
+  catalog.layout = normalizeLayout(catalog.layout);
   const byId = new Map(defaults.artworks.map((a) => [a.id, a]));
   for (const art of catalog.artworks) {
     const sample = byId.get(art.id);
@@ -49,7 +53,22 @@ function ensureSampleMedia(catalog: Catalog): Catalog {
     if (!art.urlWall && sample.urlWall) art.urlWall = sample.urlWall;
     if (!art.urlFull && sample.urlFull) art.urlFull = sample.urlFull;
     if (!art.urlPoster && sample.urlPoster) art.urlPoster = sample.urlPoster;
+    if (!art.modelUrl && sample.modelUrl) art.modelUrl = sample.modelUrl;
+    if (!art.frameId && sample.frameId) art.frameId = sample.frameId;
   }
+  // Ensure sculpture stubs exist in older catalogs for admin testing.
+  for (const sample of defaults.artworks) {
+    if (sample.type !== "model") continue;
+    if (catalog.artworks.some((a) => a.id === sample.id)) continue;
+    catalog.artworks.push({
+      ...sample,
+      sort:
+        catalog.artworks.length === 0
+          ? sample.sort
+          : Math.max(...catalog.artworks.map((a) => a.sort)) + 1,
+    });
+  }
+  catalog.artworks.sort((a, b) => a.sort - b.sort);
   return catalog;
 }
 
@@ -104,6 +123,14 @@ export async function deleteArtwork(id: string): Promise<Catalog> {
   draft.artworks.forEach((a, i) => {
     a.sort = i;
   });
+  if (draft.layout) {
+    draft.layout = {
+      ...normalizeLayout(draft.layout),
+      placements: normalizeLayout(draft.layout).placements.filter(
+        (p) => p.artworkId !== id,
+      ),
+    };
+  }
   await saveCatalog("draft", draft);
   return draft;
 }
@@ -138,8 +165,36 @@ export async function updateSettings(
   return draft;
 }
 
+/** Debounced admin autosave target: replace draft layout only. */
+export async function saveDraftLayout(layout: GalleryLayout): Promise<Catalog> {
+  const draft = await loadCatalog("draft");
+  draft.layout = normalizeLayout(layout);
+  await saveCatalog("draft", draft);
+  return draft;
+}
+
+export async function saveDraftCatalog(catalog: Catalog): Promise<Catalog> {
+  const next: Catalog = {
+    ...catalog,
+    layout: normalizeLayout(catalog.layout ?? emptyLayout()),
+  };
+  await saveCatalog("draft", next);
+  return next;
+}
+
 export function publicArtworks(catalog: Catalog): Artwork[] {
   return catalog.artworks
     .filter((a) => a.published)
     .sort((a, b) => a.sort - b.sort);
+}
+
+/** True when draft layout or published set differs from live (dirty for Publish). */
+export function catalogsDifferForPublish(draft: Catalog, live: Catalog): boolean {
+  const strip = (c: Catalog) =>
+    JSON.stringify({
+      layout: normalizeLayout(c.layout),
+      artworks: c.artworks,
+      settings: c.settings,
+    });
+  return strip(draft) !== strip(live);
 }

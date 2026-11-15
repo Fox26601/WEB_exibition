@@ -3,7 +3,28 @@ export type Locale = (typeof LOCALES)[number];
 
 export type LocalizedString = Record<Locale, string>;
 
-export type ArtworkType = "image" | "video";
+export type ArtworkType = "image" | "video" | "model";
+
+export type RoomShape = "triangle" | "square" | "pentagon" | "hexagon";
+
+export type FrameId = "thin" | "wood" | "metal" | "ornate" | "none";
+
+export type PlacementKind = "painting" | "sculpture";
+
+export const FRAME_IDS: FrameId[] = [
+  "thin",
+  "wood",
+  "metal",
+  "ornate",
+  "none",
+];
+
+export const ROOM_SHAPES: RoomShape[] = [
+  "triangle",
+  "square",
+  "pentagon",
+  "hexagon",
+];
 
 export interface Artwork {
   id: string;
@@ -16,6 +37,54 @@ export interface Artwork {
   urlFull: string;
   urlVideo: string;
   urlPoster: string;
+  /** GLB / glTF URL for sculptures (type === "model"). */
+  modelUrl?: string;
+  /** Default frame when placed as a painting. */
+  frameId?: FrameId;
+}
+
+export interface RoomTransform {
+  x: number;
+  z: number;
+  /** Degrees, Y-up world. */
+  rotation: number;
+  scaleX: number;
+  scaleZ: number;
+}
+
+export interface GalleryRoom {
+  id: string;
+  shape: RoomShape;
+  transform: RoomTransform;
+  /** Optional world-space override; otherwise derived from shape + transform. */
+  vertices?: { x: number; z: number }[];
+}
+
+export interface RoomConnection {
+  roomA: string;
+  roomB: string;
+  edgeA: number;
+  edgeB: number;
+  doorwayWidth: number;
+}
+
+export interface ArtworkPlacement {
+  artworkId: string;
+  kind: PlacementKind;
+  roomId: string;
+  wallEdgeIndex?: number;
+  /** 0..1 along the wall edge. */
+  tAlongEdge?: number;
+  floorX?: number;
+  floorZ?: number;
+  yaw: number;
+  frameId: FrameId;
+}
+
+export interface GalleryLayout {
+  rooms: GalleryRoom[];
+  connections: RoomConnection[];
+  placements: ArtworkPlacement[];
 }
 
 export interface CatalogSettings {
@@ -30,10 +99,30 @@ export interface Catalog {
   updatedAt: string;
   settings: CatalogSettings;
   artworks: Artwork[];
+  /** Empty / missing → Unity keeps rect L/R fallback. */
+  layout?: GalleryLayout;
 }
 
 export function emptyLocalized(fallback = ""): LocalizedString {
   return { en: fallback, ru: fallback, uk: fallback, he: fallback };
+}
+
+export function emptyLayout(): GalleryLayout {
+  return { rooms: [], connections: [], placements: [] };
+}
+
+export function normalizeLayout(layout?: GalleryLayout | null): GalleryLayout {
+  if (!layout) return emptyLayout();
+  return {
+    rooms: Array.isArray(layout.rooms) ? layout.rooms : [],
+    connections: Array.isArray(layout.connections) ? layout.connections : [],
+    placements: Array.isArray(layout.placements) ? layout.placements : [],
+  };
+}
+
+export function layoutIsEmpty(layout?: GalleryLayout | null): boolean {
+  const n = normalizeLayout(layout);
+  return n.rooms.length === 0;
 }
 
 /** Seed sample wall textures under public/samples (also used by Unity StreamingAssets). */
@@ -43,6 +132,57 @@ const SAMPLE = {
   "03": "/samples/sample-03.jpg",
   "04": "/samples/sample-04.jpg",
 } as const;
+
+const SCULPTURE_SAMPLES = [
+  {
+    id: "sample-sculpture-box",
+    modelUrl: "/samples/sculptures/box.glb",
+    title: {
+      en: "Stub Box",
+      ru: "Короб-заглушка",
+      uk: "Короб-заглушка",
+      he: "קופסת דמה",
+    },
+    text: {
+      en: "Low-poly GLB stub for sculpture floor placement tests.",
+      ru: "Низкополигональный GLB для теста скульптур на полу.",
+      uk: "Низькополігональний GLB для тесту скульптур на підлозі.",
+      he: "מודל GLB פשוט לבדיקת פסלים על הרצפה.",
+    },
+  },
+  {
+    id: "sample-sculpture-obelisk",
+    modelUrl: "/samples/sculptures/obelisk.glb",
+    title: {
+      en: "Stub Obelisk",
+      ru: "Обелиск-заглушка",
+      uk: "Обеліск-заглушка",
+      he: "אובליסק דמה",
+    },
+    text: {
+      en: "Tall stub sculpture for floor snap occupancy checks.",
+      ru: "Высокая заглушка для проверки занятости пола.",
+      uk: "Висока заглушка для перевірки зайнятості підлоги.",
+      he: "פסל גבוה לבדיקת תפוסת רצפה.",
+    },
+  },
+  {
+    id: "sample-sculpture-plinth",
+    modelUrl: "/samples/sculptures/plinth.glb",
+    title: {
+      en: "Stub Plinth",
+      ru: "Пьедестал-заглушка",
+      uk: "П'єдестал-заглушка",
+      he: "בסיס דמה",
+    },
+    text: {
+      en: "Wide plinth stub for sculpture spacing.",
+      ru: "Широкий пьедестал для интервалов скульптур.",
+      uk: "Широкий п'єдестал для інтервалів скульптур.",
+      he: "בסיס רחב למרווחי פסלים.",
+    },
+  },
+] as const;
 
 export function createDefaultCatalog(): Catalog {
   return {
@@ -64,6 +204,7 @@ export function createDefaultCatalog(): Catalog {
         he: "קטלוג לדוגמה להפעלה ראשונה.",
       },
     },
+    layout: emptyLayout(),
     artworks: [
       {
         id: "sample-01",
@@ -86,6 +227,7 @@ export function createDefaultCatalog(): Catalog {
         urlFull: SAMPLE["01"],
         urlVideo: "",
         urlPoster: "",
+        frameId: "wood",
       },
       {
         id: "sample-02",
@@ -108,6 +250,7 @@ export function createDefaultCatalog(): Catalog {
         urlFull: SAMPLE["02"],
         urlVideo: "",
         urlPoster: "",
+        frameId: "thin",
       },
       {
         id: "sample-03",
@@ -130,6 +273,7 @@ export function createDefaultCatalog(): Catalog {
         urlFull: SAMPLE["03"],
         urlVideo: "",
         urlPoster: SAMPLE["03"],
+        frameId: "metal",
       },
       {
         id: "sample-04",
@@ -152,7 +296,22 @@ export function createDefaultCatalog(): Catalog {
         urlFull: SAMPLE["04"],
         urlVideo: "",
         urlPoster: "",
+        frameId: "ornate",
       },
+      ...SCULPTURE_SAMPLES.map((s, i) => ({
+        id: s.id,
+        type: "model" as const,
+        sort: 4 + i,
+        published: true,
+        title: { ...s.title },
+        text: { ...s.text },
+        urlWall: "",
+        urlFull: "",
+        urlVideo: "",
+        urlPoster: "",
+        modelUrl: s.modelUrl,
+        frameId: "none" as const,
+      })),
     ],
   };
 }

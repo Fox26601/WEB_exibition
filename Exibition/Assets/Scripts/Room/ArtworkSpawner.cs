@@ -7,10 +7,8 @@ using UnityEngine.Networking;
 namespace Gallery.Room
 {
     /// <summary>
-    /// Places artworks alternating left/right walls. Placeholder first, then lazy-loads
-    /// urlWall (falling back to urlFull / urlPoster) with max 4 concurrent downloads.
-    /// Unloads textures more than 2 slots behind the camera.
-    /// Empty URLs keep the embedded frame placeholder — every published art still spawns.
+    /// Places artworks from layout placements when present; otherwise legacy L/R slots.
+    /// Sculptures spawn procedural stubs (modelUrl stored for future GLB loader).
     /// </summary>
     public class ArtworkSpawner : MonoBehaviour
     {
@@ -42,18 +40,82 @@ namespace Gallery.Room
             if (catalog == null || catalog.artworks == null)
                 return;
 
-            // Spawn ALL published entries from the catalog (already filtered by CatalogLoader).
-            var arts = catalog.artworks;
-            var length = _room != null ? _room.Length : RoomBuilder.ComputeLength(arts.Length);
             var root = new GameObject("Artworks").transform;
             root.SetParent(transform, false);
 
-            for (var i = 0; i < arts.Length; i++)
+            if (_room != null && _room.UsingLayout && catalog.layout != null &&
+                catalog.layout.placements != null && catalog.layout.placements.Length > 0)
+            {
+                SpawnFromLayout(catalog, root);
+            }
+            else
+            {
+                SpawnLegacySlots(catalog, root);
+            }
+
+            Debug.Log($"ArtworkSpawner: spawned {_views.Count} artworks (layout={_room != null && _room.UsingLayout}).");
+        }
+
+        void SpawnFromLayout(CatalogData catalog, Transform root)
+        {
+            var byId = new Dictionary<string, ArtworkEntry>();
+            for (var i = 0; i < catalog.artworks.Length; i++)
+            {
+                var e = catalog.artworks[i];
+                if (e == null || string.IsNullOrEmpty(e.id)) continue;
+                byId[e.id] = e;
+            }
+
+            var placements = catalog.layout.placements;
+            for (var i = 0; i < placements.Length; i++)
+            {
+                var p = placements[i];
+                if (p == null || string.IsNullOrEmpty(p.artworkId)) continue;
+                if (!byId.TryGetValue(p.artworkId, out var entry)) continue;
+
+                Vector3 pos;
+                Quaternion rot;
+                var isSculpture = string.Equals(p.kind, "sculpture", System.StringComparison.OrdinalIgnoreCase)
+                                  || entry.ArtworkType == ArtworkType.Model;
+
+                if (isSculpture)
+                {
+                    if (!_room.TryGetSculpturePose(p, out pos, out rot))
+                        continue;
+                }
+                else
+                {
+                    if (!_room.TryGetPaintingPose(p, out pos, out rot))
+                        continue;
+                }
+
+                var go = new GameObject($"Artwork_{i}_{entry.id}");
+                go.transform.SetParent(root, false);
+                go.transform.SetPositionAndRotation(pos, rot);
+
+                var view = go.AddComponent<ArtworkView>();
+                var frameId = string.IsNullOrEmpty(p.frameId) ? entry.frameId : p.frameId;
+                view.Setup(entry, i, frameId, isSculpture);
+                _views.Add(view);
+            }
+        }
+
+        void SpawnLegacySlots(CatalogData catalog, Transform root)
+        {
+            var arts = new List<ArtworkEntry>();
+            for (var i = 0; i < catalog.artworks.Length; i++)
+            {
+                var entry = catalog.artworks[i];
+                if (entry == null) continue;
+                if (entry.ArtworkType == ArtworkType.Model) continue;
+                arts.Add(entry);
+            }
+
+            var length = _room != null ? _room.Length : RoomBuilder.ComputeLength(arts.Count);
+
+            for (var i = 0; i < arts.Count; i++)
             {
                 var entry = arts[i];
-                if (entry == null)
-                    continue;
-
                 RoomBuilder.GetSlotPose(i, length, out var pos, out var rot, out _);
 
                 var go = new GameObject($"Artwork_{i}_{entry.id}");
@@ -61,11 +123,9 @@ namespace Gallery.Room
                 go.transform.SetPositionAndRotation(pos, rot);
 
                 var view = go.AddComponent<ArtworkView>();
-                view.Setup(entry, i);
+                view.Setup(entry, i, entry.frameId, false);
                 _views.Add(view);
             }
-
-            Debug.Log($"ArtworkSpawner: spawned {_views.Count} artworks (L={length:0.##}).");
         }
 
         void Clear()
@@ -96,6 +156,9 @@ namespace Gallery.Room
             for (var i = 0; i < _views.Count; i++)
             {
                 var view = _views[i];
+                if (view.IsSculpture)
+                    continue;
+
                 var dist = Mathf.Abs(view.Index / 2 - playerSlot);
                 if (dist <= UnloadSlotDistance + 1)
                     EnqueueLoad(view);

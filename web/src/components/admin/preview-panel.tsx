@@ -1,37 +1,64 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Artwork, Catalog, LocalizedString } from "@/lib/catalog-types";
-import { emptyLocalized, LOCALES } from "@/lib/catalog-types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  Artwork,
+  Catalog,
+  GalleryLayout,
+  LocalizedString,
+} from "@/lib/catalog-types";
+import { emptyLocalized, LOCALES, emptyLayout } from "@/lib/catalog-types";
 import { LangSwitcher } from "@/components/lang-switcher";
 import { pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { RoomSchematic } from "./room-schematic";
+import {
+  GalleryLayoutEditor,
+  ensureLayout,
+} from "./gallery-layout-editor";
 
 const IMAGE_MAX = 8 * 1024 * 1024;
 const VIDEO_MAX = 80 * 1024 * 1024;
+const MODEL_MAX = 40 * 1024 * 1024;
+const AUTOSAVE_MS = 400;
+
+type SaveStatus = "idle" | "saving" | "saved" | "error";
 
 export function PreviewPanel() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [liveUpdatedAt, setLiveUpdatedAt] = useState<string>("");
+  const [dirty, setDirty] = useState(false);
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [editing, setEditing] = useState<Artwork | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [saveError, setSaveError] = useState("");
   const { locale, setLocale } = useGalleryLocale();
   const [iframeKey, setIframeKey] = useState(0);
+  const layoutRef = useRef<GalleryLayout>(emptyLayout());
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingLayout = useRef<GalleryLayout | null>(null);
 
   const refresh = useCallback(async () => {
-    const [catRes, tokRes] = await Promise.all([
+    const [catRes, tokRes, layoutMeta] = await Promise.all([
       fetch("/api/catalog?catalog=draft"),
       fetch("/api/admin/preview-token", { method: "POST" }),
+      fetch("/api/admin/layout"),
     ]);
     if (!catRes.ok || !tokRes.ok) throw new Error("Failed to load preview");
     const cat = (await catRes.json()) as Catalog;
     const tok = await tokRes.json();
-    setCatalog(cat);
+    setCatalog({ ...cat, layout: ensureLayout(cat.layout) });
+    layoutRef.current = ensureLayout(cat.layout);
     setToken(tok.token);
+    if (layoutMeta.ok) {
+      const meta = await layoutMeta.json();
+      setDirty(Boolean(meta.dirty));
+      setLiveUpdatedAt(meta.liveUpdatedAt || "");
+    }
   }, []);
 
   useEffect(() => {
@@ -58,6 +85,82 @@ export function PreviewPanel() {
     setIframeKey((k) => k + 1);
   }
 
+  const persistLayout = useCallback(async (layout: GalleryLayout) => {
+    setSaveStatus("saving");
+    setSaveError("");
+    try {
+      const res = await fetch("/api/admin/layout", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(layout),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(JSON.stringify(data.error) || "Save failed");
+      setCatalog((prev) =>
+        prev
+          ? { ...data.catalog, layout: ensureLayout(data.catalog.layout) }
+          : data.catalog,
+      );
+      layoutRef.current = ensureLayout(data.layout);
+      setDirty(Boolean(data.dirty));
+      setSaveStatus("saved");
+      bumpIframe();
+    } catch (e) {
+      setSaveStatus("error");
+      setSaveError(e instanceof Error ? e.message : "Autosave failed");
+    }
+  }, []);
+
+  const scheduleLayoutSave = useCallback(
+    (layout: GalleryLayout) => {
+      pendingLayout.current = layout;
+      layoutRef.current = layout;
+      setCatalog((prev) => (prev ? { ...prev, layout } : prev));
+      setDirty(true);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        const next = pendingLayout.current;
+        pendingLayout.current = null;
+        if (next) void persistLayout(next);
+      }, AUTOSAVE_MS);
+    },
+    [persistLayout],
+  );
+
+  function retrySave() {
+    void persistLayout(layoutRef.current);
+  }
+
+  async function publishLive() {
+    setBusy(true);
+    setMessage("");
+    try {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      if (pendingLayout.current) {
+        await persistLayout(pendingLayout.current);
+        pendingLayout.current = null;
+      }
+      const res = await fetch("/api/admin/publish", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Publish failed");
+      setCatalog({
+        ...data.catalog,
+        layout: ensureLayout(data.catalog.layout),
+      });
+      setDirty(false);
+      setLiveUpdatedAt(data.catalog.updatedAt || "");
+      bumpIframe();
+      setMessage("Published to live site");
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function reorder(ids: string[]) {
     setBusy(true);
     setMessage("");
@@ -69,7 +172,11 @@ export function PreviewPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Reorder failed");
-      setCatalog(data.catalog);
+      setCatalog({
+        ...data.catalog,
+        layout: ensureLayout(data.catalog.layout ?? catalog?.layout),
+      });
+      setDirty(true);
       bumpIframe();
       setMessage("Order saved");
     } catch (e) {
@@ -79,7 +186,6 @@ export function PreviewPanel() {
     }
   }
 
-  /** Reorder only among published list, then merge back into full draft order. */
   async function reorderPublished(publishedIds: string[]) {
     if (!catalog) return;
     const pubSet = new Set(publishedIds);
@@ -110,7 +216,11 @@ export function PreviewPanel() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(JSON.stringify(data.error) || "Save failed");
-      setCatalog(data.catalog);
+      setCatalog({
+        ...data.catalog,
+        layout: ensureLayout(data.catalog.layout ?? catalog?.layout),
+      });
+      setDirty(true);
       setEditing(null);
       bumpIframe();
       setMessage("Saved");
@@ -128,7 +238,15 @@ export function PreviewPanel() {
       const res = await fetch(`/api/admin/artworks/${id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Delete failed");
-      setCatalog(data.catalog);
+      const nextLayout = ensureLayout(catalog?.layout);
+      nextLayout.placements = nextLayout.placements.filter(
+        (p) => p.artworkId !== id,
+      );
+      setCatalog({
+        ...data.catalog,
+        layout: nextLayout,
+      });
+      scheduleLayoutSave(nextLayout);
       bumpIframe();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
@@ -141,7 +259,7 @@ export function PreviewPanel() {
     await saveArtwork({ ...art, published: !art.published });
   }
 
-  function startNew(type: "image" | "video") {
+  function startNew(type: Artwork["type"]) {
     setEditing({
       id: crypto.randomUUID(),
       type,
@@ -153,6 +271,8 @@ export function PreviewPanel() {
       urlFull: "",
       urlVideo: "",
       urlPoster: "",
+      modelUrl: "",
+      frameId: type === "model" ? "none" : "wood",
     });
   }
 
@@ -160,11 +280,13 @@ export function PreviewPanel() {
     return <p className="text-[#e08a7a]">{error}</p>;
   }
 
+  const layout = ensureLayout(catalog?.layout);
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-[family-name:var(--font-display)] text-3xl font-bold">
-          Preview
+          Preview · Layout
         </h1>
         <div className="flex flex-wrap items-center gap-3">
           <LangSwitcher value={locale} onChange={setLocale} />
@@ -184,21 +306,67 @@ export function PreviewPanel() {
           >
             + Video
           </button>
+          <button
+            type="button"
+            className="btn"
+            disabled={busy}
+            onClick={() => startNew("model")}
+          >
+            + Sculpture
+          </button>
+          <button
+            type="button"
+            className="btn btn-solid"
+            disabled={busy || (!dirty && saveStatus !== "error")}
+            onClick={() => void publishLive()}
+          >
+            Опубликовать на сайт
+            {dirty ? " ·" : ""}
+          </button>
         </div>
       </div>
+
+      <p className="mb-4 text-sm text-[var(--paper-dim)]">
+        Draft autosaves on every layout change.
+        {liveUpdatedAt
+          ? ` Last live publish: ${new Date(liveUpdatedAt).toLocaleString()}.`
+          : ""}
+        {dirty ? " Unpublished draft changes." : " Live matches draft."}
+      </p>
 
       {message ? (
         <p className="mb-4 text-sm text-[var(--amber-bright)]">{message}</p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <RoomSchematic
-          artworks={publishedArts}
-          highlightedId={highlightedId}
-          onSelect={setHighlightedId}
-          onReorder={busy ? undefined : reorderPublished}
+      <div className="mb-8">
+        <GalleryLayoutEditor
+          layout={layout}
+          artworks={allArts}
           localeTitle={(art) => pickLocalized(art.title, locale)}
+          onLayoutChange={scheduleLayoutSave}
+          saveStatus={saveStatus}
+          saveError={saveError}
+          onRetrySave={retrySave}
         />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div>
+          <h2 className="mb-2 font-[family-name:var(--font-display)] text-lg font-semibold">
+            Fallback schematic
+          </h2>
+          <p className="mb-3 text-sm text-[var(--paper-dim)]">
+            Used when layout has no rooms (rect L/R). Drag to reorder published
+            slots.
+          </p>
+          <RoomSchematic
+            artworks={publishedArts.filter((a) => a.type !== "model")}
+            highlightedId={highlightedId}
+            onSelect={setHighlightedId}
+            onReorder={busy ? undefined : reorderPublished}
+            localeTitle={(art) => pickLocalized(art.title, locale)}
+          />
+        </div>
         <div className="border border-[var(--line)] bg-[#1a1612]">
           <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-2 text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
             <span>Exhibition draft iframe · {locale.toUpperCase()}</span>
@@ -223,8 +391,8 @@ export function PreviewPanel() {
           Artworks ({allArts.length})
         </h2>
         <p className="mb-4 text-sm text-[var(--paper-dim)]">
-          Numbers match the schematic for published works. Drag slots above or use ↑↓
-          to change order; upload and delete here.
+          Upload, publish toggle, and delete. Place published works in the layout
+          editor above.
         </p>
         <ul className="space-y-3">
           {allArts.map((art) => {
@@ -245,12 +413,18 @@ export function PreviewPanel() {
                   {slotNum ?? "—"}
                 </span>
                 <div className="h-14 w-14 shrink-0 overflow-hidden bg-[#0e0c0a]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={art.urlWall || art.urlPoster || ""}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
+                  {art.type === "model" ? (
+                    <div className="flex h-full items-center justify-center text-[0.65rem] text-[var(--paper-dim)]">
+                      GLB
+                    </div>
+                  ) : (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={art.urlWall || art.urlPoster || ""}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">
@@ -261,6 +435,7 @@ export function PreviewPanel() {
                   </p>
                   <p className="text-xs text-[var(--paper-dim)]">
                     {art.published ? "published" : "draft"} · sort {art.sort}
+                    {art.modelUrl ? " · has GLB" : ""}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -325,7 +500,7 @@ export function PreviewPanel() {
         </ul>
         {allArts.length === 0 ? (
           <p className="mt-4 text-[var(--paper-dim)]">
-            No artworks yet. Add an image or video.
+            No artworks yet. Add an image, video, or sculpture.
           </p>
         ) : null}
       </div>
@@ -443,6 +618,47 @@ function PreviewArtworkEditor({
     }
   }
 
+  async function onModelFile(file: File | null) {
+    if (!file) return;
+    if (file.size > MODEL_MAX) {
+      onMessage("GLB exceeds 40MB");
+      return;
+    }
+    onBusy(true);
+    onMessage("Uploading sculpture GLB…");
+    try {
+      try {
+        const { upload } = await import("@vercel/blob/client");
+        const pathname = `uploads/model/${crypto.randomUUID()}.glb`;
+        const blob = await upload(pathname, file, {
+          access: "public",
+          handleUploadUrl: "/api/admin/upload-token",
+          contentType: "model/gltf-binary",
+        });
+        setDraft((d) => ({ ...d, type: "model", modelUrl: blob.url }));
+        onMessage("GLB uploaded");
+        return;
+      } catch {
+        /* local fallback */
+      }
+      const form = new FormData();
+      form.append("file", file);
+      form.append("kind", "model");
+      const res = await fetch("/api/admin/upload-token", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      setDraft((d) => ({ ...d, type: "model", modelUrl: data.url }));
+      onMessage("GLB uploaded");
+    } catch (e) {
+      onMessage(e instanceof Error ? e.message : "Error");
+    } finally {
+      onBusy(false);
+    }
+  }
+
   async function onPosterFile(file: File | null) {
     if (!file) return;
     if (file.size > IMAGE_MAX) {
@@ -525,7 +741,7 @@ function PreviewArtworkEditor({
               onChange={(e) => onImageFile(e.target.files?.[0] || null)}
             />
           </div>
-        ) : (
+        ) : draft.type === "video" ? (
           <>
             <div className="mb-4">
               <label>Video MP4</label>
@@ -544,6 +760,20 @@ function PreviewArtworkEditor({
               />
             </div>
           </>
+        ) : (
+          <div className="mb-4">
+            <label>Sculpture GLB (max 40MB)</label>
+            <input
+              type="file"
+              accept=".glb,model/gltf-binary"
+              onChange={(e) => onModelFile(e.target.files?.[0] || null)}
+            />
+            {draft.modelUrl ? (
+              <p className="mt-2 truncate text-xs text-[var(--paper-dim)]">
+                {draft.modelUrl}
+              </p>
+            ) : null}
+          </div>
         )}
         <div className="mt-6 flex gap-3">
           <button
