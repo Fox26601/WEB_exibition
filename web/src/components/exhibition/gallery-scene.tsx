@@ -5,7 +5,7 @@ import * as THREE from "three";
 import type { Artwork } from "@/lib/catalog-types";
 import type { Locale } from "@/lib/i18n";
 import { ROOM, roomLength, slotPose } from "@/lib/room";
-import { UNITY_ASSET_CACHE_TAG } from "@/lib/unity-build";
+import { UNITY_ASSET_CACHE_TAG } from "@/lib/unity-cache";
 
 type Props = {
   artworks: Artwork[];

@@ -14,7 +14,7 @@ import { normalizeSettings } from "@/lib/catalog-types";
 import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
-import { UNITY_ASSET_CACHE_TAG } from "@/lib/unity-build";
+import { UNITY_ASSET_CACHE_TAG } from "@/lib/unity-cache";
 import { GalleryScene } from "./gallery-scene";
 
 type InfoModal = "artist" | "curator" | "donate" | "links" | null;
