@@ -97,7 +97,7 @@ namespace Gallery.Entrance
 
             BuildArchLocal(0f, trimColor);
             BuildPosterLocal(-Depth * 0.55f, catalog);
-            BuildPedestalLocal(-Depth * 0.62f, trimColor);
+            BuildPedestalLocal(-1.05f, trimColor);
         }
 
         void BuildLegacy(CatalogData catalog, float galleryStartZ)
@@ -299,7 +299,7 @@ namespace Gallery.Entrance
 
         void BuildPedestalLocal(float localZ, Color trimColor)
         {
-            var x = -RoomBuilder.Width * 0.5f + 1.15f;
+            var x = -(ArchWidth * 0.5f) - 0.75f;
 
             CreateBoxLocal(_root, "PedestalBase",
                 new Vector3(x, 0.35f, localZ),
@@ -334,8 +334,8 @@ namespace Gallery.Entrance
 
         void BuildPedestal(float galleryStartZ, Color trimColor)
         {
-            var z = galleryStartZ - Depth * 0.62f;
-            var x = -RoomBuilder.Width * 0.5f + 1.15f;
+            var z = galleryStartZ - 1.05f;
+            var x = -(ArchWidth * 0.5f) - 0.75f;
 
             CreateBox(_root, "PedestalBase",
                 new Vector3(x, 0.35f, z),
