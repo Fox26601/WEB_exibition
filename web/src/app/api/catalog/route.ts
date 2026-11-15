@@ -19,10 +19,19 @@ export async function GET(req: NextRequest) {
   const catalog = await loadCatalog(kind);
   const payload =
     kind === "live"
-      ? {
-          ...catalog,
-          artworks: publicArtworks(catalog),
-        }
+      ? (() => {
+          const arts = publicArtworks(catalog);
+          const pubIds = new Set(arts.map((a) => a.id));
+          const layout = catalog.layout
+            ? {
+                ...catalog.layout,
+                placements: (catalog.layout.placements || []).filter((p) =>
+                  pubIds.has(p.artworkId),
+                ),
+              }
+            : catalog.layout;
+          return { ...catalog, artworks: arts, layout };
+        })()
       : catalog;
 
   return NextResponse.json(payload, {

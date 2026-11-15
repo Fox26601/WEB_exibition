@@ -14,7 +14,7 @@ const localizedSchema = z.object({
 
 const artworkSchema = z.object({
   id: z.string().optional(),
-  type: z.enum(["image", "video"]),
+  type: z.enum(["image", "video", "model"]),
   sort: z.number().optional(),
   published: z.boolean().default(false),
   title: localizedSchema.optional(),
@@ -23,6 +23,8 @@ const artworkSchema = z.object({
   urlFull: z.string().default(""),
   urlVideo: z.string().default(""),
   urlPoster: z.string().default(""),
+  modelUrl: z.string().optional(),
+  frameId: z.enum(["thin", "wood", "metal", "ornate", "none"]).optional(),
 });
 
 export async function GET() {
@@ -61,6 +63,8 @@ export async function POST(req: NextRequest) {
     urlFull: data.urlFull,
     urlVideo: data.urlVideo,
     urlPoster: data.urlPoster,
+    modelUrl: data.modelUrl || "",
+    frameId: data.frameId || (data.type === "model" ? "none" : "wood"),
   };
 
   const catalog = await upsertArtwork(artwork);

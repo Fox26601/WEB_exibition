@@ -6,7 +6,8 @@ namespace Gallery.Catalog
     public enum ArtworkType
     {
         Image,
-        Video
+        Video,
+        Model
     }
 
     [Serializable]
@@ -62,11 +63,80 @@ namespace Gallery.Catalog
         public string urlFull;
         public string urlVideo;
         public string urlPoster;
+        public string modelUrl;
+        public string frameId = "wood";
 
-        public ArtworkType ArtworkType =>
-            string.Equals(type, "video", StringComparison.OrdinalIgnoreCase)
-                ? ArtworkType.Video
-                : ArtworkType.Image;
+        public ArtworkType ArtworkType
+        {
+            get
+            {
+                if (string.Equals(type, "video", StringComparison.OrdinalIgnoreCase))
+                    return ArtworkType.Video;
+                if (string.Equals(type, "model", StringComparison.OrdinalIgnoreCase))
+                    return ArtworkType.Model;
+                return ArtworkType.Image;
+            }
+        }
+    }
+
+    [Serializable]
+    public class RoomTransformData
+    {
+        public float x;
+        public float z;
+        public float rotation;
+        public float scaleX = 1f;
+        public float scaleZ = 1f;
+    }
+
+    [Serializable]
+    public class Vec2Data
+    {
+        public float x;
+        public float z;
+    }
+
+    [Serializable]
+    public class GalleryRoomData
+    {
+        public string id;
+        public string shape = "square";
+        public RoomTransformData transform = new RoomTransformData();
+        public Vec2Data[] vertices;
+    }
+
+    [Serializable]
+    public class RoomConnectionData
+    {
+        public string roomA;
+        public string roomB;
+        public int edgeA;
+        public int edgeB;
+        public float doorwayWidth = 1.2f;
+    }
+
+    [Serializable]
+    public class ArtworkPlacementData
+    {
+        public string artworkId;
+        public string kind = "painting";
+        public string roomId;
+        public int wallEdgeIndex;
+        public float tAlongEdge = 0.5f;
+        public float floorX;
+        public float floorZ;
+        public float yaw;
+        public string frameId = "wood";
+    }
+
+    [Serializable]
+    public class GalleryLayoutData
+    {
+        public GalleryRoomData[] rooms = Array.Empty<GalleryRoomData>();
+        public RoomConnectionData[] connections = Array.Empty<RoomConnectionData>();
+        public ArtworkPlacementData[] placements = Array.Empty<ArtworkPlacementData>();
+
+        public bool HasRooms => rooms != null && rooms.Length > 0;
     }
 
     [Serializable]
@@ -77,6 +147,7 @@ namespace Gallery.Catalog
         public CatalogSettings settings = new CatalogSettings();
         // JsonUtility requires arrays (not List<>) for JSON arrays.
         public ArtworkEntry[] artworks = Array.Empty<ArtworkEntry>();
+        public GalleryLayoutData layout;
     }
 
     /// <summary>
@@ -98,6 +169,15 @@ namespace Gallery.Catalog
 
             if (data.settings == null)
                 data.settings = new CatalogSettings();
+
+            if (data.layout == null)
+                data.layout = new GalleryLayoutData();
+            if (data.layout.rooms == null)
+                data.layout.rooms = Array.Empty<GalleryRoomData>();
+            if (data.layout.connections == null)
+                data.layout.connections = Array.Empty<RoomConnectionData>();
+            if (data.layout.placements == null)
+                data.layout.placements = Array.Empty<ArtworkPlacementData>();
 
             return data;
         }

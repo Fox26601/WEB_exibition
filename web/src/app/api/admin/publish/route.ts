@@ -8,5 +8,9 @@ export async function POST() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const catalog = await publishDraft();
-  return NextResponse.json({ catalog, message: "Catalog published" });
+  return NextResponse.json({
+    catalog,
+    dirty: false,
+    message: "Catalog published to live site",
+  });
 }
