@@ -20,12 +20,17 @@ import {
   normalizeLayout,
 } from "@/lib/catalog-types";
 import {
+  ENTRANCE_PORTAL_EDGE,
   defaultRoomTransform,
+  edgeMidpoint,
+  edgeNormal,
+  edgePoints,
   entranceAsRoom,
   entranceWorldVertices,
   recomputeConnections,
   roomWorldVertices,
   roomsWithEntrance,
+  rotateEntranceToAlignPortal,
   softSnapEntrance,
   softSnapRoom,
   type Vec2,
@@ -300,9 +305,17 @@ export function GalleryRoomEditor({
       const snapped =
         drag.mode === "move"
           ? softSnapRoom(moving, others)
-          : { room: moving };
+          : { room: moving, snappedTo: null, ownEdge: -1 };
+      let entrance = current.entrance;
+      if (
+        drag.mode === "move" &&
+        snapped.snappedTo?.roomId === ENTRANCE_ROOM_ID
+      ) {
+        entrance = rotateEntranceToAlignPortal(entrance, snapped.snappedTo);
+      }
       commit({
         ...current,
+        entrance,
         rooms: rooms.map((r) =>
           r.id === drag.targetId ? snapped.room : r,
         ),
@@ -344,8 +357,13 @@ export function GalleryRoomEditor({
         current.entrance,
       );
       const snapped = softSnapRoom(moving, others);
+      let entrance = current.entrance;
+      if (snapped.snappedTo?.roomId === ENTRANCE_ROOM_ID) {
+        entrance = rotateEntranceToAlignPortal(entrance, snapped.snappedTo);
+      }
       commit({
         ...current,
+        entrance,
         rooms: rooms.map((r) =>
           r.id === drag.targetId ? snapped.room : r,
         ),
@@ -378,6 +396,41 @@ export function GalleryRoomEditor({
 
   const entranceVerts = entranceWorldVertices(normalized.entrance);
   const entranceSelected = selectedRoomId === ENTRANCE_ROOM_ID;
+  const entranceLinked = normalized.connections.some(
+    (c) => c.roomA === ENTRANCE_ROOM_ID || c.roomB === ENTRANCE_ROOM_ID,
+  );
+  const portalAccent = entranceLinked ? "#8aa0b8" : "#c9a227";
+  const entrancePortalOverlay = useMemo(() => {
+    const [pa, pb] = edgePoints(entranceVerts, ENTRANCE_PORTAL_EDGE);
+    const mid = edgeMidpoint(pa, pb);
+    const n = edgeNormal(pa, pb);
+    const centroid = roomCentroid(entranceVerts);
+    const inwardX = centroid.x - mid.x;
+    const inwardZ = centroid.z - mid.z;
+    const intoGallery =
+      n.x * inwardX + n.z * inwardZ > 0
+        ? { x: n.x, z: n.z }
+        : { x: -n.x, z: -n.z };
+    const spawn = {
+      x: mid.x - intoGallery.x * 0.45,
+      z: mid.z - intoGallery.z * 0.45,
+    };
+    const arrowTip = {
+      x: mid.x + intoGallery.x * 0.55,
+      z: mid.z + intoGallery.z * 0.55,
+    };
+    const pMid = worldToSvg(mid, origin);
+    const pSpawn = worldToSvg(spawn, origin);
+    const pArrow = worldToSvg(arrowTip, origin);
+  const edgeLines = entranceVerts.map((_, i) => {
+      const [ea, eb] = edgePoints(entranceVerts, i);
+      const p1 = worldToSvg(ea, origin);
+      const p2 = worldToSvg(eb, origin);
+      const isPortal = i === ENTRANCE_PORTAL_EDGE;
+      return { i, p1, p2, isPortal };
+    });
+    return { edgeLines, pMid, pSpawn, pArrow };
+  }, [entranceVerts, origin]);
   const canDeleteSelected =
     selectedRoomId != null && selectedRoomId !== ENTRANCE_ROOM_ID;
 
@@ -436,19 +489,19 @@ export function GalleryRoomEditor({
               Delete room
             </button>
           ) : null}
-          {normalized.rooms.length === 0 ? (
-            <p className="w-full text-sm text-[var(--paper-dim)]">
-              Add at least one room before 3D placement. Entrance is always on
-              the plan — drag to move, tap to rotate 90°.
-            </p>
-          ) : (
-            <p className="w-full text-sm text-[var(--paper-dim)]">
-              Drag rooms to move; corner handle stretches. Tap room to rotate
-              90°. Soft snap creates mid-edge doorways (
-              {normalized.connections.length}). Artworks are placed in 3D on the
-              next step.
-            </p>
-          )}
+          <p
+            className="w-full text-sm text-[var(--paper-dim)]"
+            title="Entrance: bright edge is the gallery door; spawn is outside. Snap rotates the block for you. Tap entrance for +90°."
+          >
+            <span className="text-[var(--amber-bright)]">Вход:</span> широкая
+            светлая грань — дверь в галерею; точка{" "}
+            <span className="text-[#8aa0b8]">spawn</span> снаружи. Подведи портал
+            к комнате (или комнату ко входу) — поворот подстроится сам. Тап по
+            блоку — поворот 90°.
+            {normalized.rooms.length > 0
+              ? ` Комнаты: перетаскивание, угол — stretch; дверей: ${normalized.connections.length}. Арт — на шаге 3D.`
+              : " Добавьте хотя бы одну комнату перед 3D."}
+          </p>
       </div>
 
       <div className="overflow-auto bg-[#12100e] p-2">
@@ -466,18 +519,71 @@ export function GalleryRoomEditor({
             height={VIEW_H}
             fill="#0e0c0a"
           />
+          <defs>
+            <marker
+              id="entrance-portal-arrow"
+              markerWidth="8"
+              markerHeight="8"
+              refX="6"
+              refY="4"
+              orient="auto"
+            >
+              <path d="M0,0 L8,4 L0,8 Z" fill={portalAccent} />
+            </marker>
+          </defs>
 
           <g>
             <path
               d={polygonPath(entranceVerts, origin)}
               fill={entranceSelected ? "#2a3540" : "#1a222c"}
-              stroke={entranceSelected ? "#8aa0b8" : "#4a5c70"}
-              strokeWidth={entranceSelected ? 2.5 : 1.5}
+              stroke="none"
               onPointerDown={(e) =>
                 onBodyPointerDown(e, ENTRANCE_ROOM_ID, "move")
               }
               style={{ cursor: "grab" }}
             />
+            {entrancePortalOverlay.edgeLines.map(({ i, p1, p2, isPortal }) => (
+              <line
+                key={`ent-edge-${i}`}
+                x1={p1.x}
+                y1={p1.y}
+                x2={p2.x}
+                y2={p2.y}
+                stroke={isPortal ? portalAccent : "#3a4554"}
+                strokeWidth={isPortal ? 4 : 1}
+                strokeDasharray={isPortal ? undefined : "4 3"}
+                className="pointer-events-none"
+              />
+            ))}
+            <line
+              x1={entrancePortalOverlay.pMid.x}
+              y1={entrancePortalOverlay.pMid.y}
+              x2={entrancePortalOverlay.pArrow.x}
+              y2={entrancePortalOverlay.pArrow.y}
+              stroke={portalAccent}
+              strokeWidth={2}
+              markerEnd="url(#entrance-portal-arrow)"
+              className="pointer-events-none"
+            />
+            <circle
+              cx={entrancePortalOverlay.pSpawn.x}
+              cy={entrancePortalOverlay.pSpawn.y}
+              r={5}
+              fill="#6a7a8c"
+              stroke="#c9d4e0"
+              strokeWidth={1.5}
+              className="pointer-events-none"
+            />
+            <text
+              x={entrancePortalOverlay.pSpawn.x}
+              y={entrancePortalOverlay.pSpawn.y - 10}
+              textAnchor="middle"
+              fill="#c9d4e0"
+              fontSize={9}
+              className="pointer-events-none select-none"
+            >
+              spawn
+            </text>
             <text
               x={worldToSvg(roomCentroid(entranceVerts), origin).x}
               y={worldToSvg(roomCentroid(entranceVerts), origin).y}
