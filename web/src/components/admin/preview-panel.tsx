@@ -11,7 +11,6 @@ import { emptyLocalized, LOCALES, emptyLayout } from "@/lib/catalog-types";
 import { LangSwitcher } from "@/components/lang-switcher";
 import { pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
-import { RoomSchematic } from "./room-schematic";
 import {
   GalleryLayoutEditor,
   ensureLayout,
@@ -186,16 +185,6 @@ export function PreviewPanel() {
     }
   }
 
-  async function reorderPublished(publishedIds: string[]) {
-    if (!catalog) return;
-    const pubSet = new Set(publishedIds);
-    const unpublished = catalog.artworks
-      .filter((a) => !pubSet.has(a.id))
-      .sort((a, b) => a.sort - b.sort)
-      .map((a) => a.id);
-    await reorder([...publishedIds, ...unpublished]);
-  }
-
   async function move(id: string, dir: -1 | 1) {
     const ids = allArts.map((a) => a.id);
     const i = ids.indexOf(id);
@@ -350,40 +339,22 @@ export function PreviewPanel() {
         />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div>
-          <h2 className="mb-2 font-[family-name:var(--font-display)] text-lg font-semibold">
-            Fallback schematic
-          </h2>
-          <p className="mb-3 text-sm text-[var(--paper-dim)]">
-            Used when layout has no rooms (rect L/R). Drag to reorder published
-            slots.
-          </p>
-          <RoomSchematic
-            artworks={publishedArts.filter((a) => a.type !== "model")}
-            highlightedId={highlightedId}
-            onSelect={setHighlightedId}
-            onReorder={busy ? undefined : reorderPublished}
-            localeTitle={(art) => pickLocalized(art.title, locale)}
+      <div className="mb-8 border border-[var(--line)] bg-[#1a1612]">
+        <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-2 text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
+          <span>Exhibition draft iframe · {locale.toUpperCase()}</span>
+        </div>
+        {iframeSrc ? (
+          <iframe
+            key={`draft-${iframeKey}-${locale}-${token}`}
+            title="Draft exhibition"
+            src={iframeSrc}
+            className="h-[420px] w-full bg-black"
           />
-        </div>
-        <div className="border border-[var(--line)] bg-[#1a1612]">
-          <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-2 text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
-            <span>Exhibition draft iframe · {locale.toUpperCase()}</span>
+        ) : (
+          <div className="flex h-[420px] items-center justify-center text-[var(--paper-dim)]">
+            Loading…
           </div>
-          {iframeSrc ? (
-            <iframe
-              key={`draft-${iframeKey}-${locale}-${token}`}
-              title="Draft exhibition"
-              src={iframeSrc}
-              className="h-[420px] w-full bg-black"
-            />
-          ) : (
-            <div className="flex h-[420px] items-center justify-center text-[var(--paper-dim)]">
-              Loading…
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
       <div className="mt-8">
