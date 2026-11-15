@@ -20,9 +20,8 @@ namespace Gallery.Room
         MeshRenderer _frameRenderer;
         bool _selected;
 
-        static Material s_placeholder;
         static Material s_frameMat;
-        static readonly Color FrameColor = new Color(0.18f, 0.16f, 0.14f);
+        static readonly Color FrameColor = new Color(0.42f, 0.32f, 0.22f);
         static readonly Color SelectedFrameColor = new Color(0.85f, 0.72f, 0.28f);
 
         public void Setup(ArtworkEntry entry, int index)
@@ -54,17 +53,11 @@ namespace Gallery.Room
             Object.Destroy(canvas.GetComponent<Collider>());
 
             _canvasRenderer = canvas.GetComponent<MeshRenderer>();
-            _canvasMaterial = new Material(PlaceholderMaterial());
-            _canvasRenderer.sharedMaterial = _canvasMaterial;
+            _canvasMaterial = RuntimeMaterials.CreateTextured(Color.white);
+            _canvasRenderer.material = _canvasMaterial;
             // Distinct placeholder so empty urlWall still reads as a hung work.
             // HasTexture stays false so streaming can replace when a URL exists.
-            var placeholder = MakeEmbeddedPlaceholder(Entry, Index);
-            _loadedTexture = placeholder;
-            _canvasMaterial.mainTexture = placeholder;
-            if (_canvasMaterial.HasProperty("_BaseMap"))
-                _canvasMaterial.SetTexture("_BaseMap", placeholder);
-            SetColor(Color.white);
-            HasTexture = false;
+            ApplyPlaceholder();
 
             if (IsVideo)
             {
@@ -97,16 +90,11 @@ namespace Gallery.Room
 
             if (texture == null)
             {
-                _canvasMaterial.mainTexture = null;
-                if (_canvasMaterial.HasProperty("_BaseMap"))
-                    _canvasMaterial.SetTexture("_BaseMap", null);
-                SetColor(new Color(0.75f, 0.75f, 0.72f));
+                ApplyPlaceholder();
                 return;
             }
 
-            _canvasMaterial.mainTexture = texture;
-            if (_canvasMaterial.HasProperty("_BaseMap"))
-                _canvasMaterial.SetTexture("_BaseMap", texture);
+            BindTexture(texture);
             SetColor(Color.white);
         }
 
@@ -119,16 +107,27 @@ namespace Gallery.Room
             }
 
             HasTexture = false;
-            if (_canvasMaterial != null)
-            {
-                // Restore embedded placeholder so the slot stays visible.
-                var placeholder = MakeEmbeddedPlaceholder(Entry, Index);
-                _loadedTexture = placeholder;
-                _canvasMaterial.mainTexture = placeholder;
-                if (_canvasMaterial.HasProperty("_BaseMap"))
-                    _canvasMaterial.SetTexture("_BaseMap", placeholder);
-                SetColor(Color.white);
-            }
+            ApplyPlaceholder();
+        }
+
+        void ApplyPlaceholder()
+        {
+            if (_canvasMaterial == null) return;
+            var placeholder = MakeEmbeddedPlaceholder(Entry, Index);
+            _loadedTexture = placeholder;
+            BindTexture(placeholder);
+            SetColor(Color.white);
+            HasTexture = false;
+        }
+
+        void BindTexture(Texture texture)
+        {
+            if (_canvasMaterial == null) return;
+            _canvasMaterial.mainTexture = texture;
+            if (_canvasMaterial.HasProperty("_MainTex"))
+                _canvasMaterial.SetTexture("_MainTex", texture);
+            if (_canvasMaterial.HasProperty("_BaseMap"))
+                _canvasMaterial.SetTexture("_BaseMap", texture);
         }
 
         public void SetSelected(bool selected)
@@ -157,17 +156,10 @@ namespace Gallery.Room
                 _canvasMaterial.SetColor("_Color", c);
         }
 
-        static Material PlaceholderMaterial()
-        {
-            if (s_placeholder != null) return s_placeholder;
-            s_placeholder = RuntimeMaterials.CreateTextured(new Color(0.75f, 0.75f, 0.72f));
-            return s_placeholder;
-        }
-
         static Material FrameMaterial()
         {
             if (s_frameMat != null) return s_frameMat;
-            s_frameMat = RuntimeMaterials.Create(new Color(0.18f, 0.16f, 0.14f));
+            s_frameMat = RuntimeMaterials.Create(FrameColor);
             return s_frameMat;
         }
 

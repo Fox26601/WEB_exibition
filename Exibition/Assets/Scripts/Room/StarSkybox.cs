@@ -9,7 +9,7 @@ namespace Gallery.Room
     public static class StarSkybox
     {
         const int FaceSize = 128;
-        const int StarsPerFace = 48;
+        const int StarsPerFace = 96;
 
         static Material _skyMat;
         static Cubemap _cube;

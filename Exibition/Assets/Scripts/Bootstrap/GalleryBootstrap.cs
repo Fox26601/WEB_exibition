@@ -107,13 +107,13 @@ namespace Gallery.Bootstrap
             var lightGo = new GameObject("KeyLight");
             var light = lightGo.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.intensity = 1.05f;
+            light.intensity = 1.15f;
             light.shadows = QualityTier.IsMobileTier ? LightShadows.None : LightShadows.Hard;
             lightGo.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
 
+            // Soft fill so Unlit/lit walls stay readable under the night skybox.
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.55f, 0.55f, 0.58f);
-            // Skybox applied after Main Camera exists (StarSkybox.Apply).
+            RenderSettings.ambientLight = new Color(0.62f, 0.64f, 0.70f);
         }
     }
 }

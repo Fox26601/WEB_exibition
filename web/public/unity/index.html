@@ -63,6 +63,7 @@
         productName: "Exibition",
         productVersion: "0.1.0",
         showBanner: unityShowBanner,
+        webglContextAttributes: { preserveDrawingBuffer: true },
         // errorHandler: function(err, url, line) {
         //    alert("error " + err + " occurred at line " + line);
         //    // Return 'true' if you handled this error and don't want Unity
@@ -96,7 +97,6 @@
       canvas.className = "unity-mobile";
       canvas.style.width = "100%";
       canvas.style.height = "100%";
-      // Host page owns chrome; hide Unity template footer (fullscreen / title).
       var footer = document.querySelector("#unity-footer");
       if (footer) footer.style.display = "none";
 

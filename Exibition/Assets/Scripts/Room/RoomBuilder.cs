@@ -65,7 +65,15 @@ namespace Gallery.Room
             _root.SetParent(transform, false);
 
             CreateBox("Floor", new Vector3(0f, -0.05f, _length * 0.5f), new Vector3(Width, 0.1f, _length), floorColor);
-            CreateBox("Ceiling", new Vector3(0f, Height + 0.05f, _length * 0.5f), new Vector3(Width, 0.1f, _length), ceilingColor);
+            // Perimeter ceiling only — open skylight so the star skybox reads above the gallery.
+            var rim = 0.55f;
+            var openW = Mathf.Max(1f, Width - rim * 2f);
+            var openL = Mathf.Max(1f, _length - rim * 2f);
+            var ceilY = Height + 0.05f;
+            CreateBox("CeilNear", new Vector3(0f, ceilY, rim * 0.5f), new Vector3(Width, 0.1f, rim), ceilingColor);
+            CreateBox("CeilFar", new Vector3(0f, ceilY, _length - rim * 0.5f), new Vector3(Width, 0.1f, rim), ceilingColor);
+            CreateBox("CeilLeft", new Vector3(-Width * 0.5f + rim * 0.5f, ceilY, _length * 0.5f), new Vector3(rim, 0.1f, openL), ceilingColor);
+            CreateBox("CeilRight", new Vector3(Width * 0.5f - rim * 0.5f, ceilY, _length * 0.5f), new Vector3(rim, 0.1f, openL), ceilingColor);
             CreateBox("WallLeft", new Vector3(-Width * 0.5f, Height * 0.5f, _length * 0.5f), new Vector3(0.12f, Height, _length), wallColor);
             CreateBox("WallRight", new Vector3(Width * 0.5f, Height * 0.5f, _length * 0.5f), new Vector3(0.12f, Height, _length), wallColor);
             CreateBox("WallNear", new Vector3(0f, Height * 0.5f, 0f), new Vector3(Width, Height, 0.12f), wallColor);
