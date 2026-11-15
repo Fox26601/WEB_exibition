@@ -97,8 +97,10 @@ namespace Gallery.Bootstrap
                 spawner.Spawn(catalog);
 
                 var adminBuild = loader.AdminBuildMode || AdminBuildMode.Active;
-                if (!adminBuild)
+                if (!AdminBuildMode.LightLoad)
                     StarSkybox.Apply(cam);
+                else
+                    ApplyLightPreviewRendering();
 
                 if (adminBuild)
                 {
@@ -128,11 +130,23 @@ namespace Gallery.Bootstrap
                     yaw: entrance.SpawnYaw,
                     spawnX: entrance.SpawnX);
                 booklet.Bind(null, entrance.Pedestal, loader.InitialLang);
-                if (!AdminBuildMode.Active)
+                if (!AdminBuildMode.LightLoad)
                     StarSkybox.Apply(cam);
             };
 
             loader.BeginLoad();
+        }
+
+        static void ApplyLightPreviewRendering()
+        {
+            var lights = Object.FindObjectsByType<Light>(FindObjectsSortMode.None);
+            for (var i = 0; i < lights.Length; i++)
+            {
+                if (lights[i] != null && lights[i].type == LightType.Directional)
+                    lights[i].shadows = LightShadows.None;
+            }
+
+            RenderSettings.ambientLight = new Color(0.78f, 0.79f, 0.82f);
         }
 
         static void EnsureEventSystem()

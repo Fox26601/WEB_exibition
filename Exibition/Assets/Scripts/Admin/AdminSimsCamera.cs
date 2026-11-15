@@ -4,14 +4,14 @@ using UnityEngine;
 namespace Gallery.Admin
 {
     /// <summary>
-    /// Fixed isometric pan/zoom for admin build mode. Orbit is optional (Shift+LMB).
+    /// Fixed isometric pan/zoom for admin build mode. LMB drag orbits; RMB pans.
     /// </summary>
     public class AdminSimsCamera : MonoBehaviour
     {
         [SerializeField] float panSensitivity = 0.012f;
         [SerializeField] float zoomSensitivity = 1.8f;
-        [SerializeField] float minPitch = 44f;
-        [SerializeField] float maxPitch = 44f;
+        [SerializeField] float minPitch = 28f;
+        [SerializeField] float maxPitch = 68f;
         [SerializeField] float minDistance = 4f;
         [SerializeField] float maxDistance = 80f;
         [SerializeField] float orbitSensitivity = 0.35f;
@@ -55,7 +55,7 @@ namespace Gallery.Admin
             var orbit =
                 Input.GetMouseButton(0) &&
                 !Input.GetKey(KeyCode.Space) &&
-                (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift));
+                !AdminPlacementController.BlocksCameraInput;
 
             if (orbit)
             {

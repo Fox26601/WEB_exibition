@@ -290,6 +290,8 @@ namespace Gallery.Room
             for (var i = 0; i < verts.Length; i++)
                 meshVerts[i] = new Vector3(verts[i].x, -0.05f, verts[i].z);
 
+            PolygonTriangulation.EnsureNormalsFaceUp(verts, triangles);
+
             var mesh = new Mesh { name = "RoomFloor" };
             mesh.vertices = meshVerts;
             mesh.triangles = triangles;
@@ -301,7 +303,18 @@ namespace Gallery.Room
             floorGo.AddComponent<MeshFilter>().sharedMesh = mesh;
             floorGo.AddComponent<MeshRenderer>().sharedMaterial = CreateMaterial(floorColor);
             var col = floorGo.AddComponent<MeshCollider>();
+            col.convex = false;
             col.sharedMesh = mesh;
+        }
+
+        void CreateBoxUnder(Transform parent, string name, Vector3 worldPos, Vector3 scale, Color color)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(parent, false);
+            go.transform.position = worldPos;
+            go.transform.localScale = scale;
+            go.GetComponent<MeshRenderer>().sharedMaterial = CreateMaterial(color);
         }
 
         float FindDoorwayWidth(GalleryLayoutData layout, string roomId, int edgeIndex)

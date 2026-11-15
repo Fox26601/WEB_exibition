@@ -20,6 +20,12 @@ namespace Gallery.Admin
         bool _dragging;
         bool _useExternalPointer;
         Vector2 _externalScreen;
+        Vector2 _pointerDown;
+        bool _awaitingClickPick;
+        const float ClickPickThresholdPixels = 8f;
+
+        /// <summary>True while placing from palette, ghost drag, or in-scene pick drag.</summary>
+        public static bool BlocksCameraInput { get; private set; }
 
         public void Initialize(
             RoomBuilder room,
@@ -51,6 +57,7 @@ namespace Gallery.Admin
                 return;
             _activeDrag = msg;
             _dragging = true;
+            BlocksCameraInput = true;
             _useExternalPointer = true;
             EnsureGhost(msg);
         }
@@ -77,6 +84,7 @@ namespace Gallery.Admin
                 Destroy(_ghost);
             _ghost = null;
             _activeDrag = null;
+            BlocksCameraInput = false;
         }
 
         public void Remove(string artworkId)
@@ -106,15 +114,33 @@ namespace Gallery.Admin
             {
                 if (!_useExternalPointer)
                     UpdateGhostFromRay();
+                BlocksCameraInput = true;
                 return;
             }
 
             if (_camera == null || _dragging) return;
-            if (!Input.GetMouseButtonDown(0)) return;
-            if (Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
-                return;
 
-            TryPickExistingArtwork();
+            if (Input.GetMouseButtonDown(0) &&
+                !Input.GetKey(KeyCode.Space))
+            {
+                _pointerDown = Input.mousePosition;
+                _awaitingClickPick = true;
+            }
+
+            if (_awaitingClickPick && Input.GetMouseButton(0))
+            {
+                var moved = ((Vector2)Input.mousePosition - _pointerDown).sqrMagnitude;
+                if (moved > ClickPickThresholdPixels * ClickPickThresholdPixels)
+                    _awaitingClickPick = false;
+            }
+
+            if (Input.GetMouseButtonUp(0) && _awaitingClickPick)
+            {
+                _awaitingClickPick = false;
+                var moved = ((Vector2)Input.mousePosition - _pointerDown).sqrMagnitude;
+                if (moved <= ClickPickThresholdPixels * ClickPickThresholdPixels)
+                    TryPickExistingArtwork();
+            }
         }
 
         void TryPickExistingArtwork()
@@ -134,6 +160,7 @@ namespace Gallery.Admin
                 frameId = view.FrameId,
             };
             _dragging = true;
+            BlocksCameraInput = true;
             _useExternalPointer = false;
             EnsureGhost(_activeDrag);
             UpdateGhostFromRay();

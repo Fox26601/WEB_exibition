@@ -34,11 +34,12 @@ namespace Gallery.Catalog
 
         void Awake()
         {
-            ParseQueryParams(out var mode, out var lang, out _, out var adminBuild);
+            ParseQueryParams(out var mode, out var lang, out _, out var adminBuild, out var previewLite);
             CatalogMode = mode;
             InitialLang = lang;
             AdminBuildMode = adminBuild;
             Gallery.Admin.AdminBuildMode.Active = adminBuild;
+            Gallery.Admin.AdminBuildMode.LightLoad = adminBuild || previewLite;
         }
 
         public void BeginLoad()
@@ -52,11 +53,12 @@ namespace Gallery.Catalog
             IsLoaded = false;
             LastError = null;
 
-            ParseQueryParams(out var mode, out var lang, out var token, out var adminBuild);
+            ParseQueryParams(out var mode, out var lang, out var token, out var adminBuild, out var previewLite);
             CatalogMode = mode;
             InitialLang = lang;
             AdminBuildMode = adminBuild;
             Gallery.Admin.AdminBuildMode.Active = adminBuild;
+            Gallery.Admin.AdminBuildMode.LightLoad = adminBuild || previewLite;
 
             var url = BuildCatalogUrl(mode, token);
             using (var req = UnityWebRequest.Get(url))
@@ -175,12 +177,14 @@ namespace Gallery.Catalog
             out string catalogMode,
             out string lang,
             out string token,
-            out bool adminBuild)
+            out bool adminBuild,
+            out bool previewLite)
         {
             catalogMode = "live";
             lang = "en";
             token = "";
             adminBuild = false;
+            previewLite = false;
 
             var absolute = Application.absoluteURL;
             if (string.IsNullOrEmpty(absolute))
@@ -220,6 +224,8 @@ namespace Gallery.Catalog
                     case "mode":
                         if (string.Equals(value, "admin-build", StringComparison.OrdinalIgnoreCase))
                             adminBuild = true;
+                        else if (string.Equals(value, "preview-lite", StringComparison.OrdinalIgnoreCase))
+                            previewLite = true;
                         else if (string.Equals(value, "draft", StringComparison.OrdinalIgnoreCase))
                             catalogMode = "draft";
                         else if (string.Equals(value, "live", StringComparison.OrdinalIgnoreCase))
