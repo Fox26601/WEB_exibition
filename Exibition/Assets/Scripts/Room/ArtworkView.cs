@@ -45,19 +45,19 @@ namespace Gallery.Room
             var frameCol = frame.GetComponent<Collider>();
             frameCol.isTrigger = false;
 
-            // Thin cube (not Quad) so WebGL backface culling cannot hide the picture plane.
+            // Thick enough cube to survive WebGL depth precision at gallery distance.
             var canvas = GameObject.CreatePrimitive(PrimitiveType.Cube);
             canvas.name = "Canvas";
             canvas.transform.SetParent(transform, false);
-            canvas.transform.localPosition = new Vector3(0f, 0f, -0.12f);
-            canvas.transform.localScale = new Vector3(1.52f, 1.02f, 0.02f);
+            canvas.transform.localPosition = new Vector3(0f, 0f, -0.14f);
+            canvas.transform.localScale = new Vector3(1.5f, 1.0f, 0.12f);
             Object.Destroy(canvas.GetComponent<Collider>());
 
             _canvasRenderer = canvas.GetComponent<MeshRenderer>();
-            _canvasMaterial = RuntimeMaterials.CreateTextured(Color.white);
+            // Solid Unlit color first (always visible), then bind wall texture when present.
+            var placeholderTint = Color.HSVToRGB((Index * 0.19f + 0.08f) % 1f, 0.35f, 0.75f);
+            _canvasMaterial = RuntimeMaterials.Create(placeholderTint);
             _canvasRenderer.material = _canvasMaterial;
-            // Distinct placeholder so empty urlWall still reads as a hung work.
-            // HasTexture stays false so streaming can replace when a URL exists.
             ApplyPlaceholder();
 
             if (IsVideo)
@@ -114,8 +114,13 @@ namespace Gallery.Room
         void ApplyPlaceholder()
         {
             if (_canvasMaterial == null) return;
+            // Prefer a textured material when the shader exists; otherwise keep solid tint.
+            var textured = RuntimeMaterials.CreateTextured(Color.white);
             var placeholder = MakeEmbeddedPlaceholder(Entry, Index);
             _loadedTexture = placeholder;
+            _canvasMaterial = textured;
+            if (_canvasRenderer != null)
+                _canvasRenderer.material = _canvasMaterial;
             BindTexture(placeholder);
             SetColor(Color.white);
             HasTexture = false;
@@ -129,6 +134,12 @@ namespace Gallery.Room
                 _canvasMaterial.SetTexture("_MainTex", texture);
             if (_canvasMaterial.HasProperty("_BaseMap"))
                 _canvasMaterial.SetTexture("_BaseMap", texture);
+            // If the active shader ignores maps, keep a non-frame tint so the plate stays visible.
+            if (!_canvasMaterial.HasProperty("_MainTex") && !_canvasMaterial.HasProperty("_BaseMap"))
+            {
+                var tint = Color.HSVToRGB((Index * 0.19f + 0.08f) % 1f, 0.4f, 0.8f);
+                SetColor(tint);
+            }
         }
 
         public void SetSelected(bool selected)
