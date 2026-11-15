@@ -24,6 +24,7 @@ export const UI: Record<
     lang: string;
     exhibition: string;
     emptyRoom: string;
+    onlineGallery: string;
   }
 > = {
   en: {
@@ -37,6 +38,7 @@ export const UI: Record<
     lang: "Language",
     exhibition: "Exhibition",
     emptyRoom: "The gallery awaits its first works.",
+    onlineGallery: "Online gallery",
   },
   ru: {
     enter: "Войти в выставку",
@@ -49,6 +51,7 @@ export const UI: Record<
     lang: "Язык",
     exhibition: "Выставка",
     emptyRoom: "Галерея ждёт первых работ.",
+    onlineGallery: "Онлайн-галерея",
   },
   uk: {
     enter: "Увійти на виставку",
@@ -61,6 +64,7 @@ export const UI: Record<
     lang: "Мова",
     exhibition: "Виставка",
     emptyRoom: "Галерея чекає на перші роботи.",
+    onlineGallery: "Онлайн-галерея",
   },
   he: {
     enter: "כניסה לתערוכה",
@@ -73,6 +77,7 @@ export const UI: Record<
     lang: "שפה",
     exhibition: "תערוכה",
     emptyRoom: "הגלריה ממתינה ליצירות הראשונות.",
+    onlineGallery: "גלריה מקוונת",
   },
 };
 

@@ -3,13 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Artwork, Catalog } from "@/lib/catalog-types";
-import {
-  UI,
-  direction,
-  isLocale,
-  pickLocalized,
-  type Locale,
-} from "@/lib/i18n";
+import { UI, pickLocalized } from "@/lib/i18n";
+import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
 import { GalleryScene } from "./gallery-scene";
 
@@ -18,7 +13,7 @@ export function ExhibitionApp({
 }: {
   unityAvailable?: boolean;
 }) {
-  const [locale, setLocale] = useState<Locale>("en");
+  const { locale, setLocale, dir } = useGalleryLocale();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Artwork | null>(null);
@@ -33,11 +28,6 @@ export function ExhibitionApp({
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const lang = params.get("lang");
-    const stored = localStorage.getItem("gallery-lang");
-    if (isLocale(lang)) setLocale(lang);
-    else if (isLocale(stored)) setLocale(stored);
-
     const kind = params.get("catalog") === "draft" ? "draft" : "live";
     const tok = params.get("token");
     setCatalogKind(kind);
@@ -54,12 +44,6 @@ export function ExhibitionApp({
       .then(setCatalog)
       .catch((e) => setError(e instanceof Error ? e.message : "Error"));
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem("gallery-lang", locale);
-    document.documentElement.lang = locale;
-    document.documentElement.dir = direction(locale);
-  }, [locale]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -106,7 +90,7 @@ export function ExhibitionApp({
 
   return (
     <div
-      dir={direction(locale)}
+      dir={dir}
       className="relative h-[100dvh] w-full overflow-hidden bg-black"
     >
       {/* Single chrome layer: HTML owns exit + lang when Unity is embedded (Unity skips its lang row). */}

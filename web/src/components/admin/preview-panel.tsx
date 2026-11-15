@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Artwork, Catalog, LocalizedString } from "@/lib/catalog-types";
 import { emptyLocalized, LOCALES } from "@/lib/catalog-types";
 import { LangSwitcher } from "@/components/lang-switcher";
-import { isLocale, type Locale } from "@/lib/i18n";
+import { pickLocalized } from "@/lib/i18n";
+import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { RoomSchematic } from "./room-schematic";
 
 const IMAGE_MAX = 8 * 1024 * 1024;
@@ -18,7 +19,7 @@ export function PreviewPanel() {
   const [message, setMessage] = useState("");
   const [editing, setEditing] = useState<Artwork | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
-  const [locale, setLocale] = useState<Locale>("en");
+  const { locale, setLocale } = useGalleryLocale();
   const [iframeKey, setIframeKey] = useState(0);
 
   const refresh = useCallback(async () => {
@@ -34,14 +35,8 @@ export function PreviewPanel() {
   }, []);
 
   useEffect(() => {
-    const stored = localStorage.getItem("gallery-lang");
-    if (isLocale(stored)) setLocale(stored);
     refresh().catch((e) => setError(e instanceof Error ? e.message : "Error"));
   }, [refresh]);
-
-  useEffect(() => {
-    localStorage.setItem("gallery-lang", locale);
-  }, [locale]);
 
   const publishedArts = useMemo(() => {
     if (!catalog) return [];
@@ -202,6 +197,7 @@ export function PreviewPanel() {
           highlightedId={highlightedId}
           onSelect={setHighlightedId}
           onReorder={busy ? undefined : reorderPublished}
+          localeTitle={(art) => pickLocalized(art.title, locale)}
         />
         <div className="border border-[var(--line)] bg-[#1a1612]">
           <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-2 text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">

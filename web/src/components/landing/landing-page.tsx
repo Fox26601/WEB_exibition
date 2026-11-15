@@ -1,37 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import type { Catalog } from "@/lib/catalog-types";
-import {
-  UI,
-  direction,
-  pickLocalized,
-  type Locale,
-  isLocale,
-} from "@/lib/i18n";
+import { UI, pickLocalized } from "@/lib/i18n";
+import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
 
 const BRAND = "Atelier";
 
 export function LandingPage({ initialCatalog }: { initialCatalog: Catalog }) {
-  const [locale, setLocale] = useState<Locale>("en");
+  const { locale, setLocale, dir } = useGalleryLocale();
   const [catalog] = useState(initialCatalog);
-
-  useEffect(() => {
-    const stored = localStorage.getItem("gallery-lang");
-    if (isLocale(stored)) setLocale(stored);
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem("gallery-lang", locale);
-    document.documentElement.lang = locale;
-    document.documentElement.dir = direction(locale);
-  }, [locale]);
 
   const copy = UI[locale];
   const poster = pickLocalized(catalog.settings.poster, locale);
-  const dir = direction(locale);
 
   return (
     <div
@@ -41,7 +24,7 @@ export function LandingPage({ initialCatalog }: { initialCatalog: Catalog }) {
       <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-6 sm:px-10 sm:py-8">
         <header className="animate-fade flex items-start justify-between gap-4">
           <p className="font-[family-name:var(--font-ui)] text-[0.7rem] uppercase tracking-[0.28em] text-[var(--paper-dim)]">
-            Online gallery
+            {copy.onlineGallery}
           </p>
           <LangSwitcher value={locale} onChange={setLocale} />
         </header>

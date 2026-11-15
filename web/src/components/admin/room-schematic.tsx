@@ -1,22 +1,32 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Artwork } from "@/lib/catalog-types";
 import { ROOM, roomLength, slotPose } from "@/lib/room";
 
 type Props = {
   artworks: Artwork[];
-  /** Called with reordered ids (all draft arts or published-only — caller decides). */
+  /** Called with reordered ids (published list order → Unity slot index). */
   onReorder?: (ids: string[]) => void;
   highlightedId?: string | null;
   onSelect?: (id: string) => void;
+  /** Locale for slot tooltips (falls back to en). */
+  localeTitle?: (art: Artwork) => string;
 };
+
+function slotIdFromPoint(clientX: number, clientY: number): string | null {
+  const el = document.elementFromPoint(clientX, clientY);
+  if (!el) return null;
+  const host = el.closest("[data-slot-id]");
+  return host?.getAttribute("data-slot-id") ?? null;
+}
 
 export function RoomSchematic({
   artworks,
   onReorder,
   highlightedId,
   onSelect,
+  localeTitle,
 }: Props) {
   const count = artworks.length;
   const length = roomLength(count);
@@ -30,36 +40,57 @@ export function RoomSchematic({
   const slots = artworks.map((art, i) => ({
     ...slotPose(i),
     id: art.id,
-    label: art.title.en || art.id.slice(0, 6),
+    label: localeTitle?.(art) || art.title.en || art.id.slice(0, 6),
   }));
 
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+  const dragIdRef = useRef<string | null>(null);
+  const artworksRef = useRef(artworks);
+  const onReorderRef = useRef(onReorder);
 
-  const finishDrag = useCallback(
-    (targetId: string | null) => {
-      if (!onReorder || !dragId || !targetId || dragId === targetId) {
-        setDragId(null);
-        setOverId(null);
-        return;
-      }
-      const ids = artworks.map((a) => a.id);
-      const from = ids.indexOf(dragId);
+  useEffect(() => {
+    artworksRef.current = artworks;
+    onReorderRef.current = onReorder;
+  }, [artworks, onReorder]);
+
+  useEffect(() => {
+    if (!dragId) return;
+
+    const onMove = (e: PointerEvent) => {
+      const hit = slotIdFromPoint(e.clientX, e.clientY);
+      if (hit) setOverId(hit);
+    };
+
+    const onUp = (e: PointerEvent) => {
+      const fromId = dragIdRef.current;
+      const targetId = slotIdFromPoint(e.clientX, e.clientY);
+      dragIdRef.current = null;
+      setDragId(null);
+      setOverId(null);
+
+      const reorder = onReorderRef.current;
+      if (!reorder || !fromId || !targetId || fromId === targetId) return;
+
+      const ids = artworksRef.current.map((a) => a.id);
+      const from = ids.indexOf(fromId);
       const to = ids.indexOf(targetId);
-      if (from < 0 || to < 0) {
-        setDragId(null);
-        setOverId(null);
-        return;
-      }
+      if (from < 0 || to < 0) return;
       const next = [...ids];
       const [moved] = next.splice(from, 1);
       next.splice(to, 0, moved);
-      onReorder(next);
-      setDragId(null);
-      setOverId(null);
-    },
-    [artworks, dragId, onReorder],
-  );
+      reorder(next);
+    };
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [dragId]);
 
   return (
     <div className="border border-[var(--line)] bg-[#1a1612] p-4">
@@ -74,7 +105,7 @@ export function RoomSchematic({
       </div>
       <svg
         viewBox={`0 0 ${svgW} ${svgH}`}
-        className="mx-auto max-h-80 w-full touch-none"
+        className="mx-auto max-h-80 w-full touch-none select-none"
         role="img"
         aria-label={`Room length ${length} meters for ${count} artworks`}
       >
@@ -95,25 +126,23 @@ export function RoomSchematic({
           return (
             <g
               key={s.id}
-              style={{ cursor: onReorder ? "grab" : onSelect ? "pointer" : "default" }}
+              data-slot-id={s.id}
+              style={{
+                cursor: onReorder ? "grab" : onSelect ? "pointer" : "default",
+              }}
               onPointerDown={(e) => {
-                if (!onReorder) {
-                  onSelect?.(s.id);
-                  return;
-                }
-                (e.currentTarget as SVGGElement).setPointerCapture?.(e.pointerId);
-                setDragId(s.id);
+                e.preventDefault();
                 onSelect?.(s.id);
-              }}
-              onPointerEnter={() => {
-                if (dragId) setOverId(s.id);
-              }}
-              onPointerUp={() => finishDrag(overId || s.id)}
-              onPointerCancel={() => {
-                setDragId(null);
-                setOverId(null);
+                if (!onReorder) return;
+                (e.currentTarget as SVGGElement).setPointerCapture?.(
+                  e.pointerId,
+                );
+                dragIdRef.current = s.id;
+                setDragId(s.id);
+                setOverId(s.id);
               }}
             >
+              <title>{s.label}</title>
               <rect
                 x={cx - 10}
                 y={cy - 8}
