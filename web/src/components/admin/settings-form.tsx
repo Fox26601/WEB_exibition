@@ -190,6 +190,10 @@ export function SettingsForm() {
             onChange={(e) => patch({ email: e.target.value })}
           />
         </div>
+        <p className="sm:col-span-2 text-xs text-[var(--paper-dim)]">
+          Exhibition footer Contact uses email + Instagram here; Review
+          submissions are stored with this email as destination metadata.
+        </p>
       </section>
 
       <section className="mb-8">
@@ -323,6 +327,9 @@ export function SettingsForm() {
         <h2 className="mb-3 text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
           About artist
         </h2>
+        <p className="mb-3 text-xs text-[var(--paper-dim)]">
+          Shown in the exhibition footer Contact modal (Artist section).
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {LOCALES.map((locale) => (
             <div key={`aa-${locale}`}>
@@ -348,6 +355,9 @@ export function SettingsForm() {
         <h2 className="mb-3 text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
           About curator
         </h2>
+        <p className="mb-3 text-xs text-[var(--paper-dim)]">
+          Shown in the exhibition footer Contact modal (Curator section).
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {LOCALES.map((locale) => (
             <div key={`ac-${locale}`}>

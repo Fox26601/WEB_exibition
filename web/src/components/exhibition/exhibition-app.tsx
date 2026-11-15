@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type RefObject,
+} from "react";
 import Link from "next/link";
 import type { Artwork, Catalog } from "@/lib/catalog-types";
 import { normalizeSettings } from "@/lib/catalog-types";
@@ -10,6 +17,10 @@ import { LangSwitcher } from "@/components/lang-switcher";
 import { GalleryScene } from "./gallery-scene";
 
 type InfoModal = "artist" | "curator" | "donate" | "links" | null;
+type FooterModal = "review" | "contact" | null;
+type ReviewStatus = "idle" | "sending" | "success" | "error";
+
+const SITE_BY_URL = "https://cvgorlov.vercel.app";
 
 export function ExhibitionApp({
   unityAvailable = false,
@@ -29,6 +40,11 @@ export function ExhibitionApp({
   const [catalogKind, setCatalogKind] = useState<"live" | "draft">("live");
   const [token, setToken] = useState<string | null>(null);
   const [infoModal, setInfoModal] = useState<InfoModal>(null);
+  const [footerModal, setFooterModal] = useState<FooterModal>(null);
+  const [reviewName, setReviewName] = useState("");
+  const [reviewEmail, setReviewEmail] = useState("");
+  const [reviewMessage, setReviewMessage] = useState("");
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("idle");
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -59,11 +75,44 @@ export function ExhibitionApp({
         setVideoOverlay(null);
         setInfoOpen(false);
         setInfoModal(null);
+        setFooterModal(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  function openFooterModal(kind: FooterModal) {
+    if (kind === "review") {
+      setReviewStatus("idle");
+    }
+    setInfoModal(null);
+    setFooterModal(kind);
+  }
+
+  async function submitReview(e: FormEvent) {
+    e.preventDefault();
+    if (reviewStatus === "sending") return;
+    setReviewStatus("sending");
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: reviewName,
+          email: reviewEmail,
+          message: reviewMessage,
+        }),
+      });
+      if (!res.ok) throw new Error("failed");
+      setReviewStatus("success");
+      setReviewName("");
+      setReviewEmail("");
+      setReviewMessage("");
+    } catch {
+      setReviewStatus("error");
+    }
+  }
 
   const artworks = useMemo(() => {
     if (!catalog) return [];
@@ -179,7 +228,7 @@ export function ExhibitionApp({
       </div>
 
       {unityAvailable ? (
-        <div className="pointer-events-none absolute bottom-5 start-1/2 z-20 -translate-x-1/2 sm:hidden">
+        <div className="pointer-events-none absolute bottom-14 start-1/2 z-20 -translate-x-1/2 sm:hidden">
           <button
             type="button"
             className="pointer-events-auto btn btn-solid !py-2 !px-5"
@@ -189,6 +238,34 @@ export function ExhibitionApp({
           </button>
         </div>
       ) : null}
+
+      {/* Compact exhibition footer: Review / Contact + Site by */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-3 p-3 sm:p-4">
+        <div className="pointer-events-auto flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="btn btn-ghost !border-white/20 !py-1.5 !px-3 !text-[0.65rem] !normal-case !tracking-wide !text-white/85"
+            onClick={() => openFooterModal("review")}
+          >
+            {copy.review}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost !border-white/20 !py-1.5 !px-3 !text-[0.65rem] !normal-case !tracking-wide !text-white/85"
+            onClick={() => openFooterModal("contact")}
+          >
+            {copy.contact}
+          </button>
+        </div>
+        <a
+          href={SITE_BY_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="pointer-events-auto text-[0.65rem] tracking-wide text-white/55 underline-offset-2 hover:text-white/85 hover:underline"
+        >
+          {copy.siteBy} cvgorlov
+        </a>
+      </div>
 
       {unityAvailable ? (
         <UnityEmbed
@@ -311,6 +388,135 @@ export function ExhibitionApp({
         </div>
       ) : null}
 
+      {footerModal === "review" ? (
+        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+          <div className="max-h-[70vh] w-full max-w-lg overflow-y-auto border border-[var(--line)] bg-[#12100e] p-6">
+            <h2 className="mb-4 font-[family-name:var(--font-display)] text-2xl font-bold">
+              {copy.review}
+            </h2>
+            {reviewStatus === "success" ? (
+              <p className="mb-4 text-[var(--amber-bright)]">
+                {copy.reviewSuccess}
+              </p>
+            ) : (
+              <form className="space-y-3" onSubmit={(e) => void submitReview(e)}>
+                <div>
+                  <label htmlFor="review-name">{copy.reviewName}</label>
+                  <input
+                    id="review-name"
+                    name="name"
+                    required
+                    maxLength={120}
+                    autoComplete="name"
+                    value={reviewName}
+                    onChange={(e) => setReviewName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="review-email">{copy.reviewEmail}</label>
+                  <input
+                    id="review-email"
+                    name="email"
+                    type="email"
+                    required
+                    maxLength={200}
+                    autoComplete="email"
+                    value={reviewEmail}
+                    onChange={(e) => setReviewEmail(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="review-message">{copy.reviewMessage}</label>
+                  <textarea
+                    id="review-message"
+                    name="message"
+                    required
+                    rows={5}
+                    maxLength={5000}
+                    value={reviewMessage}
+                    onChange={(e) => setReviewMessage(e.target.value)}
+                  />
+                </div>
+                {reviewStatus === "error" ? (
+                  <p className="text-sm text-[#e08a7a]">{copy.reviewError}</p>
+                ) : null}
+                <button
+                  type="submit"
+                  className="btn btn-solid"
+                  disabled={reviewStatus === "sending"}
+                >
+                  {reviewStatus === "sending"
+                    ? copy.reviewSending
+                    : copy.reviewSubmit}
+                </button>
+              </form>
+            )}
+            <button
+              type="button"
+              className="btn mt-6"
+              onClick={() => setFooterModal(null)}
+            >
+              {copy.close}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {footerModal === "contact" ? (
+        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+          <div className="max-h-[70vh] w-full max-w-lg overflow-y-auto border border-[var(--line)] bg-[#12100e] p-6">
+            <h2 className="mb-4 font-[family-name:var(--font-display)] text-2xl font-bold">
+              {copy.contact}
+            </h2>
+            <div className="space-y-6 text-[var(--paper-dim)]">
+              <section>
+                <h3 className="mb-2 text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
+                  {copy.artist}
+                </h3>
+                <p className="whitespace-pre-wrap leading-relaxed">
+                  {pickLocalized(settings.aboutArtist, locale) || "—"}
+                </p>
+              </section>
+              <section>
+                <h3 className="mb-2 text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
+                  {copy.curator}
+                </h3>
+                <p className="whitespace-pre-wrap leading-relaxed">
+                  {pickLocalized(settings.aboutCurator, locale) || "—"}
+                </p>
+              </section>
+              <section className="space-y-2">
+                {settings.email ? (
+                  <a
+                    href={`mailto:${settings.email}`}
+                    className="block hover:text-[var(--amber-bright)]"
+                  >
+                    {copy.email}: {settings.email}
+                  </a>
+                ) : null}
+                {settings.instagram ? (
+                  <a
+                    href={settings.instagram}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block hover:text-[var(--amber-bright)]"
+                  >
+                    {copy.instagram}
+                  </a>
+                ) : null}
+              </section>
+            </div>
+            <button
+              type="button"
+              className="btn mt-6"
+              onClick={() => setFooterModal(null)}
+            >
+              {copy.close}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {imageOverlay ? (
         <div
           className="absolute inset-0 z-40 flex items-center justify-center bg-black/90 p-4"
@@ -365,7 +571,7 @@ function UnityEmbed({
   catalogKind: string;
   token: string | null;
   lang: string;
-  iframeRef: React.RefObject<HTMLIFrameElement | null>;
+  iframeRef: RefObject<HTMLIFrameElement | null>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
 
