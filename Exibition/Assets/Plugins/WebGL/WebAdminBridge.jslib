@@ -25,4 +25,17 @@ mergeInto(LibraryManager.library, {
       console.warn("WebAdminBridge_SendReady", e);
     }
   },
+  WebAdminBridge_SendDragRejected: function (reasonPtr) {
+    var reason = UTF8ToString(reasonPtr);
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(
+          { type: "gallery-admin-drag-rejected", reason: reason || "rejected" },
+          window.location.origin
+        );
+      }
+    } catch (e) {
+      console.warn("WebAdminBridge_SendDragRejected", e);
+    }
+  },
 });

@@ -22,6 +22,8 @@ namespace Gallery.Admin
       LocaleUI locale,
       InteractionRaycaster raycaster)
     {
+      AdminBuildMode.SkipPlacementTextures = false;
+
       if (player != null)
       {
         player.InputBlocked = true;
@@ -55,6 +57,10 @@ namespace Gallery.Admin
 
       if (catalog?.layout != null)
         placement.ApplyLayout(catalog.layout);
+
+      var cutGo = new GameObject("WallCutaway");
+      var cut = cutGo.AddComponent<WallCutawayController>();
+      cut.Initialize(camera, room);
     }
   }
 }

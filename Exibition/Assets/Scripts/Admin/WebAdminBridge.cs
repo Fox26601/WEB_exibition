@@ -17,11 +17,17 @@ namespace Gallery.Admin
 
         [DllImport("__Internal")]
         static extern void WebAdminBridge_SendReady();
+
+        [DllImport("__Internal")]
+        static extern void WebAdminBridge_SendDragRejected(string reason);
 #else
         static void WebAdminBridge_SendPlacements(string json) =>
             Debug.Log("Admin placements: " + json);
 
         static void WebAdminBridge_SendReady() { }
+
+        static void WebAdminBridge_SendDragRejected(string reason) =>
+            Debug.Log("Admin drag rejected: " + reason);
 #endif
 
         AdminPlacementController _placement;
@@ -88,6 +94,11 @@ namespace Gallery.Admin
                 return;
             var wrap = new PlacementExport { placements = placements };
             WebAdminBridge_SendPlacements(JsonUtility.ToJson(wrap));
+        }
+
+        public void EmitDragRejected(string reason)
+        {
+            WebAdminBridge_SendDragRejected(reason ?? "rejected");
         }
     }
 
