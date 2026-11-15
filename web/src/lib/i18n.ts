@@ -30,6 +30,18 @@ export const UI: Record<
     donate: string;
     links: string;
     map: string;
+    review: string;
+    contact: string;
+    siteBy: string;
+    reviewName: string;
+    reviewEmail: string;
+    reviewMessage: string;
+    reviewSubmit: string;
+    reviewSending: string;
+    reviewSuccess: string;
+    reviewError: string;
+    artist: string;
+    curator: string;
   }
 > = {
   en: {
@@ -49,6 +61,18 @@ export const UI: Record<
     donate: "Donate",
     links: "Links",
     map: "Map",
+    review: "Review",
+    contact: "Contact",
+    siteBy: "Site by",
+    reviewName: "Name",
+    reviewEmail: "Email",
+    reviewMessage: "Message",
+    reviewSubmit: "Send",
+    reviewSending: "Sending…",
+    reviewSuccess: "Thank you — your review was received.",
+    reviewError: "Could not send. Please try again.",
+    artist: "Artist",
+    curator: "Curator",
   },
   ru: {
     enter: "Войти в выставку",
@@ -67,6 +91,18 @@ export const UI: Record<
     donate: "Донат",
     links: "Ссылки",
     map: "Карта",
+    review: "Отзыв",
+    contact: "Контакт",
+    siteBy: "Сайт",
+    reviewName: "Имя",
+    reviewEmail: "Email",
+    reviewMessage: "Сообщение",
+    reviewSubmit: "Отправить",
+    reviewSending: "Отправка…",
+    reviewSuccess: "Спасибо — отзыв получен.",
+    reviewError: "Не удалось отправить. Попробуйте ещё раз.",
+    artist: "Художник",
+    curator: "Куратор",
   },
   uk: {
     enter: "Увійти на виставку",
@@ -85,6 +121,18 @@ export const UI: Record<
     donate: "Донат",
     links: "Посилання",
     map: "Мапа",
+    review: "Відгук",
+    contact: "Контакт",
+    siteBy: "Сайт",
+    reviewName: "Імʼя",
+    reviewEmail: "Email",
+    reviewMessage: "Повідомлення",
+    reviewSubmit: "Надіслати",
+    reviewSending: "Надсилання…",
+    reviewSuccess: "Дякуємо — відгук отримано.",
+    reviewError: "Не вдалося надіслати. Спробуйте ще раз.",
+    artist: "Художник",
+    curator: "Куратор",
   },
   he: {
     enter: "כניסה לתערוכה",
@@ -103,6 +151,18 @@ export const UI: Record<
     donate: "תרומה",
     links: "קישורים",
     map: "מפה",
+    review: "ביקורת",
+    contact: "יצירת קשר",
+    siteBy: "האתר מאת",
+    reviewName: "שם",
+    reviewEmail: "אימייל",
+    reviewMessage: "הודעה",
+    reviewSubmit: "שליחה",
+    reviewSending: "שולח…",
+    reviewSuccess: "תודה — הביקורת התקבלה.",
+    reviewError: "לא ניתן לשלוח. נסו שוב.",
+    artist: "אמן",
+    curator: "אוצר",
   },
 };
 
