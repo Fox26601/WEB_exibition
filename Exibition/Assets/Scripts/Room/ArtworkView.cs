@@ -56,6 +56,15 @@ namespace Gallery.Room
             _canvasRenderer = canvas.GetComponent<MeshRenderer>();
             _canvasMaterial = new Material(PlaceholderMaterial());
             _canvasRenderer.sharedMaterial = _canvasMaterial;
+            // Distinct placeholder so empty urlWall still reads as a hung work.
+            // HasTexture stays false so streaming can replace when a URL exists.
+            var placeholder = MakeEmbeddedPlaceholder(Entry, Index);
+            _loadedTexture = placeholder;
+            _canvasMaterial.mainTexture = placeholder;
+            if (_canvasMaterial.HasProperty("_BaseMap"))
+                _canvasMaterial.SetTexture("_BaseMap", placeholder);
+            SetColor(Color.white);
+            HasTexture = false;
 
             if (IsVideo)
             {
@@ -112,10 +121,13 @@ namespace Gallery.Room
             HasTexture = false;
             if (_canvasMaterial != null)
             {
-                _canvasMaterial.mainTexture = null;
+                // Restore embedded placeholder so the slot stays visible.
+                var placeholder = MakeEmbeddedPlaceholder(Entry, Index);
+                _loadedTexture = placeholder;
+                _canvasMaterial.mainTexture = placeholder;
                 if (_canvasMaterial.HasProperty("_BaseMap"))
-                    _canvasMaterial.SetTexture("_BaseMap", null);
-                SetColor(new Color(0.75f, 0.75f, 0.72f));
+                    _canvasMaterial.SetTexture("_BaseMap", placeholder);
+                SetColor(Color.white);
             }
         }
 
@@ -148,17 +160,47 @@ namespace Gallery.Room
         static Material PlaceholderMaterial()
         {
             if (s_placeholder != null) return s_placeholder;
-            s_placeholder = CreateMat(new Color(0.75f, 0.75f, 0.72f));
+            s_placeholder = RuntimeMaterials.CreateTextured(new Color(0.75f, 0.75f, 0.72f));
             return s_placeholder;
         }
 
         static Material FrameMaterial()
         {
             if (s_frameMat != null) return s_frameMat;
-            s_frameMat = CreateMat(new Color(0.18f, 0.16f, 0.14f));
+            s_frameMat = RuntimeMaterials.Create(new Color(0.18f, 0.16f, 0.14f));
             return s_frameMat;
         }
 
-        static Material CreateMat(Color color) => RuntimeMaterials.Create(color);
+        /// <summary>
+        /// Procedural wall card used when catalog URLs are empty (seed / offline).
+        /// </summary>
+        public static Texture2D MakeEmbeddedPlaceholder(ArtworkEntry entry, int index)
+        {
+            const int w = 256;
+            const int h = 192;
+            var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+            var hue = (index * 0.19f + 0.08f) % 1f;
+            var a = Color.HSVToRGB(hue, 0.28f, 0.62f);
+            var b = Color.HSVToRGB(hue, 0.18f, 0.42f);
+            var border = new Color(0.12f, 0.11f, 0.1f);
+            var pixels = new Color[w * h];
+            for (var y = 0; y < h; y++)
+            {
+                for (var x = 0; x < w; x++)
+                {
+                    if (x < 8 || y < 8 || x >= w - 8 || y >= h - 8)
+                        pixels[y * w + x] = border;
+                    else if (((x / 24) + (y / 24)) % 2 == 0)
+                        pixels[y * w + x] = a;
+                    else
+                        pixels[y * w + x] = b;
+                }
+            }
+
+            tex.SetPixels(pixels);
+            tex.Apply(false, true);
+            tex.name = "Placeholder_" + (entry != null ? entry.id : index.ToString());
+            return tex;
+        }
     }
 }

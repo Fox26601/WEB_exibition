@@ -96,6 +96,9 @@
       canvas.className = "unity-mobile";
       canvas.style.width = "100%";
       canvas.style.height = "100%";
+      // Host page owns chrome; hide Unity template footer (fullscreen / title).
+      var footer = document.querySelector("#unity-footer");
+      if (footer) footer.style.display = "none";
 
       document.querySelector("#unity-loading-bar").style.display = "block";
 

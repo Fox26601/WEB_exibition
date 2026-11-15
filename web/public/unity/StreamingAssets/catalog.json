@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-14T00:00:00Z",
+  "updatedAt": "2026-11-15T00:00:00Z",
   "settings": {
     "poster": {
       "en": "Sample Exhibition",
@@ -35,8 +35,8 @@
         "uk": "Заглушка. Заміниться живим каталогом, коли API працює.",
         "he": "יצירת דמה. תוחלף בקטלוג חי כשה-API פעיל."
       },
-      "urlWall": "",
-      "urlFull": "",
+      "urlWall": "/samples/sample-01.jpg",
+      "urlFull": "/samples/sample-01.jpg",
       "urlVideo": "",
       "urlPoster": ""
     },
@@ -57,8 +57,8 @@
         "uk": "Другий слот для чергування стін.",
         "he": "חריץ דוגמה שני לקירות מתחלפים."
       },
-      "urlWall": "",
-      "urlFull": "",
+      "urlWall": "/samples/sample-02.jpg",
+      "urlFull": "/samples/sample-02.jpg",
       "urlVideo": "",
       "urlPoster": ""
     },
@@ -79,10 +79,10 @@
         "uk": "Відеослот (маркер навушників). Відтворення — HTML-оверлей у WebGL.",
         "he": "חריץ וידאו (סמן אוזניות). הנגינה ב-WebGL דרך שכבת HTML."
       },
-      "urlWall": "",
-      "urlFull": "",
+      "urlWall": "/samples/sample-03.jpg",
+      "urlFull": "/samples/sample-03.jpg",
       "urlVideo": "",
-      "urlPoster": ""
+      "urlPoster": "/samples/sample-03.jpg"
     },
     {
       "id": "sample-04",
@@ -101,8 +101,8 @@
         "uk": "Четвертий зразок — кімната довша за порожній L0.",
         "he": "דוגמה רביעית כדי שהחדר יגדל מעבר ל-L0 הריק."
       },
-      "urlWall": "",
-      "urlFull": "",
+      "urlWall": "/samples/sample-04.jpg",
+      "urlFull": "/samples/sample-04.jpg",
       "urlVideo": "",
       "urlPoster": ""
     }

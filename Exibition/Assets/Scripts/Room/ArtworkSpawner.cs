@@ -8,7 +8,9 @@ namespace Gallery.Room
 {
     /// <summary>
     /// Places artworks alternating left/right walls. Placeholder first, then lazy-loads
-    /// urlWall with max 4 concurrent downloads. Unloads textures more than 2 slots behind the camera.
+    /// urlWall (falling back to urlFull / urlPoster) with max 4 concurrent downloads.
+    /// Unloads textures more than 2 slots behind the camera.
+    /// Empty URLs keep the embedded frame placeholder — every published art still spawns.
     /// </summary>
     public class ArtworkSpawner : MonoBehaviour
     {
@@ -40,13 +42,18 @@ namespace Gallery.Room
             if (catalog == null || catalog.artworks == null)
                 return;
 
-            var length = _room != null ? _room.Length : RoomBuilder.ComputeLength(catalog.artworks.Length);
+            // Spawn ALL published entries from the catalog (already filtered by CatalogLoader).
+            var arts = catalog.artworks;
+            var length = _room != null ? _room.Length : RoomBuilder.ComputeLength(arts.Length);
             var root = new GameObject("Artworks").transform;
             root.SetParent(transform, false);
 
-            for (var i = 0; i < catalog.artworks.Length; i++)
+            for (var i = 0; i < arts.Length; i++)
             {
-                var entry = catalog.artworks[i];
+                var entry = arts[i];
+                if (entry == null)
+                    continue;
+
                 RoomBuilder.GetSlotPose(i, length, out var pos, out var rot, out _);
 
                 var go = new GameObject($"Artwork_{i}_{entry.id}");
@@ -57,6 +64,8 @@ namespace Gallery.Room
                 view.Setup(entry, i);
                 _views.Add(view);
             }
+
+            Debug.Log($"ArtworkSpawner: spawned {_views.Count} artworks (L={length:0.##}).");
         }
 
         void Clear()
@@ -128,13 +137,49 @@ namespace Gallery.Room
 
         static string PreferredUrl(ArtworkView view)
         {
+            if (view == null || view.Entry == null)
+                return null;
+
+            string raw;
             if (view.IsVideo)
             {
-                if (!string.IsNullOrEmpty(view.Entry.urlPoster))
-                    return view.Entry.urlPoster;
+                raw = FirstNonEmpty(view.Entry.urlPoster, view.Entry.urlWall, view.Entry.urlFull);
+            }
+            else
+            {
+                raw = FirstNonEmpty(view.Entry.urlWall, view.Entry.urlFull, view.Entry.urlPoster);
             }
 
-            return view.Entry.urlWall;
+            return Absolutize(raw);
+        }
+
+        static string FirstNonEmpty(params string[] values)
+        {
+            if (values == null) return null;
+            for (var i = 0; i < values.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(values[i]))
+                    return values[i];
+            }
+
+            return null;
+        }
+
+        static string Absolutize(string url)
+        {
+            if (string.IsNullOrEmpty(url))
+                return url;
+            if (url.StartsWith("http://") || url.StartsWith("https://") || url.StartsWith("data:"))
+                return url;
+            if (url.StartsWith("//"))
+                return "https:" + url;
+
+            var origin = CatalogLoader.GetOrigin();
+            if (string.IsNullOrEmpty(origin))
+                return url;
+            if (!url.StartsWith("/"))
+                url = "/" + url;
+            return origin + url;
         }
 
         IEnumerator LoadWallTexture(ArtworkView view)
@@ -149,7 +194,6 @@ namespace Gallery.Room
                 if (view != null && req.result == UnityWebRequest.Result.Success)
                 {
                     var tex = DownloadHandlerTexture.GetContent(req);
-                    // Cap runtime memory: keep wall textures modest.
                     if (tex != null && (tex.width > 1024 || tex.height > 1024))
                         Debug.Log($"Wall texture {tex.width}x{tex.height} from {url} (prefer ≤1024).");
                     view.ApplyTexture(tex);

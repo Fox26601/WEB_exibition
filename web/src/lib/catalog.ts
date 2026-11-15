@@ -23,7 +23,7 @@ export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
       const live = await readBlobText(LIVE_KEY);
       if (live) {
         try {
-          return JSON.parse(live) as Catalog;
+          return ensureSampleMedia(JSON.parse(live) as Catalog);
         } catch {
           /* fall through */
         }
@@ -33,10 +33,24 @@ export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
     return empty;
   }
   try {
-    return JSON.parse(raw) as Catalog;
+    return ensureSampleMedia(JSON.parse(raw) as Catalog);
   } catch {
     return createDefaultCatalog();
   }
+}
+
+/** Fill empty sample media URLs from defaults (in-memory) so seed catalogs texture in 3D. */
+function ensureSampleMedia(catalog: Catalog): Catalog {
+  const defaults = createDefaultCatalog();
+  const byId = new Map(defaults.artworks.map((a) => [a.id, a]));
+  for (const art of catalog.artworks) {
+    const sample = byId.get(art.id);
+    if (!sample) continue;
+    if (!art.urlWall && sample.urlWall) art.urlWall = sample.urlWall;
+    if (!art.urlFull && sample.urlFull) art.urlFull = sample.urlFull;
+    if (!art.urlPoster && sample.urlPoster) art.urlPoster = sample.urlPoster;
+  }
+  return catalog;
 }
 
 export async function saveCatalog(

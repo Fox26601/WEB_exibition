@@ -55,6 +55,7 @@ namespace Gallery.Bootstrap
             }
 
             player.AttachCamera(cam);
+            StarSkybox.Apply(cam);
             spawner.Initialize(room, player.transform);
 
             var localeGo = new GameObject("LocaleUI");
@@ -69,10 +70,13 @@ namespace Gallery.Bootstrap
             {
                 locale.Initialize(loader.InitialLang, ray);
                 locale.BindCatalog(catalog);
-                room.Build(catalog.artworks != null ? catalog.artworks.Length : 0);
+                // Room length + slot count driven by the same published N as admin schematic.
+                var n = catalog.artworks != null ? catalog.artworks.Length : 0;
+                room.Build(n);
                 player.Configure(room.Length, QualityTier.IsMobileTier);
                 spawner.Initialize(room, player.transform);
                 spawner.Spawn(catalog);
+                StarSkybox.Apply(cam);
             };
 
             loader.Failed += err =>
@@ -80,6 +84,7 @@ namespace Gallery.Bootstrap
                 Debug.LogError(err);
                 room.Build(0);
                 player.Configure(room.Length, QualityTier.IsMobileTier);
+                StarSkybox.Apply(cam);
             };
 
             loader.BeginLoad();
@@ -108,6 +113,7 @@ namespace Gallery.Bootstrap
 
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(0.55f, 0.55f, 0.58f);
+            // Skybox applied after Main Camera exists (StarSkybox.Apply).
         }
     }
 }
