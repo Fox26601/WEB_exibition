@@ -242,24 +242,39 @@ function UnityEmbed({
   token: string | null;
   lang: string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    const el = ref.current;
+    const el = wrapRef.current;
     if (!el) return;
     el.dataset.catalog = catalogKind;
     el.dataset.token = token || "";
     el.dataset.lang = lang;
   }, [catalogKind, token, lang]);
 
+  // Live language without remounting WebGL (titles/info update via LocaleUI).
+  useEffect(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (!win) return;
+    win.postMessage({ type: "gallery-set-lang", lang }, window.location.origin);
+    try {
+      const unity = (win as Window & { unityInstance?: { SendMessage: (a: string, b: string, c: string) => void } }).unityInstance;
+      unity?.SendMessage("LocaleUI", "OnJsSetLanguage", lang);
+    } catch {
+      /* unity not ready yet — initial ?lang= covers first paint */
+    }
+  }, [lang]);
+
   const qs = new URLSearchParams({ catalog: catalogKind, lang });
   if (token) qs.set("token", token);
 
   return (
-    <div ref={ref} id="unity-canvas-wrap" className="h-full w-full">
+    <div ref={wrapRef} id="unity-canvas-wrap" className="h-full w-full">
       <iframe
+        ref={iframeRef}
         title="Unity gallery"
-        key={`unity-${catalogKind}-${lang}-${token || "live"}`}
+        key={`unity-${catalogKind}-${token || "live"}`}
         src={`/unity/index.html?${qs.toString()}`}
         className="h-full w-full border-0"
         allow="autoplay; fullscreen"
