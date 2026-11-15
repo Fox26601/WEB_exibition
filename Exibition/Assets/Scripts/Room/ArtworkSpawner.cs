@@ -54,7 +54,20 @@ namespace Gallery.Room
                 SpawnLegacySlots(catalog, root);
             }
 
+            if (AdminBuildMode.Active && !AdminBuildMode.SkipPlacementTextures)
+                PrimeAdminPlacementTextures();
+
             Debug.Log($"ArtworkSpawner: spawned {_views.Count} artworks (layout={_room != null && _room.UsingLayout}).");
+        }
+
+        void PrimeAdminPlacementTextures()
+        {
+            for (var i = 0; i < _views.Count; i++)
+            {
+                var view = _views[i];
+                if (view != null && !view.IsSculpture)
+                    EnqueueLoad(view);
+            }
         }
 
         void SpawnFromLayout(CatalogData catalog, Transform root)
@@ -143,12 +156,33 @@ namespace Gallery.Room
 
         void Update()
         {
-            if (_views.Count == 0 || _player == null)
+            if (_views.Count == 0)
+                return;
+
+            if (AdminBuildMode.Active && !AdminBuildMode.SkipPlacementTextures)
+            {
+                DrainLoadQueue();
+                return;
+            }
+
+            if (_player == null)
                 return;
             if (AdminBuildMode.LightLoad)
                 return;
 
             UpdateStreaming();
+        }
+
+        void DrainLoadQueue()
+        {
+            while (_activeLoads < MaxConcurrentLoads && _loadQueue.Count > 0)
+            {
+                var next = _loadQueue.Dequeue();
+                _queued.Remove(next);
+                if (next == null || next.HasTexture)
+                    continue;
+                StartCoroutine(LoadWallTexture(next));
+            }
         }
 
         void UpdateStreaming()

@@ -51,7 +51,8 @@ export type AdminBridgeMessage =
     }
   | { type: "gallery-admin-rotate"; artworkId: string; deltaYaw: number }
   | { type: "gallery-admin-ready" }
-  | { type: "gallery-admin-placements"; placements: ArtworkPlacement[] };
+  | { type: "gallery-admin-placements"; placements: ArtworkPlacement[] }
+  | { type: "gallery-admin-drag-rejected"; reason: string };
 
 type Props = {
   catalog: Catalog;
@@ -95,8 +96,8 @@ export function ArtBuildPalette({
           2 · Place in 3D
         </h3>
         <p className="mt-1 text-[0.7rem] text-[var(--paper-dim)]">
-          Drag a work onto the scene. Paintings snap to walls; sculptures to the
-          floor.
+          Картину — на стену; скульптуру — на пол. Зелёный призрак = можно
+          отпустить.
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1">
           <span className="text-[0.65rem] text-[var(--paper-dim)]">Frame</span>
@@ -281,6 +282,7 @@ export function AdminBuildBridge({
   const dragArtRef = useRef<Artwork | null>(null);
   const dragActiveRef = useRef(false);
   const [dragOverlay, setDragOverlay] = useState<DragOverlayState | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const published = useMemo(
     () =>
@@ -352,6 +354,16 @@ export function AdminBuildBridge({
           ...layout,
           placements: data.placements,
         });
+        return;
+      }
+      if (data.type === "gallery-admin-drag-rejected") {
+        const reason = (data as { reason?: string }).reason;
+        setToast(
+          reason === "no_snap"
+            ? "Не удалось повесить на стену — подведите ближе к стене."
+            : "Размещение отменено.",
+        );
+        window.setTimeout(() => setToast(null), 3200);
       }
     };
     window.addEventListener("message", onMessage);
@@ -462,6 +474,14 @@ export function AdminBuildBridge({
   return (
     <div className="grid min-h-[calc(100dvh-11rem)] grid-cols-1 gap-3 lg:grid-cols-[auto_1fr]">
       <DragOverlay overlay={dragOverlay} />
+      {toast ? (
+        <div
+          className="pointer-events-none fixed bottom-6 left-1/2 z-[10000] -translate-x-1/2 border border-[var(--amber)]/60 bg-[#1a1612] px-4 py-2 text-sm text-[var(--paper)] shadow-lg"
+          role="status"
+        >
+          {toast}
+        </div>
+      ) : null}
       <ArtBuildPalette
         artworks={published}
         locale={locale}

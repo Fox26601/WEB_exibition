@@ -185,27 +185,7 @@ namespace Gallery.Room
 
         public bool TryGetPaintingPose(ArtworkPlacementData placement, out Vector3 position, out Quaternion rotation)
         {
-            position = Vector3.zero;
-            rotation = Quaternion.identity;
-            if (placement == null || string.IsNullOrEmpty(placement.roomId))
-                return false;
-            if (!_roomVerts.TryGetValue(placement.roomId, out var verts) || verts == null || verts.Length < 2)
-                return false;
-
-            var i = ((placement.wallEdgeIndex % verts.Length) + verts.Length) % verts.Length;
-            var a = verts[i];
-            var b = verts[(i + 1) % verts.Length];
-            var t = Mathf.Clamp01(placement.tAlongEdge);
-            var along = Vector3.Lerp(a, b, t);
-            var edge = b - a;
-            var normal = new Vector3(-edge.z, 0f, edge.x).normalized;
-            // Face inward (flip normal); inset slightly from wall.
-            position = along - normal * 0.08f + Vector3.up * (Height * 0.55f);
-            var yaw = placement.yaw;
-            if (Mathf.Approximately(yaw, 0f))
-                yaw = Mathf.Atan2(-normal.x, -normal.z) * Mathf.Rad2Deg;
-            rotation = Quaternion.Euler(0f, yaw, 0f);
-            return true;
+            return WallSnapUtility.TryGetPaintingPose(this, placement, out position, out rotation);
         }
 
         public bool TryGetSculpturePose(ArtworkPlacementData placement, out Vector3 position, out Quaternion rotation)
@@ -268,7 +248,8 @@ namespace Gallery.Room
                 // (not the legacy min-Z heuristic).
                 if (doorway <= 0.01f && !layout.HasEntrance && IsEntranceEdge(a, b))
                     doorway = 2.4f;
-                BuildWallSegment(roomRoot, a, b, i, doorway);
+                WallSnapUtility.TryRoomCentroid(verts, out var centroid);
+                BuildWallSegment(roomRoot, a, b, i, doorway, room.id, centroid);
             }
 
         }
@@ -343,16 +324,24 @@ namespace Gallery.Room
             return Mathf.Abs(edge.x) >= Mathf.Abs(edge.z) * 0.6f;
         }
 
-        void BuildWallSegment(Transform parent, Vector3 a, Vector3 b, int edgeIndex, float doorwayWidth)
+        void BuildWallSegment(
+            Transform parent,
+            Vector3 a,
+            Vector3 b,
+            int edgeIndex,
+            float doorwayWidth,
+            string roomId,
+            Vector3 roomCentroid)
         {
             var mid = (a + b) * 0.5f;
             var edge = b - a;
             var len = edge.magnitude;
             var yaw = Mathf.Atan2(edge.x, edge.z) * Mathf.Rad2Deg;
+            var inward = WallSnapUtility.InwardNormal(a, b, roomCentroid);
 
             if (doorwayWidth <= 0.01f || doorwayWidth >= len - 0.2f)
             {
-                CreateOrientedWall(parent, $"Wall_{edgeIndex}", mid, len, yaw);
+                CreateOrientedWall(parent, $"Wall_{edgeIndex}", mid, len, yaw, inward, roomId, edgeIndex);
                 return;
             }
 
@@ -360,35 +349,75 @@ namespace Gallery.Room
             var halfRemain = (len - doorwayWidth) * 0.5f;
             if (halfRemain < 0.05f)
             {
-                // Almost fully open — leave a lintel only.
                 CreateOrientedWall(parent, $"Lintel_{edgeIndex}",
-                    mid + Vector3.up * (Height * 0.5f + 0.55f), len, yaw, 0.9f, Height - 2.2f);
+                    mid + Vector3.up * (Height * 0.5f + 0.55f), len, yaw, inward, roomId, edgeIndex, 0.9f, Height - 2.2f);
                 return;
             }
 
             var dir = edge.normalized;
             var leftMid = mid - dir * (halfDoor + halfRemain * 0.5f);
             var rightMid = mid + dir * (halfDoor + halfRemain * 0.5f);
-            CreateOrientedWall(parent, $"Wall_{edgeIndex}_L", leftMid, halfRemain, yaw);
-            CreateOrientedWall(parent, $"Wall_{edgeIndex}_R", rightMid, halfRemain, yaw);
+            CreateOrientedWall(parent, $"Wall_{edgeIndex}_L", leftMid, halfRemain, yaw, inward, roomId, edgeIndex);
+            CreateOrientedWall(parent, $"Wall_{edgeIndex}_R", rightMid, halfRemain, yaw, inward, roomId, edgeIndex);
             CreateOrientedWall(parent, $"Lintel_{edgeIndex}",
-                mid + Vector3.up * (2.2f + (Height - 2.2f) * 0.5f), doorwayWidth, yaw, doorwayWidth, Height - 2.2f);
+                mid + Vector3.up * (2.2f + (Height - 2.2f) * 0.5f), doorwayWidth, yaw, inward, roomId, edgeIndex,
+                doorwayWidth, Height - 2.2f);
         }
 
-        void CreateOrientedWall(Transform parent, string name, Vector3 mid, float length, float yaw,
-            float overrideLength = -1f, float overrideHeight = -1f)
+        void CreateOrientedWall(
+            Transform parent,
+            string name,
+            Vector3 mid,
+            float length,
+            float yaw,
+            Vector3 inward,
+            string roomId,
+            int edgeIndex,
+            float overrideLength = -1f,
+            float overrideHeight = -1f)
         {
             var h = overrideHeight > 0f ? overrideHeight : Height;
             var l = overrideLength > 0f ? overrideLength : length;
-            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            go.name = name;
-            go.transform.SetParent(parent, false);
-            // mid.y may carry lintel elevation; otherwise center on wall height.
             var y = mid.y > 0.01f ? mid.y : h * 0.5f;
-            go.transform.position = new Vector3(mid.x, y, mid.z);
-            go.transform.rotation = Quaternion.Euler(0f, yaw, 0f);
-            go.transform.localScale = new Vector3(WallThickness, h, Mathf.Max(0.05f, l));
-            go.GetComponent<MeshRenderer>().sharedMaterial = CreateMaterial(wallColor);
+            var worldMid = new Vector3(mid.x, y, mid.z);
+            var rot = Quaternion.Euler(0f, yaw, 0f);
+
+            var root = new GameObject(name);
+            root.transform.SetParent(parent, false);
+            root.transform.position = worldMid;
+            root.transform.rotation = rot;
+
+            var halfT = WallThickness * 0.5f;
+            var interiorSign = Vector3.Dot(rot * Vector3.right, inward) >= 0f ? 1f : -1f;
+            var interior = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            interior.name = "InteriorShell";
+            interior.transform.SetParent(root.transform, false);
+            interior.transform.localPosition = new Vector3(interiorSign * halfT * 0.5f, 0f, 0f);
+            interior.transform.localScale = new Vector3(halfT, h, Mathf.Max(0.05f, l));
+            var interiorR = interior.GetComponent<MeshRenderer>();
+            interiorR.sharedMaterial = CreateMaterial(wallColor);
+
+            var exterior = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            exterior.name = "ExteriorShell";
+            exterior.transform.SetParent(root.transform, false);
+            exterior.transform.localPosition = new Vector3(-interiorSign * halfT * 0.5f, 0f, 0f);
+            exterior.transform.localScale = new Vector3(halfT, h, Mathf.Max(0.05f, l));
+            var exteriorR = exterior.GetComponent<MeshRenderer>();
+            exteriorR.sharedMaterial = CreateMaterial(wallColor);
+
+            var box = root.AddComponent<BoxCollider>();
+            box.size = new Vector3(WallThickness, h, Mathf.Max(0.05f, l));
+            Destroy(interior.GetComponent<Collider>());
+            Destroy(exterior.GetComponent<Collider>());
+
+            var seg = root.AddComponent<RoomWallSegment>();
+            seg.roomId = roomId;
+            seg.edgeIndex = edgeIndex;
+            seg.inwardNormal = inward;
+            seg.segmentMid = new Vector3(mid.x, h * 0.35f, mid.z);
+            seg.interiorRenderer = interiorR;
+            seg.exteriorRenderer = exteriorR;
+            seg.segmentCollider = box;
         }
 
         public static Vector3[] ResolveRoomVertices(GalleryRoomData room)

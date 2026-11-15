@@ -16,7 +16,10 @@ namespace Gallery.Admin
         Camera _camera;
 
         GameObject _ghost;
+        Renderer _ghostRenderer;
         AdminDragMessage _activeDrag;
+        ArtworkPlacementData _pendingPlacement;
+        bool _snapValid;
         bool _dragging;
         bool _useExternalPointer;
         bool _externalOverCanvas;
@@ -25,7 +28,9 @@ namespace Gallery.Admin
         bool _awaitingClickPick;
         const float ClickPickThresholdPixels = 8f;
 
-        /// <summary>True while placing from palette, ghost drag, or in-scene pick drag.</summary>
+        static readonly Color GhostValid = new Color(0.2f, 0.85f, 0.35f, 0.65f);
+        static readonly Color GhostInvalid = new Color(0.92f, 0.28f, 0.22f, 0.72f);
+
         public static bool BlocksCameraInput { get; private set; }
 
         public void Initialize(
@@ -48,8 +53,40 @@ namespace Gallery.Admin
                 return;
             _placements.Clear();
             _placements.AddRange(layout.placements);
+            FixLegacyPaintingPlacements();
             RefreshSpawned();
             Emit();
+        }
+
+        void FixLegacyPaintingPlacements()
+        {
+            if (_room == null || !_room.UsingLayout) return;
+            var changed = false;
+            for (var i = 0; i < _placements.Count; i++)
+            {
+                var p = _placements[i];
+                if (p == null || string.IsNullOrEmpty(p.roomId)) continue;
+                if (string.Equals(p.kind, "sculpture", System.StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!WallSnapUtility.TryGetPaintingPose(_room, p, out var pos, out var rot))
+                    continue;
+                if (!WallSnapUtility.TrySnapPainting(_room, pos, out var snap))
+                    continue;
+                if (snap.roomId == p.roomId && snap.wallEdgeIndex == p.wallEdgeIndex &&
+                    Mathf.Approximately(snap.tAlongEdge, p.tAlongEdge) &&
+                    Mathf.Approximately(snap.yaw, p.yaw))
+                    continue;
+                p.roomId = snap.roomId;
+                p.wallEdgeIndex = snap.wallEdgeIndex;
+                p.tAlongEdge = snap.tAlongEdge;
+                p.yaw = snap.yaw;
+                p.kind = "painting";
+                _placements[i] = p;
+                changed = true;
+            }
+
+            if (changed)
+                Emit();
         }
 
         public void BeginDrag(AdminDragMessage msg)
@@ -57,6 +94,8 @@ namespace Gallery.Admin
             if (msg == null || string.IsNullOrEmpty(msg.artworkId))
                 return;
             _activeDrag = msg;
+            _pendingPlacement = null;
+            _snapValid = false;
             _dragging = true;
             BlocksCameraInput = true;
             _useExternalPointer = true;
@@ -97,18 +136,43 @@ namespace Gallery.Admin
         public void EndDrag(AdminEndDragMessage msg)
         {
             if (!_dragging || msg == null) return;
+            var rejected = false;
             _dragging = false;
             _useExternalPointer = false;
-            if (msg.commit && _ghost != null && _activeDrag != null)
+
+            if (msg.commit && _activeDrag != null)
             {
-                TryCommitPlacement(_activeDrag, _ghost.transform.position);
+                if (_pendingPlacement != null && _snapValid)
+                {
+                    _pendingPlacement.artworkId = _activeDrag.artworkId;
+                    if (string.Equals(_pendingPlacement.kind, "painting", System.StringComparison.OrdinalIgnoreCase))
+                        _pendingPlacement.frameId = string.IsNullOrEmpty(_activeDrag.frameId)
+                            ? "wood"
+                            : _activeDrag.frameId;
+                    if (string.Equals(_pendingPlacement.kind, "sculpture", System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        _pendingPlacement.frameId = "none";
+                    }
+
+                    _placements.RemoveAll(p => p.artworkId == _activeDrag.artworkId);
+                    _placements.Add(_pendingPlacement);
+                    RefreshSpawned();
+                    Emit();
+                }
+                else
+                    rejected = true;
             }
 
             if (_ghost != null)
                 Destroy(_ghost);
             _ghost = null;
+            _ghostRenderer = null;
             _activeDrag = null;
+            _pendingPlacement = null;
             BlocksCameraInput = false;
+
+            if (rejected)
+                _bridge?.EmitDragRejected("no_snap");
         }
 
         public void Remove(string artworkId)
@@ -144,8 +208,7 @@ namespace Gallery.Admin
 
             if (_camera == null || _dragging) return;
 
-            if (Input.GetMouseButtonDown(0) &&
-                !Input.GetKey(KeyCode.Space))
+            if (Input.GetMouseButtonDown(0) && !Input.GetKey(KeyCode.Space))
             {
                 _pointerDown = Input.mousePosition;
                 _awaitingClickPick = true;
@@ -197,6 +260,7 @@ namespace Gallery.Admin
             if (_useExternalPointer && !_externalOverCanvas)
             {
                 _ghost.SetActive(false);
+                _snapValid = false;
                 return;
             }
 
@@ -210,8 +274,13 @@ namespace Gallery.Admin
                     !_useExternalPointer || _externalOverCanvas,
                     kind,
                     out var point,
-                    out var normal))
+                    out var normal,
+                    out var wallSnap,
+                    out _snapValid))
             {
+                _snapValid = false;
+                _pendingPlacement = null;
+                SetGhostColor(GhostInvalid);
                 return;
             }
 
@@ -221,98 +290,40 @@ namespace Gallery.Admin
                 if (normal.sqrMagnitude < 0.01f)
                     normal = Vector3.forward;
                 _ghost.transform.rotation = Quaternion.LookRotation(-normal, Vector3.up);
-            }
-        }
-
-        void TryCommitPlacement(AdminDragMessage drag, Vector3 hitPoint)
-        {
-            if (_room == null || !_room.UsingLayout || _room.ActiveLayout == null)
-                return;
-
-            var placement = new ArtworkPlacementData
-            {
-                artworkId = drag.artworkId,
-                frameId = string.IsNullOrEmpty(drag.frameId) ? "wood" : drag.frameId,
-            };
-
-            var sculpture = string.Equals(drag.kind, "sculpture", System.StringComparison.OrdinalIgnoreCase);
-            if (sculpture)
-            {
-                placement.kind = "sculpture";
-                placement.floorX = hitPoint.x;
-                placement.floorZ = hitPoint.z;
-                placement.yaw = 0f;
-                placement.roomId = FindRoomAt(hitPoint);
-            }
-            else
-            {
-                if (!TryWallPlacement(hitPoint, out var wallPlacement))
-                    return;
-                placement = wallPlacement;
-                placement.artworkId = drag.artworkId;
-                placement.frameId = string.IsNullOrEmpty(drag.frameId) ? "wood" : drag.frameId;
-                placement.kind = "painting";
-            }
-
-            if (sculpture)
-            {
-                placement.artworkId = drag.artworkId;
-                placement.frameId = "none";
-            }
-
-            _placements.RemoveAll(p => p.artworkId == drag.artworkId);
-            _placements.Add(placement);
-            RefreshSpawned();
-            Emit();
-        }
-
-        bool TryWallPlacement(Vector3 hitPoint, out ArtworkPlacementData placement)
-        {
-            placement = null;
-            var layout = _room.ActiveLayout;
-            if (layout?.rooms == null) return false;
-
-            var bestDist = float.MaxValue;
-            ArtworkPlacementData best = null;
-
-            foreach (var room in layout.rooms)
-            {
-                if (room == null || string.IsNullOrEmpty(room.id)) continue;
-                if (!_room.TryGetRoomVertices(room.id, out var verts) || verts == null || verts.Length < 2)
-                    continue;
-
-                for (var i = 0; i < verts.Length; i++)
+                if (_snapValid)
                 {
-                    var a = verts[i];
-                    var b = verts[(i + 1) % verts.Length];
-                    var ab = b - a;
-                    var len = ab.magnitude;
-                    if (len < 0.05f) continue;
-                    var t = Mathf.Clamp01(Vector3.Dot(hitPoint - a, ab) / (len * len));
-                    var onEdge = a + ab * t;
-                    var dist = Vector3.Distance(new Vector3(hitPoint.x, 0f, hitPoint.z),
-                        new Vector3(onEdge.x, 0f, onEdge.z));
-                    if (dist < bestDist && dist < 1.5f)
+                    _pendingPlacement = new ArtworkPlacementData
                     {
-                        bestDist = dist;
-                        var edgeFlat = new Vector3(ab.x, 0f, ab.z).normalized;
-                        var normal = new Vector3(-edgeFlat.z, 0f, edgeFlat.x);
-                        var yaw = Mathf.Atan2(-normal.x, -normal.z) * Mathf.Rad2Deg;
-                        best = new ArtworkPlacementData
-                        {
-                            kind = "painting",
-                            roomId = room.id,
-                            wallEdgeIndex = i,
-                            tAlongEdge = t,
-                            yaw = yaw,
-                        };
-                    }
+                        kind = "painting",
+                        roomId = wallSnap.roomId,
+                        wallEdgeIndex = wallSnap.wallEdgeIndex,
+                        tAlongEdge = wallSnap.tAlongEdge,
+                        yaw = wallSnap.yaw,
+                        frameId = _activeDrag?.frameId ?? "wood",
+                    };
                 }
             }
+            else if (_snapValid)
+            {
+                _pendingPlacement = new ArtworkPlacementData
+                {
+                    kind = "sculpture",
+                    floorX = point.x,
+                    floorZ = point.z,
+                    yaw = 0f,
+                    roomId = FindRoomAt(point),
+                    frameId = "none",
+                };
+            }
 
-            if (best == null) return false;
-            placement = best;
-            return true;
+            SetGhostColor(_snapValid ? GhostValid : GhostInvalid);
+        }
+
+        void SetGhostColor(Color c)
+        {
+            if (_ghostRenderer == null) return;
+            if (_ghostRenderer.sharedMaterial != null)
+                _ghostRenderer.sharedMaterial.color = c;
         }
 
         string FindRoomAt(Vector3 p)
@@ -358,12 +369,9 @@ namespace Gallery.Admin
             _ghost.name = "AdminGhost";
             var col = _ghost.GetComponent<Collider>();
             if (col != null) Destroy(col);
-            var r = _ghost.GetComponent<Renderer>();
-            if (r != null)
-            {
-                var c = new Color(0.2f, 0.85f, 0.35f, 0.65f);
-                r.sharedMaterial = RuntimeMaterials.Create(c);
-            }
+            _ghostRenderer = _ghost.GetComponent<Renderer>();
+            if (_ghostRenderer != null)
+                _ghostRenderer.sharedMaterial = RuntimeMaterials.Create(GhostValid);
 
             _ghost.transform.localScale = string.Equals(drag.kind, "sculpture", System.StringComparison.OrdinalIgnoreCase)
                 ? new Vector3(0.6f, 0.35f, 0.6f)
