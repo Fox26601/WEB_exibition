@@ -81,10 +81,29 @@ export interface ArtworkPlacement {
   frameId: FrameId;
 }
 
+/** Always-on schematic entrance block (pose only; content stays in settings.entrance). */
+export interface GalleryEntrancePose {
+  x: number;
+  z: number;
+  /** Degrees, Y-up world. */
+  rotation: number;
+}
+
+/** Synthetic room id for soft-snap / doorway connections to the entrance portal. */
+export const ENTRANCE_ROOM_ID = "__entrance";
+
+export const DEFAULT_ENTRANCE_POSE: GalleryEntrancePose = {
+  x: 0,
+  z: -2,
+  rotation: 0,
+};
+
 export interface GalleryLayout {
   rooms: GalleryRoom[];
   connections: RoomConnection[];
   placements: ArtworkPlacement[];
+  /** Fixed-size entrance portal block; always present after normalize. */
+  entrance: GalleryEntrancePose;
 }
 
 export interface BookletPage {
@@ -201,7 +220,29 @@ export function normalizeSettings(
 }
 
 export function emptyLayout(): GalleryLayout {
-  return { rooms: [], connections: [], placements: [] };
+  return {
+    rooms: [],
+    connections: [],
+    placements: [],
+    entrance: { ...DEFAULT_ENTRANCE_POSE },
+  };
+}
+
+export function normalizeEntrancePose(
+  entrance?: Partial<GalleryEntrancePose> | null,
+): GalleryEntrancePose {
+  return {
+    x: typeof entrance?.x === "number" && Number.isFinite(entrance.x)
+      ? entrance.x
+      : DEFAULT_ENTRANCE_POSE.x,
+    z: typeof entrance?.z === "number" && Number.isFinite(entrance.z)
+      ? entrance.z
+      : DEFAULT_ENTRANCE_POSE.z,
+    rotation:
+      typeof entrance?.rotation === "number" && Number.isFinite(entrance.rotation)
+        ? entrance.rotation
+        : DEFAULT_ENTRANCE_POSE.rotation,
+  };
 }
 
 export function normalizeLayout(layout?: GalleryLayout | null): GalleryLayout {
@@ -210,6 +251,7 @@ export function normalizeLayout(layout?: GalleryLayout | null): GalleryLayout {
     rooms: Array.isArray(layout.rooms) ? layout.rooms : [],
     connections: Array.isArray(layout.connections) ? layout.connections : [],
     placements: Array.isArray(layout.placements) ? layout.placements : [],
+    entrance: normalizeEntrancePose(layout.entrance),
   };
 }
 

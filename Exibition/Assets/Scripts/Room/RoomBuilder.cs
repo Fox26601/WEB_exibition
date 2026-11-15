@@ -272,7 +272,9 @@ namespace Gallery.Room
                 var a = verts[i];
                 var b = verts[(i + 1) % verts.Length];
                 var doorway = FindDoorwayWidth(layout, room.id, i);
-                if (doorway <= 0.01f && IsEntranceEdge(a, b))
+                // When layout carries an entrance block, open only edges connected to __entrance
+                // (not the legacy min-Z heuristic).
+                if (doorway <= 0.01f && !layout.HasEntrance && IsEntranceEdge(a, b))
                     doorway = 2.4f;
                 BuildWallSegment(roomRoot, a, b, i, doorway);
             }
