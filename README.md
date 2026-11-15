@@ -87,7 +87,7 @@ This populates `web/public/unity/` (expects `Build/` among other export files).
 
 1. Set **Root Directory** to `web`.
 2. Add the env vars above.
-3. Deploy. Optional root `vercel.json` documents the `web` package layout if the project root stays the repo root.
+3. Deploy with **Root Directory `web`** (Vercel dashboard). Config lives in `web/vercel.json` only — no repo-root `vercel.json` (root `--prefix web` commands break GitHub previews when Root Directory is `web`).
 
 ```bash
 cd web && npm run build

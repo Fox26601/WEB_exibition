@@ -46,16 +46,16 @@
       }
 
       var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/WebGL.loader.js?v=023";
+      var loaderUrl = buildUrl + "/WebGL.loader.js?v=025";
       var config = {
         arguments: [],
-        dataUrl: buildUrl + "/WebGL.data?v=023",
-        frameworkUrl: buildUrl + "/WebGL.framework.js?v=023",
-        codeUrl: buildUrl + "/WebGL.wasm?v=023",
+        dataUrl: buildUrl + "/WebGL.data?v=025",
+        frameworkUrl: buildUrl + "/WebGL.framework.js?v=025",
+        codeUrl: buildUrl + "/WebGL.wasm?v=025",
         streamingAssetsUrl: "StreamingAssets",
         companyName: "DefaultCompany",
         productName: "Exibition",
-        productVersion: "0.2.3-pedestal",
+        productVersion: "0.2.5-admin-build",
         showBanner: unityShowBanner,
         webglContextAttributes: { preserveDrawingBuffer: true },
       };
@@ -96,6 +96,16 @@
                   if (ev.data.type === "gallery-toggle-booklet") {
                     try {
                       unityInstance.SendMessage("BookletController", "OnJsToggleBooklet", "");
+                    } catch (e) {}
+                    return;
+                  }
+                  if (typeof ev.data.type === "string" && ev.data.type.indexOf("gallery-admin-") === 0) {
+                    try {
+                      unityInstance.SendMessage(
+                        "WebAdminBridge",
+                        "OnJsAdminMessage",
+                        JSON.stringify(ev.data)
+                      );
                     } catch (e) {}
                   }
                 });

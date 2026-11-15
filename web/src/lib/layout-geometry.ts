@@ -305,20 +305,90 @@ export function softSnapRoom(
   };
 }
 
-/** Soft-snap entrance pose translation against room edge mids (portal only). */
+function portalEdgeRef(entrance: GalleryEntrancePose): EdgeRef {
+  const verts = entranceWorldVertices(entrance);
+  const [a, b] = edgePoints(verts, ENTRANCE_PORTAL_EDGE);
+  return {
+    roomId: ENTRANCE_ROOM_ID,
+    edgeIndex: ENTRANCE_PORTAL_EDGE,
+    a,
+    b,
+    mid: edgeMidpoint(a, b),
+  };
+}
+
+/** Rotate + nudge entrance so the portal edge aligns with a target room edge. */
+export function rotateEntranceToAlignPortal(
+  entrance: GalleryEntrancePose,
+  target: Pick<EdgeRef, "a" | "b">,
+): GalleryEntrancePose {
+  const targetRef: EdgeRef = {
+    roomId: "",
+    edgeIndex: 0,
+    a: target.a,
+    b: target.b,
+    mid: edgeMidpoint(target.a, target.b),
+  };
+  let best: GalleryEntrancePose | null = null;
+  let bestDist = SNAP_DIST + 1;
+
+  for (let k = 0; k < 4; k++) {
+    const rot = (entrance.rotation + k * 90) % 360;
+    const cand: GalleryEntrancePose = { ...entrance, rotation: rot };
+    const portal = portalEdgeRef(cand);
+    if (!edgesNearlyParallel(portal, targetRef)) continue;
+    const dx = targetRef.mid.x - portal.mid.x;
+    const dz = targetRef.mid.z - portal.mid.z;
+    const aligned: GalleryEntrancePose = {
+      x: cand.x + dx,
+      z: cand.z + dz,
+      rotation: rot,
+    };
+    const d = Math.hypot(dx, dz);
+    if (d < bestDist) {
+      bestDist = d;
+      best = aligned;
+    }
+  }
+  return best ?? entrance;
+}
+
+/** Soft-snap entrance: smart rotation (0/90/180/270) + translation to nearest room edge. */
 export function softSnapEntrance(
   entrance: GalleryEntrancePose,
   rooms: GalleryRoom[],
 ): GalleryEntrancePose {
   if (rooms.length === 0) return entrance;
-  const synthetic = entranceAsRoom(entrance);
-  const snapped = softSnapRoom(synthetic, rooms);
-  if (!snapped.snappedTo) return entrance;
-  return {
-    ...entrance,
-    x: snapped.room.transform.x,
-    z: snapped.room.transform.z,
-  };
+
+  let best: GalleryEntrancePose | null = null;
+  let bestMidDist = SNAP_DIST + 1;
+
+  for (let k = 0; k < 4; k++) {
+    const rot = (entrance.rotation + k * 90) % 360;
+    const candidate: GalleryEntrancePose = { ...entrance, rotation: rot };
+    const synthetic = entranceAsRoom(candidate);
+    const snapped = softSnapRoom(synthetic, rooms);
+    if (!snapped.snappedTo) continue;
+    const portal = portalEdgeRef({
+      x: snapped.room.transform.x,
+      z: snapped.room.transform.z,
+      rotation: rot,
+    });
+    const d = Math.hypot(
+      portal.mid.x - snapped.snappedTo.mid.x,
+      portal.mid.z - snapped.snappedTo.mid.z,
+    );
+    if (d < bestMidDist) {
+      bestMidDist = d;
+      best = {
+        x: snapped.room.transform.x,
+        z: snapped.room.transform.z,
+        rotation: rot,
+      };
+    }
+  }
+
+  return best ?? entrance;
 }
 
 export function recomputeConnections(rooms: GalleryRoom[]): RoomConnection[] {

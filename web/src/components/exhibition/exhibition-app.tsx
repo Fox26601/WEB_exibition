@@ -14,6 +14,7 @@ import { normalizeSettings } from "@/lib/catalog-types";
 import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
+import { UNITY_ASSET_CACHE_TAG } from "@/lib/unity-cache";
 import { GalleryScene } from "./gallery-scene";
 
 type InfoModal = "artist" | "curator" | "donate" | "links" | null;
@@ -39,6 +40,7 @@ export function ExhibitionApp({
   } | null>(null);
   const [catalogKind, setCatalogKind] = useState<"live" | "draft">("live");
   const [token, setToken] = useState<string | null>(null);
+  const [adminBuild, setAdminBuild] = useState(false);
   const [infoModal, setInfoModal] = useState<InfoModal>(null);
   const [footerModal, setFooterModal] = useState<FooterModal>(null);
   const [reviewName, setReviewName] = useState("");
@@ -51,8 +53,10 @@ export function ExhibitionApp({
     const params = new URLSearchParams(window.location.search);
     const kind = params.get("catalog") === "draft" ? "draft" : "live";
     const tok = params.get("token");
+    const mode = params.get("mode");
     setCatalogKind(kind);
     setToken(tok);
+    setAdminBuild(mode === "admin-build");
 
     const qs = new URLSearchParams({ catalog: kind });
     if (tok) qs.set("token", tok);
@@ -142,6 +146,38 @@ export function ExhibitionApp({
     }
   }
 
+  useEffect(() => {
+    if (!adminBuild) return;
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const data = ev.data as { type?: string } | undefined;
+      if (!data?.type?.startsWith("gallery-admin-")) return;
+      const win = iframeRef.current?.contentWindow;
+      if (!win) return;
+      win.postMessage(data, window.location.origin);
+      try {
+        const unity = (
+          win as Window & {
+            unityInstance?: {
+              SendMessage: (a: string, b: string, c: string) => void;
+            };
+          }
+        ).unityInstance;
+        if (data.type.startsWith("gallery-admin-")) {
+          unity?.SendMessage(
+            "WebAdminBridge",
+            "OnJsAdminMessage",
+            JSON.stringify(data),
+          );
+        }
+      } catch {
+        /* unity not ready */
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [adminBuild]);
+
   if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black px-6 text-center">
@@ -151,6 +187,20 @@ export function ExhibitionApp({
             Home
           </Link>
         </div>
+      </div>
+    );
+  }
+
+  if (adminBuild && unityAvailable) {
+    return (
+      <div className="relative h-[100dvh] w-full overflow-hidden bg-black">
+        <UnityEmbed
+          catalogKind={catalogKind}
+          token={token}
+          lang={locale}
+          adminBuild
+          iframeRef={iframeRef}
+        />
       </div>
     );
   }
@@ -272,6 +322,7 @@ export function ExhibitionApp({
           catalogKind={catalogKind}
           token={token}
           lang={locale}
+          adminBuild={false}
           iframeRef={iframeRef}
         />
       ) : (
@@ -566,11 +617,13 @@ function UnityEmbed({
   catalogKind,
   token,
   lang,
+  adminBuild,
   iframeRef,
 }: {
   catalogKind: string;
   token: string | null;
   lang: string;
+  adminBuild?: boolean;
   iframeRef: RefObject<HTMLIFrameElement | null>;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -603,13 +656,28 @@ function UnityEmbed({
 
   const qs = new URLSearchParams({ catalog: catalogKind, lang });
   if (token) qs.set("token", token);
+  if (adminBuild) qs.set("mode", "admin-build");
+
+  useEffect(() => {
+    if (!adminBuild) return;
+    const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
+      const data = ev.data as { type?: string } | undefined;
+      if (!data?.type) return;
+      if (data.type === "gallery-admin-ready" || data.type === "gallery-admin-placements") {
+        window.parent.postMessage(data, window.location.origin);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [adminBuild]);
 
   return (
     <div ref={wrapRef} id="unity-canvas-wrap" className="h-full w-full">
       <iframe
         ref={iframeRef}
         title="Unity gallery"
-        key={`unity-${catalogKind}-${token || "live"}`}
+        key={`unity-${UNITY_ASSET_CACHE_TAG}-${catalogKind}-${token || "live"}-${adminBuild ? "admin" : "visit"}`}
         src={`/unity/index.html?${qs.toString()}`}
         className="h-full w-full border-0"
         allow="autoplay; fullscreen"
