@@ -1,4 +1,7 @@
 {
   "private": true,
-  "workspaces": ["web"]
+  "workspaces": ["web"],
+  "scripts": {
+    "build": "npm run build --workspace=web"
+  }
 }
