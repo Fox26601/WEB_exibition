@@ -70,11 +70,18 @@ export async function POST(req: NextRequest) {
     receivedAt,
   };
 
-  await writeBlobText(pathname, JSON.stringify(payload, null, 2));
+  let persisted = true;
+  try {
+    await writeBlobText(pathname, JSON.stringify(payload, null, 2));
+  } catch (err) {
+    persisted = false;
+    console.error("feedback persist failed", err);
+  }
 
   return NextResponse.json({
     ok: true,
     id,
     destination: destination || null,
+    persisted,
   });
 }

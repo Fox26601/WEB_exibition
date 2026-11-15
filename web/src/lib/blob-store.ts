@@ -3,7 +3,10 @@ import { mkdir, readFile, writeFile, unlink, readdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+/** On Vercel without Blob token, cwd is read-only — use /tmp. */
+const DATA_DIR = process.env.VERCEL
+  ? path.join("/tmp", "web-exhibition-data")
+  : path.join(process.cwd(), ".data");
 
 function hasBlobToken(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);
