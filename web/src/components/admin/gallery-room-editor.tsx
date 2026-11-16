@@ -9,6 +9,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type {
+  Artwork,
+  FrameId,
   GalleryEntrancePose,
   GalleryLayout,
   GalleryRoom,
@@ -19,6 +21,12 @@ import {
   ROOM_SHAPES,
   normalizeLayout,
 } from "@/lib/catalog-types";
+import type { Locale } from "@/lib/i18n";
+import {
+  evaluateArtworkDrop,
+  placementWorldPoint,
+} from "@/lib/placement-eval";
+import { ArtPlacementPalette } from "./art-placement-palette";
 import {
   ENTRANCE_PORTAL_EDGE,
   defaultRoomTransform,
@@ -38,12 +46,16 @@ import {
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
+type EditorMode = "plan" | "place";
+
 type Props = {
   layout: GalleryLayout;
   onLayoutChange: (layout: GalleryLayout) => void;
   saveStatus: SaveStatus;
   saveError?: string;
   onRetrySave?: () => void;
+  artworks?: Artwork[];
+  locale?: Locale;
 };
 
 const SCALE = 36;
@@ -142,17 +154,35 @@ function roomCentroid(verts: Vec2[]): Vec2 {
   };
 }
 
+type PlaceDragState = {
+  art: Artwork;
+  source: "palette" | "reposition";
+};
+
+type GhostState = {
+  world: Vec2;
+  ok: boolean;
+};
+
 export function GalleryRoomEditor({
   layout,
   onLayoutChange,
   saveStatus,
   saveError,
   onRetrySave,
+  artworks,
+  locale,
 }: Props) {
+  const placementEnabled = Boolean(artworks?.length && locale);
+  const [editorMode, setEditorMode] = useState<EditorMode>("plan");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [selectedShape, setSelectedShape] = useState<RoomShape>("square");
   const [panOffset, setPanOffset] = useState<PanOffset>({ x: 0, y: 0 });
+  const [paletteFrame, setPaletteFrame] = useState<FrameId>("wood");
+  const [ghost, setGhost] = useState<GhostState | null>(null);
+  const [placeToast, setPlaceToast] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const placeDragRef = useRef<PlaceDragState | null>(null);
   const layoutLiveRef = useRef(layout);
   layoutLiveRef.current = layout;
   const panLiveRef = useRef(panOffset);
@@ -172,6 +202,167 @@ export function GalleryRoomEditor({
       onLayoutChange({ ...base, connections });
     },
     [onLayoutChange],
+  );
+
+  const showPlaceToast = useCallback((message: string) => {
+    setPlaceToast(message);
+    window.setTimeout(() => setPlaceToast(null), 3200);
+  }, []);
+
+  const removePlacement = useCallback(
+    (artworkId: string) => {
+      const current = normalizeLayout(layoutLiveRef.current);
+      commit({
+        ...current,
+        placements: current.placements.filter((p) => p.artworkId !== artworkId),
+      });
+    },
+    [commit],
+  );
+
+  const setPlacementFrame = useCallback(
+    (artworkId: string, frameId: FrameId) => {
+      const current = normalizeLayout(layoutLiveRef.current);
+      commit({
+        ...current,
+        placements: current.placements.map((p) =>
+          p.artworkId === artworkId ? { ...p, frameId } : p,
+        ),
+      });
+    },
+    [commit],
+  );
+
+  const upsertPlacement = useCallback(
+    (placement: import("@/lib/catalog-types").ArtworkPlacement): void => {
+      const current = normalizeLayout(layoutLiveRef.current);
+      const placements = [
+        ...current.placements.filter((p) => p.artworkId !== placement.artworkId),
+        placement,
+      ];
+      commit({ ...current, placements });
+    },
+    [commit],
+  );
+
+  const resolveWorldAtClient = useCallback(
+    (clientX: number, clientY: number): Vec2 | null => {
+      const svg = svgRef.current;
+      if (!svg) return null;
+      return svgToWorld(clientX, clientY, svg, origin, panLiveRef.current);
+    },
+    [origin],
+  );
+
+  const endPlaceDrag = useCallback(
+    (clientX: number, clientY: number) => {
+      const drag = placeDragRef.current;
+      placeDragRef.current = null;
+      setGhost(null);
+      if (!drag) return;
+      const world = resolveWorldAtClient(clientX, clientY);
+      if (!world) return;
+      const current = normalizeLayout(layoutLiveRef.current);
+      const ignoreId =
+        drag.source === "reposition" ? drag.art.id : undefined;
+      const result = evaluateArtworkDrop(
+        drag.art,
+        world,
+        current,
+        paletteFrame,
+        ignoreId,
+      );
+      if (!result.ok) {
+        const msg =
+          result.reason === "no_snap"
+            ? "Подведите ближе к стене."
+            : result.reason === "conflict"
+              ? "Слишком близко к другой работе."
+              : "Отпустите внутри комнаты.";
+        showPlaceToast(msg);
+        return;
+      }
+      upsertPlacement(result.placement);
+    },
+    [paletteFrame, resolveWorldAtClient, showPlaceToast, upsertPlacement],
+  );
+
+  const beginPaletteDrag = useCallback(
+    (art: Artwork, e: ReactPointerEvent) => {
+      if (editorMode !== "place") return;
+      placeDragRef.current = { art, source: "palette" };
+      const trackPointer = (clientX: number, clientY: number) => {
+        const world = resolveWorldAtClient(clientX, clientY);
+        if (!world) {
+          setGhost(null);
+          return;
+        }
+        const current = normalizeLayout(layoutLiveRef.current);
+        const result = evaluateArtworkDrop(
+          art,
+          world,
+          current,
+          paletteFrame,
+        );
+        setGhost({
+          world: result.ok ? result.world : world,
+          ok: result.ok,
+        });
+      };
+      const onMove = (ev: PointerEvent) => {
+        trackPointer(ev.clientX, ev.clientY);
+      };
+      const onUp = (ev: PointerEvent) => {
+        endPlaceDrag(ev.clientX, ev.clientY);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+      trackPointer(e.clientX, e.clientY);
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [editorMode, endPlaceDrag, paletteFrame, resolveWorldAtClient],
+  );
+
+  const beginReposition = useCallback(
+    (art: Artwork, e: ReactPointerEvent) => {
+      if (editorMode !== "place") return;
+      e.preventDefault();
+      e.stopPropagation();
+      placeDragRef.current = { art, source: "reposition" };
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+      const onMove = (ev: PointerEvent) => {
+        const world = resolveWorldAtClient(ev.clientX, ev.clientY);
+        if (!world) {
+          setGhost(null);
+          return;
+        }
+        const current = normalizeLayout(layoutLiveRef.current);
+        const result = evaluateArtworkDrop(
+          art,
+          world,
+          current,
+          paletteFrame,
+          art.id,
+        );
+        setGhost({
+          world: result.ok ? result.world : world,
+          ok: result.ok,
+        });
+      };
+      const onUp = (ev: PointerEvent) => {
+        endPlaceDrag(ev.clientX, ev.clientY);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [editorMode, endPlaceDrag, paletteFrame, resolveWorldAtClient],
   );
 
   function addRoom(shape: RoomShape) {
@@ -511,75 +702,77 @@ export function GalleryRoomEditor({
   const canDeleteSelected =
     selectedRoomId != null && selectedRoomId !== ENTRANCE_ROOM_ID;
 
-  return (
-    <div className="border border-[var(--line)] bg-[#1a1612]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
-            1 · Room plan
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--paper-dim)]">
-          <span
-            className={
-              saveStatus === "error"
-                ? "text-[#e08a7a]"
-                : "text-[var(--amber-bright)]"
-            }
-          >
-            {statusLabel}
-          </span>
-          {saveStatus === "error" && onRetrySave ? (
-            <button
-              type="button"
-              className="btn btn-ghost !py-1 !px-2 !text-[0.65rem]"
-              onClick={onRetrySave}
-            >
-              Retry
-            </button>
-          ) : null}
-        </div>
-      </div>
+  const planMode = editorMode === "plan";
+  const interactRooms = planMode;
 
+  const editorBody = (
+    <>
       <div className="flex flex-wrap gap-2 border-b border-[var(--line)] px-4 py-3">
-          {ROOM_SHAPES.map((shape) => (
+        {placementEnabled ? (
+          <div className="flex w-full flex-wrap items-center gap-2 pb-2">
             <button
-              key={shape}
               type="button"
               className={`btn !py-1.5 !px-3 !text-[0.7rem] ${
-                selectedShape === shape ? "btn-solid" : "btn-ghost"
+                planMode ? "btn-solid" : "btn-ghost"
               }`}
-              onClick={() => {
-                setSelectedShape(shape);
-                addRoom(shape);
-              }}
+              onClick={() => setEditorMode("plan")}
             >
-              + {shape}
+              Plan
             </button>
-          ))}
-          {canDeleteSelected ? (
             <button
               type="button"
-              className="btn btn-danger !py-1.5 !px-3 !text-[0.7rem]"
-              onClick={() => removeRoom(selectedRoomId!)}
+              className={`btn !py-1.5 !px-3 !text-[0.7rem] ${
+                !planMode ? "btn-solid" : "btn-ghost"
+              }`}
+              onClick={() => setEditorMode("place")}
             >
-              Delete room
+              Place
             </button>
-          ) : null}
-          <p
-            className="w-full text-sm text-[var(--paper-dim)]"
-            title="Entrance: bright edge is the gallery door; spawn is outside. Snap rotates the block for you. Tap entrance for +90°."
+          </div>
+        ) : null}
+        {planMode
+          ? ROOM_SHAPES.map((shape) => (
+              <button
+                key={shape}
+                type="button"
+                className={`btn !py-1.5 !px-3 !text-[0.7rem] ${
+                  selectedShape === shape ? "btn-solid" : "btn-ghost"
+                }`}
+                onClick={() => {
+                  setSelectedShape(shape);
+                  addRoom(shape);
+                }}
+              >
+                + {shape}
+              </button>
+            ))
+          : null}
+        {planMode && canDeleteSelected ? (
+          <button
+            type="button"
+            className="btn btn-danger !py-1.5 !px-3 !text-[0.7rem]"
+            onClick={() => removeRoom(selectedRoomId!)}
           >
-            <span className="text-[var(--amber-bright)]">Вход (фойе):</span> не
-            комната из списка — портал и spawn. Светлая грань — дверь в галерею;{" "}
-            <span className="text-[#8aa0b8]">spawn</span> снаружи. Подведи портал
-            к комнате (или комнату ко входу) — поворот подстроится сам.             Тап по
-            блоку — поворот 90°. По пустому полю — перетаскивание, чтобы
-            сдвинуть вид схемы.
-            {normalized.rooms.length > 0
-              ? ` Комнаты: перетаскивание, угол — stretch; дверей: ${normalized.connections.length}. Арт — на шаге 3D.`
-              : " Добавьте хотя бы одну комнату перед 3D."}
-          </p>
+            Delete room
+          </button>
+        ) : null}
+        <p
+          className="w-full text-sm text-[var(--paper-dim)]"
+          title="Entrance: bright edge is the gallery door; spawn is outside. Snap rotates the block for you. Tap entrance for +90°."
+        >
+          <span className="text-[var(--amber-bright)]">Вход (фойе):</span> не
+          комната из списка — портал и spawn. Светлая грань — дверь в галерею;{" "}
+          <span className="text-[#8aa0b8]">spawn</span> снаружи. Подведи портал к
+          комнате (или комнату ко входу) — поворот подстроится сам. Тап по блоку
+          — поворот 90°. По пустому полю — перетаскивание, чтобы сдвинуть вид
+          схемы.
+          {placementEnabled
+            ? " В режиме Place перетащите работу со списка на план или сдвиньте маркер."
+            : ""}
+          {normalized.rooms.length > 0
+            ? ` Комнаты: перетаскивание, угол — stretch; дверей: ${normalized.connections.length}.`
+            : " Добавьте хотя бы одну комнату."}
+        </p>
       </div>
 
       <div className="overflow-auto bg-[#12100e] p-2">
@@ -617,10 +810,13 @@ export function GalleryRoomEditor({
               d={polygonPath(entranceVerts, origin, panOffset)}
               fill={entranceSelected ? "#2a3540" : "#1a222c"}
               stroke="none"
-              onPointerDown={(e) =>
-                onBodyPointerDown(e, ENTRANCE_ROOM_ID, "move")
+              className={interactRooms ? undefined : "pointer-events-none"}
+              onPointerDown={
+                interactRooms
+                  ? (e) => onBodyPointerDown(e, ENTRANCE_ROOM_ID, "move")
+                  : undefined
               }
-              style={{ cursor: "grab" }}
+              style={{ cursor: interactRooms ? "grab" : undefined }}
             />
             {entrancePortalOverlay.edgeLines.map(({ i, p1, p2, isPortal }) => (
               <line
@@ -694,23 +890,26 @@ export function GalleryRoomEditor({
                   fill={selected ? "#2a241c" : "#1c1814"}
                   stroke={selected ? "#d4a574" : "#5a4a3a"}
                   strokeWidth={selected ? 2.5 : 1.5}
-                  onPointerDown={(e) =>
-                    onBodyPointerDown(e, room.id, "move")
+                  className={interactRooms ? undefined : "pointer-events-none"}
+                  onPointerDown={
+                    interactRooms
+                      ? (e) => onBodyPointerDown(e, room.id, "move")
+                      : undefined
                   }
-                  style={{ cursor: "grab" }}
+                  style={{ cursor: interactRooms ? "grab" : undefined }}
                 />
-                <circle
+                {interactRooms ? (
+                  <circle
                     cx={handle.x}
                     cy={handle.y}
                     r={7}
                     fill="#d4a574"
                     stroke="#1a1612"
                     strokeWidth={1}
-                    onPointerDown={(e) =>
-                      onBodyPointerDown(e, room.id, "scale")
-                    }
+                    onPointerDown={(e) => onBodyPointerDown(e, room.id, "scale")}
                     style={{ cursor: "nwse-resize" }}
                   />
+                ) : null}
                 <text
                   x={label.x}
                   y={label.y}
@@ -748,12 +947,121 @@ export function GalleryRoomEditor({
                 fill="#3d4a5c"
                 stroke="#8aa0b8"
                 strokeWidth={1}
+                className="pointer-events-none"
               />
             );
           })}
 
+          {artworks?.map((art) => {
+            const placement = normalized.placements.find(
+              (p) => p.artworkId === art.id,
+            );
+            if (!placement) return null;
+            const w = placementWorldPoint(placement, normalized);
+            if (!w) return null;
+            const pt = worldToSvg(w, origin, panOffset);
+            const fill =
+              placement.kind === "sculpture" ? "#6a8a6a" : "#c9a227";
+            return (
+              <rect
+                key={`place-${art.id}`}
+                x={pt.x - 7}
+                y={pt.y - 7}
+                width={14}
+                height={14}
+                fill={fill}
+                stroke="#f0e8dc"
+                strokeWidth={1.5}
+                className={planMode ? "pointer-events-none" : undefined}
+                onPointerDown={
+                  !planMode ? (e) => beginReposition(art, e) : undefined
+                }
+                style={{ cursor: !planMode ? "grab" : undefined }}
+              />
+            );
+          })}
+
+          {ghost && !planMode ? (
+            <rect
+              x={
+                worldToSvg(ghost.world, origin, panOffset).x - 9
+              }
+              y={
+                worldToSvg(ghost.world, origin, panOffset).y - 9
+              }
+              width={18}
+              height={18}
+              fill={
+                ghost.ok
+                  ? "rgba(90, 180, 120, 0.55)"
+                  : "rgba(200, 90, 80, 0.5)"
+              }
+              stroke={ghost.ok ? "#7ad49a" : "#e08a7a"}
+              strokeWidth={2}
+              className="pointer-events-none"
+            />
+          ) : null}
         </svg>
       </div>
+    </>
+  );
+
+  return (
+    <div className="border border-[var(--line)] bg-[#1a1612]">
+      {placeToast ? (
+        <div
+          className="pointer-events-none fixed bottom-6 left-1/2 z-[10000] -translate-x-1/2 border border-[var(--amber)]/60 bg-[#1a1612] px-4 py-2 text-sm text-[var(--paper)] shadow-lg"
+          role="status"
+        >
+          {placeToast}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
+            Room plan & placement
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--paper-dim)]">
+          <span
+            className={
+              saveStatus === "error"
+                ? "text-[#e08a7a]"
+                : "text-[var(--amber-bright)]"
+            }
+          >
+            {statusLabel}
+          </span>
+          {saveStatus === "error" && onRetrySave ? (
+            <button
+              type="button"
+              className="btn btn-ghost !py-1 !px-2 !text-[0.65rem]"
+              onClick={onRetrySave}
+            >
+              Retry
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {placementEnabled && artworks && locale ? (
+        <div className="flex flex-col lg:flex-row lg:items-stretch">
+          <div className="min-w-0 flex-1">{editorBody}</div>
+          <ArtPlacementPalette
+            artworks={artworks}
+            locale={locale}
+            placements={normalized.placements}
+            paletteFrame={paletteFrame}
+            onPaletteFrameChange={setPaletteFrame}
+            onBeginDrag={beginPaletteDrag}
+            onRemovePlacement={removePlacement}
+            onSetFrame={setPlacementFrame}
+            disabled={editorMode !== "place"}
+          />
+        </div>
+      ) : (
+        editorBody
+      )}
     </div>
   );
 }

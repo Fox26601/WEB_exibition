@@ -9,10 +9,8 @@ import type {
 } from "@/lib/catalog-types";
 import { emptyLocalized, LOCALES, emptyLayout } from "@/lib/catalog-types";
 import { LangSwitcher } from "@/components/lang-switcher";
-import { pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { GalleryRoomEditor, ensureLayout } from "./gallery-room-editor";
-import { AdminBuildBridge } from "./admin-build-bridge";
 
 const IMAGE_MAX = 8 * 1024 * 1024;
 const VIDEO_MAX = 80 * 1024 * 1024;
@@ -34,8 +32,6 @@ export function PreviewPanel() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveError, setSaveError] = useState("");
   const { locale, setLocale } = useGalleryLocale();
-  const [iframeKey, setIframeKey] = useState(0);
-  const [wizardStep, setWizardStep] = useState<"plan" | "place3d">("plan");
   const layoutRef = useRef<GalleryLayout>(emptyLayout());
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingLayout = useRef<GalleryLayout | null>(null);
@@ -76,19 +72,8 @@ export function PreviewPanel() {
   }, [catalog]);
 
   const planPreviewSrc = token
-    ? `/exhibition?catalog=draft&token=${encodeURIComponent(token)}&lang=${locale}&mode=preview-lite`
+    ? `/exhibition?catalog=draft&token=${encodeURIComponent(token)}&lang=${locale}`
     : "";
-
-  function goBackToPlan() {
-    const warn =
-      "Вернуться к плану комнат? Расстановка в черновике сохранится; при сильном изменении геометрии комнаты проверьте размещения в 3D.";
-    if (!confirm(warn)) return;
-    setWizardStep("plan");
-  }
-
-  function bumpIframe() {
-    setIframeKey((k) => k + 1);
-  }
 
   const persistLayout = useCallback(async (layout: GalleryLayout) => {
     setSaveStatus("saving");
@@ -109,7 +94,6 @@ export function PreviewPanel() {
       layoutRef.current = ensureLayout(data.layout);
       setDirty(Boolean(data.dirty));
       setSaveStatus("saved");
-      bumpIframe();
     } catch (e) {
       setSaveStatus("error");
       setSaveError(e instanceof Error ? e.message : "Autosave failed");
@@ -157,7 +141,6 @@ export function PreviewPanel() {
       });
       setDirty(false);
       setLiveUpdatedAt(data.catalog.updatedAt || "");
-      bumpIframe();
       setMessage("Published to live site");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
@@ -182,7 +165,6 @@ export function PreviewPanel() {
         layout: ensureLayout(data.catalog.layout ?? catalog?.layout),
       });
       setDirty(true);
-      bumpIframe();
       setMessage("Order saved");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
@@ -217,7 +199,6 @@ export function PreviewPanel() {
       });
       setDirty(true);
       setEditing(null);
-      bumpIframe();
       setMessage("Saved");
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
@@ -242,7 +223,6 @@ export function PreviewPanel() {
         layout: nextLayout,
       });
       scheduleLayoutSave(nextLayout);
-      bumpIframe();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -309,27 +289,16 @@ export function PreviewPanel() {
           >
             + Sculpture
           </button>
-          {wizardStep === "place3d" ? (
-            <button
-              type="button"
-              className="btn btn-solid"
-              disabled={busy || (!dirty && saveStatus !== "error")}
-              title="Publish live catalog from this draft"
-              onClick={() => void publishLive()}
-            >
-              Опубликовать на сайт
-              {dirty ? " ·" : ""}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled
-              title="Подтвердите план и расставьте работы в 3D"
-            >
-              Опубликовать на сайт (шаг 2)
-            </button>
-          )}
+          <button
+            type="button"
+            className="btn btn-solid"
+            disabled={busy}
+            title="Publish live catalog from this draft"
+            onClick={() => void publishLive()}
+          >
+            Опубликовать на сайт
+            {dirty ? " ·" : ""}
+          </button>
         </div>
       </div>
 
@@ -345,102 +314,37 @@ export function PreviewPanel() {
         <p className="mb-4 text-sm text-[var(--amber-bright)]">{message}</p>
       ) : null}
 
-      {wizardStep === "plan" ? (
-        <div className="mb-8">
-          <GalleryRoomEditor
-            layout={layout}
-            onLayoutChange={scheduleLayoutSave}
-            saveStatus={saveStatus}
-            saveError={saveError}
-            onRetrySave={retrySave}
-          />
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              className="btn btn-solid"
-              disabled={layout.rooms.length < 1}
-              onClick={() => setWizardStep("place3d")}
+      <div className="mb-8">
+        <GalleryRoomEditor
+          layout={layout}
+          onLayoutChange={scheduleLayoutSave}
+          saveStatus={saveStatus}
+          saveError={saveError}
+          onRetrySave={retrySave}
+          artworks={publishedArts}
+          locale={locale}
+        />
+        {planPreviewSrc ? (
+          <p className="mt-4 text-sm">
+            <a
+              href={planPreviewSrc}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--amber-bright)] underline-offset-2 hover:underline"
             >
-              Далее: расстановка в 3D
-            </button>
-            {layout.rooms.length < 1 ? (
-              <span className="text-sm text-[#e08a7a]">
-                Нужна хотя бы одна комната.
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-8 border border-[var(--line)] bg-[#1a1612]">
-            <div className="border-b border-[var(--line)] px-4 py-2 text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
-              Draft preview · {locale.toUpperCase()}
-            </div>
-            {planPreviewSrc ? (
-              <iframe
-                key={`draft-${iframeKey}-${locale}-${token}`}
-                title="Draft exhibition preview"
-                src={planPreviewSrc}
-                className="h-[320px] w-full bg-black"
-              />
-            ) : (
-              <div className="flex h-[320px] items-center justify-center text-[var(--paper-dim)]">
-                Loading…
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="mb-8">
-          <div className="mb-4 flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={goBackToPlan}
-            >
-              Назад к плану
-            </button>
-            <span className="text-sm text-[var(--paper-dim)]">
-              Шаг 2 · Unity WebGL · autosave placements
-            </span>
-          </div>
-          {catalog && token ? (
-            <AdminBuildBridge
-              catalog={catalog}
-              layout={layout}
-              locale={locale}
-              token={token}
-              iframeKey={iframeKey}
-              onLayoutChange={scheduleLayoutSave}
-            />
-          ) : (
-            <p className="text-[var(--paper-dim)]">Loading admin build…</p>
-          )}
-        </div>
-      )}
-
-      {wizardStep === "place3d" ? (
-        <details className="mt-4 border border-[var(--line)] bg-[#1a1612] px-4 py-3 text-sm text-[var(--paper-dim)]">
-          <summary className="cursor-pointer font-medium text-[var(--paper)]">
-            Manage artworks ({allArts.length})
-          </summary>
-          <p className="mt-2">
-            Upload and publish on step 1 for a larger editor. Use the palette in
-            3D build for placement.
+              Открыть черновик в 3D
+            </a>
           </p>
-          <button
-            type="button"
-            className="btn btn-ghost mt-2 !text-xs"
-            onClick={goBackToPlan}
-          >
-            Back to plan &amp; artworks
-          </button>
-        </details>
-      ) : (
+        ) : null}
+      </div>
+
       <div className="mt-8">
         <h2 className="mb-3 font-[family-name:var(--font-display)] text-xl font-semibold">
           Artworks ({allArts.length})
         </h2>
         <p className="mb-4 text-sm text-[var(--paper-dim)]">
-          Upload, publish toggle, and delete. After confirming the room plan,
-          place published works in 3D on step 2.
+          Upload and publish here. Place published works on the room plan in Place
+          mode.
         </p>
         <ul className="space-y-3">
           {allArts.map((art) => {
@@ -552,7 +456,6 @@ export function PreviewPanel() {
           </p>
         ) : null}
       </div>
-      )}
 
       {editing ? (
         <PreviewArtworkEditor
