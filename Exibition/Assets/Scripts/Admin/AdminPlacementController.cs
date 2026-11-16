@@ -116,21 +116,46 @@ namespace Gallery.Admin
         {
             if (msg == null) return;
             _externalOverCanvas = msg.overCanvas;
-            _externalScreen = ResolveScreenPixels(msg.screenX, msg.screenY, msg.normU, msg.normV);
+            _externalScreen = ResolveScreenPixels(
+                msg.screenX,
+                msg.screenY,
+                msg.normU,
+                msg.normV,
+                msg.overCanvas,
+                msg.canvasWidth,
+                msg.canvasHeight);
         }
 
         void ApplyExternalPointer(AdminDragMoveMessage msg)
         {
             if (msg == null) return;
             _externalOverCanvas = msg.overCanvas;
-            _externalScreen = ResolveScreenPixels(msg.screenX, msg.screenY, msg.normU, msg.normV);
+            _externalScreen = ResolveScreenPixels(
+                msg.screenX,
+                msg.screenY,
+                msg.normU,
+                msg.normV,
+                msg.overCanvas,
+                msg.canvasWidth,
+                msg.canvasHeight);
         }
 
-        static Vector2 ResolveScreenPixels(float screenX, float screenY, float normU, float normV)
+        static Vector2 ResolveScreenPixels(
+            float screenX,
+            float screenY,
+            float normU,
+            float normV,
+            bool overCanvas,
+            float canvasWidth,
+            float canvasHeight)
         {
-            if (screenX > 0f || screenY > 0f)
+            var w = canvasWidth > 0f ? canvasWidth : Screen.width;
+            var h = canvasHeight > 0f ? canvasHeight : Screen.height;
+            if (overCanvas)
+                return new Vector2(normU * w, normV * h);
+            if (screenX != 0f || screenY != 0f)
                 return new Vector2(screenX, screenY);
-            return new Vector2(normU * Screen.width, normV * Screen.height);
+            return new Vector2(normU * w, normV * h);
         }
 
         public void EndDrag(AdminEndDragMessage msg)

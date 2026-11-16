@@ -31,6 +31,8 @@ export type AdminPointerPayload = {
   normU: number;
   normV: number;
   overCanvas: boolean;
+  canvasWidth: number;
+  canvasHeight: number;
 };
 
 export type AdminBridgeMessage =
@@ -330,6 +332,8 @@ export function AdminBuildBridge({
         normU: mapped.normU,
         normV: mapped.normV,
         overCanvas: mapped.overCanvas,
+        canvasWidth: mapped.canvasWidth,
+        canvasHeight: mapped.canvasHeight,
       };
     },
     [],
@@ -421,6 +425,8 @@ export function AdminBuildBridge({
           normU: 0,
           normV: 0,
           overCanvas: false,
+          canvasWidth: 0,
+          canvasHeight: 0,
         };
 
       postToUnity({
@@ -511,6 +517,10 @@ export function AdminBuildBridge({
           <div className="flex flex-wrap gap-x-4 gap-y-1">
             <span>
               <strong className="text-[var(--amber-bright)]">ЛКМ</strong> —
+              схватить / переместить работу
+            </span>
+            <span>
+              <strong className="text-[var(--amber-bright)]">Alt+ЛКМ</strong> —
               поворот вида
             </span>
             <span>

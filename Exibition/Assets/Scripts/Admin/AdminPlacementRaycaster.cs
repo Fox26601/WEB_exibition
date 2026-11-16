@@ -36,11 +36,20 @@ namespace Gallery.Admin
 
             if (painting)
             {
+                if (room != null &&
+                    WallSnapUtility.TrySnapPaintingFromRay(camera, room, ray, out wallSnap))
+                {
+                    point = wallSnap.position;
+                    normal = wallSnap.inwardNormal;
+                    snapValid = true;
+                    return true;
+                }
+
                 var plane = new Plane(Vector3.up, new Vector3(0f, FloorY, 0f));
                 if (!plane.Raycast(ray, out var enter))
                     return false;
                 var hitXZ = ray.GetPoint(enter);
-                if (WallSnapUtility.TrySnapPainting(room, hitXZ, out wallSnap))
+                if (room != null && WallSnapUtility.TrySnapPainting(room, hitXZ, out wallSnap))
                 {
                     point = wallSnap.position;
                     normal = wallSnap.inwardNormal;

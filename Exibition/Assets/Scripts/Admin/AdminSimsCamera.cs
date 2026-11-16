@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Gallery.Admin
 {
     /// <summary>
-    /// Fixed isometric pan/zoom for admin build mode. LMB drag orbits; RMB pans.
+    /// Fixed isometric pan/zoom for admin build mode. Alt+LMB orbits; RMB pans.
     /// </summary>
     public class AdminSimsCamera : MonoBehaviour
     {
@@ -52,8 +52,10 @@ namespace Gallery.Admin
                 _panOffset += (_pivot.right * -dx + _pivot.forward * -dz) * panSensitivity * _distance;
             }
 
+            var altHeld = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
             var orbit =
                 Input.GetMouseButton(0) &&
+                altHeld &&
                 !Input.GetKey(KeyCode.Space) &&
                 !AdminPlacementController.BlocksCameraInput;
 

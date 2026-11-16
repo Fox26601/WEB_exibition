@@ -18,6 +18,8 @@ export type UnityPointerMap = {
   normV: number;
   screenX: number;
   screenY: number;
+  canvasWidth: number;
+  canvasHeight: number;
 };
 
 /**
@@ -52,7 +54,15 @@ export function mapClientToUnityPointer(
   const screenX = normU * backing.width;
   const screenY = normV * backing.height;
 
-  return { overCanvas, normU, normV, screenX, screenY };
+  return {
+    overCanvas,
+    normU,
+    normV,
+    screenX,
+    screenY,
+    canvasWidth: backing.width,
+    canvasHeight: backing.height,
+  };
 }
 
 function clamp01(v: number): number {
@@ -72,17 +82,49 @@ export function resolveUnityCanvasFromExhibitionIframe(
   ) as HTMLCanvasElement | null;
 }
 
+export function resolveUnityIframeRect(
+  exhibitionIframe: HTMLIFrameElement | null,
+): { rect: UnityCanvasRect; backing: UnityCanvasBacking } | null {
+  if (!exhibitionIframe?.contentDocument) return null;
+  const inner = exhibitionIframe.contentDocument.querySelector("iframe");
+  if (!inner) return null;
+  const rect = inner.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+  return {
+    rect: {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    },
+    backing: {
+      width: Math.max(1, Math.round(rect.width * dpr)),
+      height: Math.max(1, Math.round(rect.height * dpr)),
+    },
+  };
+}
+
 export function mapPointerThroughExhibitionIframe(
   clientX: number,
   clientY: number,
   exhibitionIframe: HTMLIFrameElement | null,
 ): UnityPointerMap | null {
   const canvas = resolveUnityCanvasFromExhibitionIframe(exhibitionIframe);
-  if (!canvas) return null;
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return null;
-  return mapClientToUnityPointer(clientX, clientY, rect, {
-    width: canvas.width,
-    height: canvas.height,
-  });
+  if (canvas) {
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return mapClientToUnityPointer(clientX, clientY, rect, {
+      width: canvas.width,
+      height: canvas.height,
+    });
+  }
+  const fallback = resolveUnityIframeRect(exhibitionIframe);
+  if (!fallback) return null;
+  return mapClientToUnityPointer(
+    clientX,
+    clientY,
+    fallback.rect,
+    fallback.backing,
+  );
 }
