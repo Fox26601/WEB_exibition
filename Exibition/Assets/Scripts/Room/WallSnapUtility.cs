@@ -41,7 +41,7 @@ namespace Gallery.Room
             foreach (var roomData in room.ActiveLayout.rooms)
             {
                 if (roomData == null || string.IsNullOrEmpty(roomData.id)) continue;
-                if (roomData.id == CatalogModels.EntranceRoomId) continue;
+                if (roomData.id == LayoutEntranceIds.EntranceRoomId) continue;
                 if (!room.TryGetRoomVertices(roomData.id, out var verts) || verts == null || verts.Length < 2)
                     continue;
 
@@ -195,7 +195,7 @@ namespace Gallery.Room
             foreach (var roomData in room.ActiveLayout.rooms)
             {
                 if (roomData == null || string.IsNullOrEmpty(roomData.id)) continue;
-                if (roomData.id == CatalogModels.EntranceRoomId) continue;
+                if (roomData.id == LayoutEntranceIds.EntranceRoomId) continue;
                 if (!room.TryGetRoomVertices(roomData.id, out var verts) || verts == null || verts.Length < 2)
                     continue;
 
