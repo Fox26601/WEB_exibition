@@ -6,6 +6,11 @@ import type {
   GalleryRoom,
 } from "./catalog-types";
 import {
+  DEFAULT_WALL_HEIGHT_T,
+  MAX_WALL_HEIGHT_T,
+  MIN_WALL_HEIGHT_T,
+} from "./catalog-types";
+import {
   findRoomAtPoint,
   nearestWall,
   placementConflicts,
@@ -19,6 +24,13 @@ import {
 export const MAX_WALL_SNAP_DIST = 1.2;
 const T_ALONG_MIN = 0.12;
 const T_ALONG_MAX = 0.88;
+
+export function resolvedWallHeightT(p: ArtworkPlacement): number {
+  if (p.kind !== "painting") return DEFAULT_WALL_HEIGHT_T;
+  const t = p.wallHeightT;
+  if (t == null || !Number.isFinite(t) || t <= 0) return DEFAULT_WALL_HEIGHT_T;
+  return Math.max(MIN_WALL_HEIGHT_T, Math.min(MAX_WALL_HEIGHT_T, t));
+}
 
 export type PlacementDropResult =
   | { ok: true; placement: ArtworkPlacement; world: Vec2 }
@@ -112,6 +124,7 @@ export function evaluateArtworkDrop(
     roomId: snap.room.id,
     wallEdgeIndex: snap.edgeIndex,
     tAlongEdge: tAlong,
+    wallHeightT: DEFAULT_WALL_HEIGHT_T,
     yaw: yawFromEdge(snap.a, snap.b, true),
     frameId: paintingFrame(art, paletteFrame),
   };

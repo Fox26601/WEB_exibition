@@ -2,7 +2,12 @@
 
 import { useMemo, type PointerEvent as ReactPointerEvent } from "react";
 import type { Artwork, ArtworkPlacement, FrameId } from "@/lib/catalog-types";
-import { FRAME_IDS } from "@/lib/catalog-types";
+import {
+  FRAME_IDS,
+  MAX_WALL_HEIGHT_T,
+  MIN_WALL_HEIGHT_T,
+} from "@/lib/catalog-types";
+import { resolvedWallHeightT } from "@/lib/placement-eval";
 import { pickLocalized } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n";
 
@@ -15,6 +20,7 @@ type Props = {
   onBeginDrag: (art: Artwork, e: ReactPointerEvent) => void;
   onRemovePlacement: (artworkId: string) => void;
   onSetFrame: (artworkId: string, frameId: FrameId) => void;
+  onSetWallHeight: (artworkId: string, wallHeightT: number) => void;
   disabled?: boolean;
 };
 
@@ -27,6 +33,7 @@ export function ArtPlacementPalette({
   onBeginDrag,
   onRemovePlacement,
   onSetFrame,
+  onSetWallHeight,
   disabled,
 }: Props) {
   const placed = useMemo(
@@ -84,20 +91,40 @@ export function ArtPlacementPalette({
               {isPlaced ? (
                 <div className="mt-2 flex flex-wrap gap-1">
                   {placement?.kind === "painting" ? (
-                    <select
-                      className="!py-0.5 !text-[0.65rem]"
-                      value={placement.frameId}
-                      onChange={(e) =>
-                        onSetFrame(art.id, e.target.value as FrameId)
-                      }
-                      disabled={disabled}
-                    >
-                      {FRAME_IDS.filter((f) => f !== "none").map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
+                    <>
+                      <select
+                        className="!py-0.5 !text-[0.65rem]"
+                        value={placement.frameId}
+                        onChange={(e) =>
+                          onSetFrame(art.id, e.target.value as FrameId)
+                        }
+                        disabled={disabled}
+                      >
+                        {FRAME_IDS.filter((f) => f !== "none").map((id) => (
+                          <option key={id} value={id}>
+                            {id}
+                          </option>
+                        ))}
+                      </select>
+                      <label className="flex w-full min-w-[120px] flex-1 items-center gap-1 text-[0.65rem] text-[var(--paper-dim)]">
+                        H
+                        <input
+                          type="range"
+                          min={MIN_WALL_HEIGHT_T}
+                          max={MAX_WALL_HEIGHT_T}
+                          step={0.01}
+                          value={resolvedWallHeightT(placement)}
+                          disabled={disabled}
+                          onChange={(e) =>
+                            onSetWallHeight(art.id, Number(e.target.value))
+                          }
+                          className="min-w-0 flex-1"
+                        />
+                        <span className="w-8 tabular-nums">
+                          {Math.round(resolvedWallHeightT(placement) * 100)}
+                        </span>
+                      </label>
+                    </>
                   ) : null}
                   <button
                     type="button"

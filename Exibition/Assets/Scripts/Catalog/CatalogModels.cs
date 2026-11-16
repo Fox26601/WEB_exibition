@@ -149,6 +149,8 @@ namespace Gallery.Catalog
         public string roomId;
         public int wallEdgeIndex;
         public float tAlongEdge = 0.5f;
+        /// <summary>0..1 wall height; &lt;=0 uses default (0.55).</summary>
+        public float wallHeightT;
         public float floorX;
         public float floorZ;
         public float yaw;

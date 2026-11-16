@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeLayout } from "./catalog-types.ts";
+import { DEFAULT_WALL_HEIGHT_T } from "./catalog-types.ts";
 import {
   evaluateArtworkDrop,
   MAX_WALL_SNAP_DIST,
   placementWorldPoint,
+  resolvedWallHeightT,
 } from "./placement-eval.ts";
 
 function squareRoom(id, x, z, scale = 3.2) {
@@ -44,6 +46,7 @@ test("evaluateArtworkDrop snaps painting to nearest wall within range", () => {
   assert.equal(drop.placement.kind, "painting");
   assert.equal(drop.placement.roomId, "r1");
   assert.equal(drop.placement.frameId, "wood");
+  assert.equal(drop.placement.wallHeightT, DEFAULT_WALL_HEIGHT_T);
   assert.ok(
     (drop.placement.tAlongEdge ?? 0) >= 0.12 &&
       (drop.placement.tAlongEdge ?? 0) <= 0.88,
@@ -130,4 +133,28 @@ test("placementWorldPoint resolves sculpture floor and painting wall", () => {
   );
   assert.ok(paintingPt);
   assert.ok(Math.abs(paintingPt.x) < 0.01 || Math.abs(paintingPt.z - 4) < 0.5);
+});
+
+test("resolvedWallHeightT defaults and clamps", () => {
+  assert.equal(
+    resolvedWallHeightT({
+      artworkId: "a",
+      kind: "painting",
+      roomId: "r",
+      yaw: 0,
+      frameId: "wood",
+    }),
+    DEFAULT_WALL_HEIGHT_T,
+  );
+  assert.equal(
+    resolvedWallHeightT({
+      artworkId: "a",
+      kind: "painting",
+      roomId: "r",
+      yaw: 0,
+      frameId: "wood",
+      wallHeightT: 0.7,
+    }),
+    0.7,
+  );
 });

@@ -233,6 +233,21 @@ export function GalleryRoomEditor({
     [commit],
   );
 
+  const setPlacementWallHeight = useCallback(
+    (artworkId: string, wallHeightT: number) => {
+      const current = normalizeLayout(layoutLiveRef.current);
+      commit({
+        ...current,
+        placements: current.placements.map((p) =>
+          p.artworkId === artworkId && p.kind === "painting"
+            ? { ...p, wallHeightT }
+            : p,
+        ),
+      });
+    },
+    [commit],
+  );
+
   const upsertPlacement = useCallback(
     (placement: import("@/lib/catalog-types").ArtworkPlacement): void => {
       const current = normalizeLayout(layoutLiveRef.current);
@@ -282,7 +297,14 @@ export function GalleryRoomEditor({
         showPlaceToast(msg);
         return;
       }
-      upsertPlacement(result.placement);
+      let placement = result.placement;
+      if (drag.source === "reposition") {
+        const prev = current.placements.find((p) => p.artworkId === drag.art.id);
+        if (prev?.kind === "painting" && prev.wallHeightT != null) {
+          placement = { ...placement, wallHeightT: prev.wallHeightT };
+        }
+      }
+      upsertPlacement(placement);
     },
     [paletteFrame, resolveWorldAtClient, showPlaceToast, upsertPlacement],
   );
@@ -1056,6 +1078,7 @@ export function GalleryRoomEditor({
             onBeginDrag={beginPaletteDrag}
             onRemovePlacement={removePlacement}
             onSetFrame={setPlacementFrame}
+            onSetWallHeight={setPlacementWallHeight}
             disabled={editorMode !== "place"}
           />
         </div>

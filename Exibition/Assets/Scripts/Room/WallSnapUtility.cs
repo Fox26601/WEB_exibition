@@ -23,7 +23,18 @@ namespace Gallery.Room
     {
         public const float MaxSnapDistance = 3f;
         public const float WallInset = 0.08f;
-        public const float PaintingHeight = RoomBuilder.Height * 0.55f;
+        public const float DefaultWallHeightT = 0.55f;
+
+        public static float PaintingHeightFromPlacement(ArtworkPlacementData placement)
+        {
+            var t = placement != null && placement.wallHeightT > 0f
+                ? placement.wallHeightT
+                : DefaultWallHeightT;
+            t = Mathf.Clamp(t, 0.12f, 0.92f);
+            return RoomBuilder.Height * t;
+        }
+
+        public const float PaintingHeight = RoomBuilder.Height * DefaultWallHeightT;
 
         public static bool TrySnapPaintingFromRay(
             Camera camera,
@@ -256,7 +267,8 @@ namespace Gallery.Room
             var t = Mathf.Clamp01(placement.tAlongEdge);
             var along = Vector3.Lerp(a, b, t);
             var inward = InwardNormal(a, b, centroid);
-            position = along + inward * WallInset + Vector3.up * PaintingHeight;
+            var hangY = PaintingHeightFromPlacement(placement);
+            position = along + inward * WallInset + Vector3.up * hangY;
             var yaw = placement.yaw;
             if (Mathf.Approximately(yaw, 0f))
                 yaw = Mathf.Atan2(inward.x, inward.z) * Mathf.Rad2Deg;

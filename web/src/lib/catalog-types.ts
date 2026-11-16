@@ -68,6 +68,11 @@ export interface RoomConnection {
   doorwayWidth: number;
 }
 
+/** Normalized hang height on wall (world Y = wallHeightT × room height). */
+export const DEFAULT_WALL_HEIGHT_T = 0.55;
+export const MIN_WALL_HEIGHT_T = 0.15;
+export const MAX_WALL_HEIGHT_T = 0.9;
+
 export interface ArtworkPlacement {
   artworkId: string;
   kind: PlacementKind;
@@ -75,6 +80,8 @@ export interface ArtworkPlacement {
   wallEdgeIndex?: number;
   /** 0..1 along the wall edge. */
   tAlongEdge?: number;
+  /** 0..1 up the wall (visitor Y). Omitted / legacy → DEFAULT_WALL_HEIGHT_T. */
+  wallHeightT?: number;
   floorX?: number;
   floorZ?: number;
   yaw: number;
