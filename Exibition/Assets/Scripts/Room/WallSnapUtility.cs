@@ -25,6 +25,164 @@ namespace Gallery.Room
         public const float WallInset = 0.08f;
         public const float PaintingHeight = RoomBuilder.Height * 0.55f;
 
+        public static bool TrySnapPaintingFromRay(
+            Camera camera,
+            RoomBuilder room,
+            Ray ray,
+            out WallSnapResult result)
+        {
+            result = default;
+            if (room == null || !room.UsingLayout || room.ActiveLayout?.rooms == null)
+                return false;
+
+            var bestDist = float.MaxValue;
+            WallSnapResult best = default;
+
+            foreach (var roomData in room.ActiveLayout.rooms)
+            {
+                if (roomData == null || string.IsNullOrEmpty(roomData.id)) continue;
+                if (roomData.id == CatalogModels.EntranceRoomId) continue;
+                if (!room.TryGetRoomVertices(roomData.id, out var verts) || verts == null || verts.Length < 2)
+                    continue;
+
+                if (!TryRoomCentroid(verts, out var centroid))
+                    continue;
+
+                for (var i = 0; i < verts.Length; i++)
+                {
+                    var a = verts[i];
+                    var b = verts[(i + 1) % verts.Length];
+                    if (!TrySnapPointOnWallEdge(ray, a, b, out var candidate))
+                        continue;
+                    if (!TryDistPointToSegmentXZ(candidate, a, b, out var dist, out var t, out var onEdge))
+                        continue;
+                    if (dist >= bestDist || dist > MaxSnapDistance)
+                        continue;
+
+                    var inward = InwardNormal(a, b, centroid);
+                    var yaw = Mathf.Atan2(inward.x, inward.z) * Mathf.Rad2Deg;
+                    bestDist = dist;
+                    best = new WallSnapResult
+                    {
+                        valid = true,
+                        roomId = roomData.id,
+                        wallEdgeIndex = i,
+                        tAlongEdge = t,
+                        yaw = yaw,
+                        alongEdge = onEdge,
+                        inwardNormal = inward,
+                        position = onEdge + inward * WallInset + Vector3.up * PaintingHeight,
+                    };
+                }
+            }
+
+            if (best.valid)
+            {
+                result = best;
+                return true;
+            }
+
+            var floor = new Plane(Vector3.up, Vector3.zero);
+            if (!floor.Raycast(ray, out var enter))
+                return false;
+            return TrySnapPainting(room, ray.GetPoint(enter), out result);
+        }
+
+        static bool TrySnapPointOnWallEdge(
+            Ray ray,
+            Vector3 a,
+            Vector3 b,
+            out Vector3 snapPoint)
+        {
+            snapPoint = default;
+            var edge = b - a;
+            var flat = new Vector3(edge.x, 0f, edge.z);
+            if (flat.sqrMagnitude < 1e-6f) return false;
+            flat.Normalize();
+            var wallNormal = Vector3.Cross(Vector3.up, flat).normalized;
+
+            if (TryRayHitVerticalWallPlane(ray, a, b, wallNormal, out snapPoint) &&
+                TryDistPointToSegmentXZ(snapPoint, a, b, out var dist, out _, out _) &&
+                dist <= MaxSnapDistance)
+                return true;
+
+            if (TryRayHitVerticalWallPlane(ray, a, b, -wallNormal, out snapPoint) &&
+                TryDistPointToSegmentXZ(snapPoint, a, b, out dist, out _, out _) &&
+                dist <= MaxSnapDistance)
+                return true;
+
+            if (TryClosestPointRaySegmentXZ(ray, a, b, out snapPoint, out dist) && dist <= MaxSnapDistance)
+                return true;
+
+            return false;
+        }
+
+        static bool TryRayHitVerticalWallPlane(
+            Ray ray,
+            Vector3 a,
+            Vector3 b,
+            Vector3 planeNormal,
+            out Vector3 hit)
+        {
+            hit = default;
+            var mid = (a + b) * 0.5f;
+            var denom = Vector3.Dot(ray.direction, planeNormal);
+            if (Mathf.Abs(denom) < 1e-5f) return false;
+            var t = Vector3.Dot(mid - ray.origin, planeNormal) / denom;
+            if (t < 0f || t > 500f) return false;
+            hit = ray.GetPoint(t);
+            return true;
+        }
+
+        static bool TryClosestPointRaySegmentXZ(
+            Ray ray,
+            Vector3 a,
+            Vector3 b,
+            out Vector3 pointOnWall,
+            out float distXZ)
+        {
+            pointOnWall = a;
+            distXZ = float.MaxValue;
+            var a2 = new Vector2(a.x, a.z);
+            var b2 = new Vector2(b.x, b.z);
+            var o2 = new Vector2(ray.origin.x, ray.origin.z);
+            var d2 = new Vector2(ray.direction.x, ray.direction.z);
+            if (d2.sqrMagnitude < 1e-8f) return false;
+            d2.Normalize();
+
+            var bestDist = float.MaxValue;
+            var bestOnSeg = a;
+            const int samples = 24;
+            for (var i = 0; i <= samples; i++)
+            {
+                var segT = i / (float)samples;
+                var seg = Vector2.Lerp(a2, b2, segT);
+                if (!TryDistPointToRay2D(o2, d2, seg, out var rayT, out var dist))
+                    continue;
+                if (rayT < 0f || dist >= bestDist || dist > MaxSnapDistance) continue;
+                bestDist = dist;
+                bestOnSeg = Vector3.Lerp(a, b, segT);
+            }
+
+            if (bestDist >= MaxSnapDistance) return false;
+            pointOnWall = bestOnSeg;
+            distXZ = bestDist;
+            return true;
+        }
+
+        static bool TryDistPointToRay2D(
+            Vector2 rayOrigin,
+            Vector2 rayDir,
+            Vector2 point,
+            out float rayT,
+            out float dist)
+        {
+            rayT = Vector2.Dot(point - rayOrigin, rayDir);
+            var closest = rayOrigin + rayDir * rayT;
+            dist = Vector2.Distance(point, closest);
+            return true;
+        }
+
         public static bool TrySnapPainting(RoomBuilder room, Vector3 worldPoint, out WallSnapResult result)
         {
             result = default;
@@ -37,6 +195,7 @@ namespace Gallery.Room
             foreach (var roomData in room.ActiveLayout.rooms)
             {
                 if (roomData == null || string.IsNullOrEmpty(roomData.id)) continue;
+                if (roomData.id == CatalogModels.EntranceRoomId) continue;
                 if (!room.TryGetRoomVertices(roomData.id, out var verts) || verts == null || verts.Length < 2)
                     continue;
 

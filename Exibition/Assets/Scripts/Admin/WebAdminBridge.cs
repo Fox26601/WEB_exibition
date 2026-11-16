@@ -127,6 +127,8 @@ namespace Gallery.Admin
         public float normU;
         public float normV;
         public bool overCanvas;
+        public float canvasWidth;
+        public float canvasHeight;
     }
 
     [Serializable]
@@ -138,6 +140,8 @@ namespace Gallery.Admin
         public float normU;
         public float normV;
         public bool overCanvas;
+        public float canvasWidth;
+        public float canvasHeight;
     }
 
     [Serializable]
