@@ -56,13 +56,14 @@ namespace Gallery.Entrance
             var halfSchematic = SchematicDepth * 0.5f;
             var portalX = pose.x - halfSchematic * Mathf.Sin(rad);
             var portalZ = pose.z + halfSchematic * Mathf.Cos(rad);
+            var portal = new Vector3(portalX, 0f, portalZ);
             var yaw = pose.rotation;
             var intoGallery = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
             var intoCorridor = -intoGallery;
 
             GalleryStartZ = portalZ;
             SpawnYaw = yaw;
-            var spawn = portal + intoCorridor * (SchematicDepth - 0.35f);
+            var spawn = portal + intoCorridor * (Depth - 1.35f);
             SpawnX = spawn.x;
             SpawnZ = spawn.z;
             WalkMinZ = spawn.z;
