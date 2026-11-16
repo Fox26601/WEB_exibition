@@ -31,6 +31,45 @@ namespace Gallery.Entrance
         public float WalkMinZ { get; private set; }
         public PedestalInteractable Pedestal => _pedestal;
 
+        struct EntranceLayoutPose
+        {
+            public Vector3 portal;
+            public Vector3 spawn;
+            public Vector3 walkMin;
+            public float yaw;
+            public float galleryStartZ;
+        }
+
+        static EntranceLayoutPose ComputePortalAndSpawn(LayoutEntranceData pose)
+        {
+            var rad = pose.rotation * Mathf.Deg2Rad;
+            var halfSchematic = SchematicDepth * 0.5f;
+            var portalX = pose.x - halfSchematic * Mathf.Sin(rad);
+            var portalZ = pose.z + halfSchematic * Mathf.Cos(rad);
+            var portal = new Vector3(portalX, 0f, portalZ);
+            var yaw = pose.rotation;
+            var intoCorridor = -(Quaternion.Euler(0f, yaw, 0f) * Vector3.forward);
+            var spawn = portal + intoCorridor * (Depth - 1.35f);
+            var walkMin = portal + intoCorridor * (Depth - 0.35f);
+            return new EntranceLayoutPose
+            {
+                portal = portal,
+                spawn = spawn,
+                walkMin = walkMin,
+                yaw = yaw,
+                galleryStartZ = portalZ,
+            };
+        }
+
+        void ApplySpawnFromLayout(EntranceLayoutPose layout)
+        {
+            GalleryStartZ = layout.galleryStartZ;
+            SpawnYaw = layout.yaw;
+            SpawnX = layout.spawn.x;
+            SpawnZ = layout.spawn.z;
+            WalkMinZ = layout.walkMin.z;
+        }
+
         public void Build(CatalogData catalog, float galleryStartZFallback)
         {
             Clear();
@@ -52,61 +91,27 @@ namespace Gallery.Entrance
 
         void BuildFromPoseAdminPreview(CatalogData catalog, LayoutEntranceData pose)
         {
-            var rad = pose.rotation * Mathf.Deg2Rad;
-            var halfSchematic = SchematicDepth * 0.5f;
-            var portalX = pose.x - halfSchematic * Mathf.Sin(rad);
-            var portalZ = pose.z + halfSchematic * Mathf.Cos(rad);
-            var yaw = pose.rotation;
-            var intoGallery = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
-            var intoCorridor = -intoGallery;
-
-            GalleryStartZ = portalZ;
-            SpawnYaw = yaw;
-            var spawn = portal + intoCorridor * (SchematicDepth - 0.35f);
-            SpawnX = spawn.x;
-            SpawnZ = spawn.z;
-            WalkMinZ = spawn.z;
+            var layout = ComputePortalAndSpawn(pose);
+            ApplySpawnFromLayout(layout);
 
             _root = new GameObject("Entrance").transform;
             _root.SetParent(transform, false);
-            _root.position = new Vector3(portalX, 0f, portalZ);
-            _root.rotation = Quaternion.Euler(0f, yaw, 0f);
+            _root.position = layout.portal;
+            _root.rotation = Quaternion.Euler(0f, layout.yaw, 0f);
 
-            var floorColor = new Color(0.52f, 0.53f, 0.55f);
             var trimColor = new Color(0.35f, 0.32f, 0.28f);
-
-            CreateBoxLocal(_root, "EntranceFloorAdmin",
-                new Vector3(0f, -0.05f, -SchematicDepth * 0.5f),
-                new Vector3(RoomBuilder.Width, 0.1f, SchematicDepth),
-                floorColor);
-
             BuildArchLocal(0f, trimColor);
         }
 
         void BuildFromPose(CatalogData catalog, LayoutEntranceData pose)
         {
-            var rad = pose.rotation * Mathf.Deg2Rad;
-            var halfSchematic = SchematicDepth * 0.5f;
-            // Portal mid = entrance center + rotate(+local Z * half schematic depth).
-            var portalX = pose.x - halfSchematic * Mathf.Sin(rad);
-            var portalZ = pose.z + halfSchematic * Mathf.Cos(rad);
-            var portal = new Vector3(portalX, 0f, portalZ);
-            var yaw = pose.rotation;
-            var intoGallery = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
-            var intoCorridor = -intoGallery;
-
-            GalleryStartZ = portalZ;
-            SpawnYaw = yaw;
-            var spawn = portal + intoCorridor * (Depth - 1.35f);
-            SpawnX = spawn.x;
-            SpawnZ = spawn.z;
-            var walkMin = portal + intoCorridor * (Depth - 0.35f);
-            WalkMinZ = walkMin.z;
+            var layout = ComputePortalAndSpawn(pose);
+            ApplySpawnFromLayout(layout);
 
             _root = new GameObject("Entrance").transform;
             _root.SetParent(transform, false);
-            _root.position = portal;
-            _root.rotation = Quaternion.Euler(0f, yaw, 0f);
+            _root.position = layout.portal;
+            _root.rotation = Quaternion.Euler(0f, layout.yaw, 0f);
 
             var floorColor = new Color(0.52f, 0.53f, 0.55f);
             var wallColor = new Color(0.68f, 0.69f, 0.72f);
