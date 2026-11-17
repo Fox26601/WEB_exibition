@@ -28,6 +28,7 @@ namespace Gallery.Room
         float _galleryEndZ = L0;
         float _layoutMinZ = float.NaN;
         readonly Dictionary<string, Vector3[]> _roomVerts = new Dictionary<string, Vector3[]>();
+        List<RoomOverlapClip.OverlapRoom> _overlapRooms;
         GalleryLayoutData _layout;
 
         public float Length => _length;
@@ -153,6 +154,8 @@ namespace Gallery.Room
                 _length = Mathf.Max(L0, maxZ - minZ + 2f);
             }
 
+            _overlapRooms = RoomOverlapClip.BuildOverlapRooms(layout);
+
             foreach (var room in layout.rooms)
             {
                 if (room == null) continue;
@@ -244,7 +247,7 @@ namespace Gallery.Room
             var roomRoot = new GameObject(string.IsNullOrEmpty(room.id) ? "Room" : $"Room_{room.id}").transform;
             roomRoot.SetParent(_root, false);
 
-            BuildPolygonFloor(roomRoot, verts, room.id);
+            BuildPolygonFloor(roomRoot, verts, room.id, _overlapRooms);
 
             for (var i = 0; i < verts.Length; i++)
             {
@@ -256,12 +259,33 @@ namespace Gallery.Room
                 if (doorway <= 0.01f && !layout.HasEntrance && IsEntranceEdge(a, b))
                     doorway = 2.4f;
                 WallSnapUtility.TryRoomCentroid(verts, out var centroid);
-                BuildWallSegment(roomRoot, a, b, i, doorway, room.id, centroid);
+
+                var spans = _overlapRooms != null && _overlapRooms.Count > 1
+                    ? RoomOverlapClip.WallSpansForEdge(_overlapRooms, room.id ?? "", i)
+                    : null;
+
+                if (spans == null || spans.Count == 0)
+                {
+                    if (spans != null) continue;
+                    BuildWallSegment(roomRoot, a, b, i, doorway, room.id, centroid);
+                    continue;
+                }
+
+                for (var s = 0; s < spans.Count; s++)
+                {
+                    var span = spans[s];
+                    var aSpan = Vector3.Lerp(a, b, span.t0);
+                    var bSpan = Vector3.Lerp(a, b, span.t1);
+                    var spanDoor = 0f;
+                    if (doorway > 0.01f && span.t0 <= 0.5f && span.t1 >= 0.5f)
+                        spanDoor = Mathf.Min(doorway, Vector3.Distance(aSpan, bSpan) - 0.2f);
+                    BuildWallSegment(roomRoot, aSpan, bSpan, i, spanDoor, room.id, centroid);
+                }
             }
 
         }
 
-        void BuildPolygonFloor(Transform parent, Vector3[] verts, string roomId)
+        void BuildPolygonFloor(Transform parent, Vector3[] verts, string roomId, List<RoomOverlapClip.OverlapRoom> overlapRooms)
         {
             if (!PolygonTriangulation.TryTriangulateXZ(verts, out var triangles))
             {
@@ -276,6 +300,28 @@ namespace Gallery.Room
                 meshVerts[i] = new Vector3(verts[i].x, -0.05f, verts[i].z);
 
             PolygonTriangulation.EnsureNormalsFaceUp(verts, triangles);
+
+            if (overlapRooms != null && overlapRooms.Count > 1)
+            {
+                var kept = new List<int>(triangles.Length);
+                for (var t = 0; t + 2 < triangles.Length; t += 3)
+                {
+                    var ia = triangles[t];
+                    var ib = triangles[t + 1];
+                    var ic = triangles[t + 2];
+                    var cx = (verts[ia].x + verts[ib].x + verts[ic].x) / 3f;
+                    var cz = (verts[ia].z + verts[ib].z + verts[ic].z) / 3f;
+                    var centroid = new Vector3(cx, 0f, cz);
+                    if (!RoomOverlapClip.ShouldKeepFloorTriangle(overlapRooms, roomId ?? "", centroid))
+                        continue;
+                    kept.Add(ia);
+                    kept.Add(ib);
+                    kept.Add(ic);
+                }
+
+                if (kept.Count >= 3)
+                    triangles = kept.ToArray();
+            }
 
             var mesh = new Mesh { name = "RoomFloor" };
             mesh.vertices = meshVerts;
