@@ -16,6 +16,7 @@ import {
   placementConflicts,
   pointAlongEdge,
   pointInPolygon,
+  roomCentroid,
   roomWorldVertices,
   yawFromEdge,
   type Vec2,
@@ -128,6 +129,8 @@ export function evaluateArtworkDrop(
   }
 
   const tAlong = Math.max(T_ALONG_MIN, Math.min(T_ALONG_MAX, snap.t));
+  const roomVerts = roomWorldVertices(snap.room);
+  const centroid = roomCentroid(roomVerts);
   const placement: ArtworkPlacement = {
     artworkId: art.id,
     kind: "painting",
@@ -135,7 +138,7 @@ export function evaluateArtworkDrop(
     wallEdgeIndex: snap.edgeIndex,
     tAlongEdge: tAlong,
     wallHeightT: DEFAULT_WALL_HEIGHT_T,
-    yaw: yawFromEdge(snap.a, snap.b, true),
+    yaw: yawFromEdge(snap.a, snap.b, true, centroid),
     frameId: paintingFrame(art, paletteFrame),
   };
 
@@ -145,6 +148,26 @@ export function evaluateArtworkDrop(
 
   const along = pointAlongEdge(snap.a, snap.b, tAlong);
   return { ok: true, placement, world: along };
+}
+
+/** Recompute painting yaw from wall geometry (Unity / WallSnapUtility parity). */
+export function syncPaintingYaws(layout: GalleryLayout): GalleryLayout {
+  if (!layout?.placements?.length || !layout.rooms?.length) return layout;
+  const placements = layout.placements.map((p) => {
+    if (p.kind !== "painting") return p;
+    if (p.wallEdgeIndex == null || !p.roomId) return p;
+    const room = layout.rooms.find((r) => r.id === p.roomId);
+    if (!room) return p;
+    const verts = roomWorldVertices(room);
+    const i =
+      ((p.wallEdgeIndex % verts.length) + verts.length) % verts.length;
+    const a = verts[i];
+    const b = verts[(i + 1) % verts.length];
+    if (!a || !b) return p;
+    const yaw = yawFromEdge(a, b, true, roomCentroid(verts));
+    return { ...p, yaw };
+  });
+  return { ...layout, placements };
 }
 
 export function placementWorldPoint(

@@ -7,7 +7,14 @@ import {
   MAX_WALL_SNAP_DIST,
   placementWorldPoint,
   resolvedWallHeightT,
+  syncPaintingYaws,
 } from "./placement-eval.ts";
+import {
+  edgePoints,
+  roomCentroid,
+  roomWorldVertices,
+  yawFromEdge,
+} from "./layout-geometry.ts";
 
 function squareRoom(id, x, z, scale = 3.2) {
   return {
@@ -171,6 +178,43 @@ test("placementWorldPoint resolves sculpture floor and painting wall", () => {
   );
   assert.ok(paintingPt);
   assert.ok(Math.abs(paintingPt.x) < 0.01 || Math.abs(paintingPt.z - 4) < 0.5);
+});
+
+test("painting yaw uses centroid-based inward normal (Unity parity)", () => {
+  const layout = normalizeLayout({
+    rooms: [squareRoom("r1", 0, 4)],
+    connections: [],
+    placements: [],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+  const room = layout.rooms[0];
+  const verts = roomWorldVertices(room);
+  const centroid = roomCentroid(verts);
+  const [a, b] = edgePoints(verts, 0);
+  const correct = yawFromEdge(a, b, true, centroid);
+  const naive = yawFromEdge(a, b, true);
+  assert.ok(
+    Math.abs(Math.abs(correct - naive) - 180) < 0.01 ||
+      Math.abs(correct - naive) < 0.01,
+    "centroid yaw should match Unity or differ by 180 from naive flip",
+  );
+
+  const withWrongYaw = {
+    ...layout,
+    placements: [
+      {
+        artworkId: "p1",
+        kind: "painting",
+        roomId: "r1",
+        wallEdgeIndex: 0,
+        tAlongEdge: 0.5,
+        yaw: naive,
+        frameId: "wood",
+      },
+    ],
+  };
+  const fixed = syncPaintingYaws(withWrongYaw);
+  assert.ok(Math.abs(fixed.placements[0].yaw - correct) < 0.02);
 });
 
 test("resolvedWallHeightT defaults and clamps", () => {

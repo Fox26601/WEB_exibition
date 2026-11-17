@@ -90,12 +90,50 @@ export function edgeNormal(a: Vec2, b: Vec2): Vec2 {
   return { x: -dz / len, z: dx / len };
 }
 
-export function yawFromEdge(a: Vec2, b: Vec2, inward = true): number {
+/** Matches Unity `WallSnapUtility.InwardNormal` (centroid picks the into-room side). */
+export function roomCentroid(verts: Vec2[]): Vec2 {
+  let x = 0;
+  let z = 0;
+  for (const v of verts) {
+    x += v.x;
+    z += v.z;
+  }
+  const n = verts.length || 1;
+  return { x: x / n, z: z / n };
+}
+
+export function inwardNormal(a: Vec2, b: Vec2, centroid: Vec2): Vec2 {
   const n = edgeNormal(a, b);
-  // Face into the room: flip normal.
+  const mx = (a.x + b.x) / 2;
+  const mz = (a.z + b.z) / 2;
+  let nx = n.x;
+  let nz = n.z;
+  const tcx = centroid.x - mx;
+  const tcz = centroid.z - mz;
+  if (nx * tcx + nz * tcz < 0) {
+    nx = -nx;
+    nz = -nz;
+  }
+  return { x: nx, z: nz };
+}
+
+export function yawFromInward(inward: Vec2): number {
+  return (Math.atan2(inward.x, inward.z) * 180) / Math.PI;
+}
+
+export function yawFromEdge(
+  a: Vec2,
+  b: Vec2,
+  inward = true,
+  centroid?: Vec2,
+): number {
+  if (inward && centroid) {
+    return yawFromInward(inwardNormal(a, b, centroid));
+  }
+  const n = edgeNormal(a, b);
   const nx = inward ? -n.x : n.x;
   const nz = inward ? -n.z : n.z;
-  return (Math.atan2(nx, nz) * 180) / Math.PI;
+  return yawFromInward({ x: nx, z: nz });
 }
 
 export function pointInPolygon(p: Vec2, verts: Vec2[]): boolean {
