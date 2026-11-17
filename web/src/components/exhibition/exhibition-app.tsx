@@ -21,7 +21,7 @@ type InfoModal = "artist" | "curator" | "donate" | "links" | null;
 type FooterModal = "review" | "contact" | null;
 type ReviewStatus = "idle" | "sending" | "success" | "error";
 
-const SITE_BY_URL = "https://cvgorlov.vercel.app";
+const SITE_BY_URL = "https://webgalerey.app";
 
 export function ExhibitionApp({
   unityAvailable = false,

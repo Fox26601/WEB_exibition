@@ -18,88 +18,117 @@ async function ensureDataDir(): Promise<void> {
   }
 }
 
+function logBlobError(op: string, pathname: string, err: unknown): void {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`[blob-store] ${op} failed for ${pathname}: ${message}`);
+}
+
 /** Read a JSON or binary blob by pathname key (e.g. catalog-live.json). */
 export async function readBlobText(pathname: string): Promise<string | null> {
-  if (hasBlobToken()) {
-    const { blobs } = await list({ prefix: pathname });
-    const match = blobs.find((b) => b.pathname === pathname);
-    if (!match) return null;
-    const res = await fetch(match.url, { cache: "no-store" });
-    if (!res.ok) return null;
-    return res.text();
-  }
+  try {
+    if (hasBlobToken()) {
+      const { blobs } = await list({ prefix: pathname });
+      const match = blobs.find((b) => b.pathname === pathname);
+      if (!match) return null;
+      const res = await fetch(match.url, { cache: "no-store" });
+      if (!res.ok) return null;
+      return res.text();
+    }
 
-  await ensureDataDir();
-  const file = path.join(DATA_DIR, pathname);
-  if (!existsSync(file)) return null;
-  return readFile(file, "utf8");
+    await ensureDataDir();
+    const file = path.join(DATA_DIR, pathname);
+    if (!existsSync(file)) return null;
+    return readFile(file, "utf8");
+  } catch (err) {
+    logBlobError("read", pathname, err);
+    return null;
+  }
 }
 
 export async function writeBlobText(
   pathname: string,
   content: string,
   contentType = "application/json",
-): Promise<{ url: string }> {
-  if (hasBlobToken()) {
-    const result = await put(pathname, content, {
-      access: "public",
-      contentType,
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-    return { url: result.url };
-  }
+): Promise<{ url: string } | null> {
+  try {
+    if (hasBlobToken()) {
+      const result = await put(pathname, content, {
+        access: "public",
+        contentType,
+        addRandomSuffix: false,
+        allowOverwrite: true,
+      });
+      return { url: result.url };
+    }
 
-  await ensureDataDir();
-  const file = path.join(DATA_DIR, pathname);
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, content, "utf8");
-  return { url: `/local-blob/${pathname}` };
+    await ensureDataDir();
+    const file = path.join(DATA_DIR, pathname);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, content, "utf8");
+    return { url: `/local-blob/${pathname}` };
+  } catch (err) {
+    logBlobError("write", pathname, err);
+    return null;
+  }
 }
 
 export async function writeBlobBinary(
   pathname: string,
   data: Buffer | Uint8Array,
   contentType: string,
-): Promise<{ url: string }> {
+): Promise<{ url: string } | null> {
   const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
-  if (hasBlobToken()) {
-    const result = await put(pathname, buffer, {
-      access: "public",
-      contentType,
-      addRandomSuffix: false,
-      allowOverwrite: true,
-    });
-    return { url: result.url };
-  }
+  try {
+    if (hasBlobToken()) {
+      const result = await put(pathname, buffer, {
+        access: "public",
+        contentType,
+        addRandomSuffix: false,
+        allowOverwrite: true,
+      });
+      return { url: result.url };
+    }
 
-  await ensureDataDir();
-  const file = path.join(DATA_DIR, pathname);
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, buffer);
-  return { url: `/api/local-media?path=${encodeURIComponent(pathname)}` };
+    await ensureDataDir();
+    const file = path.join(DATA_DIR, pathname);
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, buffer);
+    return { url: `/api/local-media?path=${encodeURIComponent(pathname)}` };
+  } catch (err) {
+    logBlobError("writeBinary", pathname, err);
+    return null;
+  }
 }
 
 export async function deleteBlob(pathname: string): Promise<void> {
-  if (hasBlobToken()) {
-    const { blobs } = await list({ prefix: pathname });
-    const match = blobs.find((b) => b.pathname === pathname);
-    if (match) await del(match.url);
-    return;
+  try {
+    if (hasBlobToken()) {
+      const { blobs } = await list({ prefix: pathname });
+      const match = blobs.find((b) => b.pathname === pathname);
+      if (match) await del(match.url);
+      return;
+    }
+    await ensureDataDir();
+    const file = path.join(DATA_DIR, pathname);
+    if (existsSync(file)) await unlink(file);
+  } catch (err) {
+    logBlobError("delete", pathname, err);
   }
-  await ensureDataDir();
-  const file = path.join(DATA_DIR, pathname);
-  if (existsSync(file)) await unlink(file);
 }
 
 export async function listLocalPaths(prefix = ""): Promise<string[]> {
-  if (hasBlobToken()) {
-    const { blobs } = await list({ prefix });
-    return blobs.map((b) => b.pathname);
+  try {
+    if (hasBlobToken()) {
+      const { blobs } = await list({ prefix });
+      return blobs.map((b) => b.pathname);
+    }
+    await ensureDataDir();
+    const entries = await readdir(DATA_DIR);
+    return entries.filter((e) => e.startsWith(prefix));
+  } catch (err) {
+    logBlobError("list", prefix || "(all)", err);
+    return [];
   }
-  await ensureDataDir();
-  const entries = await readdir(DATA_DIR);
-  return entries.filter((e) => e.startsWith(prefix));
 }
 
 export function usingLocalBlobFallback(): boolean {

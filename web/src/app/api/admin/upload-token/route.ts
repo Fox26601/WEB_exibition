@@ -60,8 +60,18 @@ export async function POST(req: NextRequest) {
           : kind === "model"
             ? "model/gltf-binary"
             : "image/jpeg");
-      const { url } = await writeBlobBinary(pathname, buf, contentType);
-      return NextResponse.json({ url, pathname, local: true });
+      const written = await writeBlobBinary(pathname, buf, contentType);
+      if (!written) {
+        return NextResponse.json(
+          { error: "Failed to store upload" },
+          { status: 503 },
+        );
+      }
+      return NextResponse.json({
+        url: written.url,
+        pathname,
+        local: true,
+      });
     }
 
     return NextResponse.json({
