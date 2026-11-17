@@ -19,6 +19,16 @@ namespace Gallery.Room
             return mat;
         }
 
+        /// <summary>Walkable floors: visible from above in WebGL (single-sided shaders otherwise back-face cull).</summary>
+        public static Material CreateFloor(Color color)
+        {
+            var mat = Create(color);
+            if (mat.HasProperty("_Cull"))
+                mat.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            mat.doubleSidedGI = true;
+            return mat;
+        }
+
         /// <summary>Material that can display a mainTexture / _BaseMap (artwork canvases).</summary>
         public static Material CreateTextured(Color color)
         {

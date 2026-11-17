@@ -12,7 +12,8 @@ namespace Gallery.Room
             if (verts == null || verts.Length < 3)
                 return false;
 
-            if (verts.Length >= 3 && verts.Length <= 6 && TryFanConvex(verts, out triangles))
+            if (verts.Length >= 3 && verts.Length <= 12 && IsSimpleConvexXZ(verts) &&
+                TryFanConvex(verts, out triangles))
                 return true;
 
             var n = verts.Length;
@@ -168,6 +169,48 @@ namespace Gallery.Room
         static float Sign(Vector3 p, Vector3 a, Vector3 b)
         {
             return (p.x - b.x) * (a.z - b.z) - (a.x - b.x) * (p.z - b.z);
+        }
+
+        /// <summary>Axis-aligned bounds in XZ for fallback floor quads.</summary>
+        public static bool TryComputeAabbXZ(Vector3[] verts, out float minX, out float maxX, out float minZ, out float maxZ)
+        {
+            minX = maxX = minZ = maxZ = 0f;
+            if (verts == null || verts.Length < 3)
+                return false;
+
+            minX = maxX = verts[0].x;
+            minZ = maxZ = verts[0].z;
+            for (var i = 1; i < verts.Length; i++)
+            {
+                minX = Mathf.Min(minX, verts[i].x);
+                maxX = Mathf.Max(maxX, verts[i].x);
+                minZ = Mathf.Min(minZ, verts[i].z);
+                maxZ = Mathf.Max(maxZ, verts[i].z);
+            }
+
+            return maxX - minX > 1e-4f && maxZ - minZ > 1e-4f;
+        }
+
+        static bool IsSimpleConvexXZ(Vector3[] verts)
+        {
+            if (verts == null || verts.Length < 3)
+                return false;
+
+            var area = SignedArea(verts);
+            if (Mathf.Approximately(area, 0f))
+                return false;
+
+            var clockwise = area < 0f;
+            for (var i = 0; i < verts.Length; i++)
+            {
+                var a = verts[i];
+                var b = verts[(i + 1) % verts.Length];
+                var c = verts[(i + 2) % verts.Length];
+                if (!IsConvex(a, b, c, clockwise))
+                    return false;
+            }
+
+            return true;
         }
     }
 }

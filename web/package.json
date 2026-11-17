@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/unity-pointer-map.test.mjs src/lib/layout-entrance.test.mjs src/lib/placement-eval.test.mjs"
+    "test": "node --import tsx --test src/lib/unity-pointer-map.test.mjs src/lib/layout-entrance.test.mjs src/lib/placement-eval.test.mjs src/lib/polygon-floor.test.mjs"
   },
   "dependencies": {
     "@auth/core": "^0.41.3",
