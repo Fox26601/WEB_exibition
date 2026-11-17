@@ -237,7 +237,7 @@ namespace Gallery.Room
             var roomRoot = new GameObject(string.IsNullOrEmpty(room.id) ? "Room" : $"Room_{room.id}").transform;
             roomRoot.SetParent(_root, false);
 
-            BuildPolygonFloor(roomRoot, verts);
+            BuildPolygonFloor(roomRoot, verts, room.id);
 
             for (var i = 0; i < verts.Length; i++)
             {
@@ -254,16 +254,13 @@ namespace Gallery.Room
 
         }
 
-        void BuildPolygonFloor(Transform parent, Vector3[] verts)
+        void BuildPolygonFloor(Transform parent, Vector3[] verts, string roomId)
         {
             if (!PolygonTriangulation.TryTriangulateXZ(verts, out var triangles))
             {
-                // Fallback: thin box at centroid if triangulation fails.
-                var c = Vector3.zero;
-                for (var i = 0; i < verts.Length; i++) c += verts[i];
-                c /= Mathf.Max(1, verts.Length);
-                CreateBoxUnder(parent, "FloorFallback", new Vector3(c.x, -0.05f, c.z),
-                    new Vector3(2f, 0.1f, 2f), floorColor);
+                Debug.LogWarning(
+                    $"Gallery floor triangulation failed for room '{roomId ?? "?"}' ({verts?.Length ?? 0} verts); using AABB fallback.");
+                CreateAabbFloorFallback(parent, verts);
                 return;
             }
 
@@ -276,26 +273,44 @@ namespace Gallery.Room
             var mesh = new Mesh { name = "RoomFloor" };
             mesh.vertices = meshVerts;
             mesh.triangles = triangles;
-            mesh.RecalculateNormals();
+
+            var normals = new Vector3[meshVerts.Length];
+            for (var i = 0; i < normals.Length; i++)
+                normals[i] = Vector3.up;
+            mesh.normals = normals;
             mesh.RecalculateBounds();
 
             var floorGo = new GameObject("Floor");
             floorGo.transform.SetParent(parent, false);
             floorGo.AddComponent<MeshFilter>().sharedMesh = mesh;
-            floorGo.AddComponent<MeshRenderer>().sharedMaterial = CreateMaterial(floorColor);
+            floorGo.AddComponent<MeshRenderer>().sharedMaterial = RuntimeMaterials.CreateFloor(floorColor);
             var col = floorGo.AddComponent<MeshCollider>();
             col.convex = false;
             col.sharedMesh = mesh;
         }
 
-        void CreateBoxUnder(Transform parent, string name, Vector3 worldPos, Vector3 scale, Color color)
+        void CreateAabbFloorFallback(Transform parent, Vector3[] verts)
+        {
+            if (!PolygonTriangulation.TryComputeAabbXZ(verts, out var minX, out var maxX, out var minZ, out var maxZ))
+                return;
+
+            var cx = (minX + maxX) * 0.5f;
+            var cz = (minZ + maxZ) * 0.5f;
+            var sx = Mathf.Max(0.25f, maxX - minX);
+            var sz = Mathf.Max(0.25f, maxZ - minZ);
+            CreateBoxUnder(parent, "FloorFallback", new Vector3(cx, -0.05f, cz),
+                new Vector3(sx, 0.1f, sz), floorColor, floorMaterial: true);
+        }
+
+        void CreateBoxUnder(Transform parent, string name, Vector3 worldPos, Vector3 scale, Color color, bool floorMaterial = false)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = name;
             go.transform.SetParent(parent, false);
             go.transform.position = worldPos;
             go.transform.localScale = scale;
-            go.GetComponent<MeshRenderer>().sharedMaterial = CreateMaterial(color);
+            go.GetComponent<MeshRenderer>().sharedMaterial =
+                floorMaterial ? RuntimeMaterials.CreateFloor(color) : CreateMaterial(color);
         }
 
         float FindDoorwayWidth(GalleryLayoutData layout, string roomId, int edgeIndex)
