@@ -64,18 +64,16 @@ namespace Gallery.Room
             return spans;
         }
 
+        /// <summary>
+        /// Keep all floor triangles whose centroid lies inside the owner's polygon.
+        /// Overlap does not clip floor (matches web admin 2D preview — every room keeps a full fill).
+        /// </summary>
         public static bool ShouldKeepFloorTriangle(List<OverlapRoom> rooms, string ownerId, Vector3 centroid)
         {
+            var owner = FindRoom(rooms, ownerId);
+            if (owner.verts == null || owner.verts.Length < 3) return true;
             var p = new Vector2(centroid.x, centroid.z);
-            for (var i = 0; i < rooms.Count; i++)
-            {
-                var other = rooms[i];
-                if (other.id == ownerId) continue;
-                if (!PointInPolygon(p, other.verts)) continue;
-                if (string.CompareOrdinal(other.id, ownerId) < 0) return false;
-            }
-
-            return true;
+            return PointInPolygon(p, owner.verts);
         }
 
         static OverlapRoom FindRoom(List<OverlapRoom> rooms, string roomId)

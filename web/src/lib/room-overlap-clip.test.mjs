@@ -3,9 +3,21 @@ import test from "node:test";
 import { normalizeLayout } from "./catalog-types.ts";
 import {
   layoutOverlapRooms,
+  shouldKeepFloorTriangle,
   wallSpansForEdge,
   wallSpansForRoom,
 } from "./room-overlap-clip.ts";
+import { pointInPolygon, roomWorldVertices } from "./layout-geometry.ts";
+
+function roomCentroid(verts) {
+  let x = 0;
+  let z = 0;
+  for (const v of verts) {
+    x += v.x;
+    z += v.z;
+  }
+  return { x: x / verts.length, z: z / verts.length };
+}
 
 function squareRoom(id, x, z, scale = 2.4, rotation = 0) {
   return {
@@ -47,4 +59,45 @@ test("wallSpansForEdge drops spans with midpoints inside another room", () => {
 
 test("wallSpansForRoom is empty for unknown room", () => {
   assert.deepEqual(wallSpansForRoom([], "nope"), []);
+});
+
+test("shouldKeepFloorTriangle keeps overlap when inner room has lower id (outer ring)", () => {
+  const layout = normalizeLayout({
+    rooms: [
+      squareRoom("alpha", 0, 0, 6),
+      squareRoom("zoo", 0, 0, 2.5),
+    ],
+    connections: [],
+    placements: [],
+    entrance: { x: 0, z: -4, rotation: 0 },
+  });
+  const rooms = layoutOverlapRooms(layout);
+  const outer = layout.rooms.find((r) => r.id === "alpha");
+  const inner = layout.rooms.find((r) => r.id === "zoo");
+  assert.ok(outer && inner);
+
+  const overlapCentroid = roomWorldVertices(inner)[0];
+  assert.ok(pointInPolygon(overlapCentroid, roomWorldVertices(outer)));
+  assert.ok(
+    shouldKeepFloorTriangle(rooms, "alpha", overlapCentroid),
+    "outer floor must stay in overlap even when inner id sorts lower",
+  );
+  assert.ok(
+    shouldKeepFloorTriangle(rooms, "zoo", roomCentroid(roomWorldVertices(inner))),
+    "inner room keeps its floor",
+  );
+});
+
+test("shouldKeepFloorTriangle keeps all room triangles at overlap centroids", () => {
+  const layout = normalizeLayout({
+    rooms: [hexRoom("hex", 0, 2), squareRoom("sq", 0.5, 1.8, 2.2, 45)],
+    connections: [],
+    placements: [],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+  const rooms = layoutOverlapRooms(layout);
+  const sqVerts = roomWorldVertices(layout.rooms.find((r) => r.id === "sq"));
+  const c = roomCentroid(sqVerts);
+  assert.ok(shouldKeepFloorTriangle(rooms, "sq", c));
+  assert.ok(shouldKeepFloorTriangle(rooms, "hex", c));
 });

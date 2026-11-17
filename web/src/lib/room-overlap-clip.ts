@@ -121,16 +121,16 @@ export function layoutOverlapRooms(layout: GalleryLayout): OverlapRoom[] {
   }));
 }
 
-/** Keep floor triangle if centroid not owned by a lower-id overlapping room. */
+/**
+ * Keep floor triangles whose centroid lies inside the owner's polygon.
+ * Overlapping rooms do not clip each other's floor (matches admin 2D room fill).
+ */
 export function shouldKeepFloorTriangle(
   rooms: OverlapRoom[],
   ownerId: string,
   centroid: Vec2,
 ): boolean {
-  for (const other of rooms) {
-    if (other.id === ownerId) continue;
-    if (!pointInPolygon(centroid, other.verts)) continue;
-    if (other.id < ownerId) return false;
-  }
-  return true;
+  const owner = rooms.find((r) => r.id === ownerId);
+  if (!owner || owner.verts.length < 3) return true;
+  return pointInPolygon(centroid, owner.verts);
 }

@@ -38,5 +38,39 @@ namespace Gallery.EditorTests
 
             Assert.That(removed, Is.GreaterThan(0));
         }
+
+        [Test]
+        public void ShouldKeepFloorTriangle_Keeps_Outer_Overlap_When_Inner_Has_Lower_Id()
+        {
+            var layout = new GalleryLayoutData
+            {
+                rooms = new[]
+                {
+                    new GalleryRoomData
+                    {
+                        id = "alpha",
+                        shape = "square",
+                        transform = new RoomTransformData { x = 0f, z = 0f, rotation = 0f, scaleX = 6f, scaleZ = 6f },
+                    },
+                    new GalleryRoomData
+                    {
+                        id = "zoo",
+                        shape = "square",
+                        transform = new RoomTransformData { x = 0f, z = 0f, rotation = 0f, scaleX = 2.5f, scaleZ = 2.5f },
+                    },
+                },
+            };
+
+            var rooms = RoomOverlapClip.BuildOverlapRooms(layout);
+            var inner = RoomBuilder.ResolveRoomVertices(layout.rooms[1]);
+            var cx = (inner[0].x + inner[1].x + inner[2].x) / 3f;
+            var cz = (inner[0].z + inner[1].z + inner[2].z) / 3f;
+            var centroid = new Vector3(cx, 0f, cz);
+
+            Assert.That(
+                RoomOverlapClip.ShouldKeepFloorTriangle(rooms, "alpha", centroid),
+                Is.True,
+                "outer floor must remain where a lower-id room sits inside");
+        }
     }
 }
