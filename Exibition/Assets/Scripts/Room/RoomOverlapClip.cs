@@ -10,7 +10,9 @@ namespace Gallery.Room
     public static class RoomOverlapClip
     {
         const float Eps = 1e-5f;
-        const float MinSpan = 0.08f;
+        /// <summary>Drop sub-spans shorter than ~one wall shell (avoids overlap-clip micro-sliver flicker).</summary>
+        public const float MinSpan = 0.12f;
+        const float BoundaryTol = 0.035f;
 
         public struct WallSpan
         {
@@ -58,6 +60,7 @@ namespace Gallery.Room
                 var len = Vector3.Distance(a, b);
                 if ((t1 - t0) * len < MinSpan) continue;
                 if (MidInsideOther(rooms, roomId, a, b, t0, t1)) continue;
+                if (IsDuplicateCoplanarWall(rooms, roomId, a, b, t0, t1)) continue;
                 spans.Add(new WallSpan { t0 = t0, t1 = t1 });
             }
 
@@ -144,10 +147,87 @@ namespace Gallery.Room
             {
                 var other = rooms[i];
                 if (other.id == ownerId) continue;
-                if (PointInPolygon(p, other.verts)) return true;
+                if (!PointInPolygon(p, other.verts)) continue;
+                if (PointOnPolygonBoundary(p, other.verts)) continue;
+                return true;
             }
 
             return false;
+        }
+
+        static bool PointOnPolygonBoundary(Vector2 p, Vector3[] verts)
+        {
+            if (verts == null || verts.Length < 2) return false;
+            for (var i = 0; i < verts.Length; i++)
+            {
+                var c = verts[i];
+                var d = verts[(i + 1) % verts.Length];
+                var edge = new Vector2(d.x - c.x, d.z - c.z);
+                var edgeLen = edge.magnitude;
+                if (edgeLen < Eps) continue;
+                var edgeDir = edge / edgeLen;
+                if (!PointOnCollinearEdge(p, edgeDir, c, d)) continue;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Adjacent rooms sharing a collinear edge each emit a wall; keep only the lexicographically lower room id.
+        /// </summary>
+        static bool IsDuplicateCoplanarWall(
+            List<OverlapRoom> rooms,
+            string roomId,
+            Vector3 a,
+            Vector3 b,
+            float t0,
+            float t1)
+        {
+            var t = (t0 + t1) * 0.5f;
+            var mid = Vector3.Lerp(a, b, t);
+            var p = new Vector2(mid.x, mid.z);
+            var ab = new Vector2(b.x - a.x, b.z - a.z);
+            var abLen = ab.magnitude;
+            if (abLen < Eps) return false;
+            var abDir = ab / abLen;
+
+            for (var i = 0; i < rooms.Count; i++)
+            {
+                var other = rooms[i];
+                if (other.id == roomId || other.verts == null) continue;
+                if (string.CompareOrdinal(other.id, roomId) >= 0) continue;
+                if (PointInPolygon(p, other.verts)) continue;
+
+                for (var j = 0; j < other.verts.Length; j++)
+                {
+                    var c = other.verts[j];
+                    var d = other.verts[(j + 1) % other.verts.Length];
+                    if (!PointOnCollinearEdge(p, abDir, c, d)) continue;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool PointOnCollinearEdge(Vector2 p, Vector2 edgeDir, Vector3 c, Vector3 d)
+        {
+            var c2 = new Vector2(c.x, c.z);
+            var d2 = new Vector2(d.x, d.z);
+            var cd = d2 - c2;
+            var cdLen = cd.magnitude;
+            if (cdLen < Eps) return false;
+            var cdDir = cd / cdLen;
+            var cross = edgeDir.x * cdDir.y - edgeDir.y * cdDir.x;
+            if (Mathf.Abs(cross) > 0.02f) return false;
+
+            var toP = p - c2;
+            var perp = Mathf.Abs(toP.x * cdDir.y - toP.y * cdDir.x);
+            if (perp > BoundaryTol) return false;
+
+            var u = Vector2.Dot(toP, cdDir);
+            return u >= -BoundaryTol && u <= cdLen + BoundaryTol;
         }
 
         public static bool PointInPolygon(Vector2 p, Vector3[] verts)

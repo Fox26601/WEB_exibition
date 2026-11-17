@@ -61,6 +61,37 @@ test("wallSpansForRoom is empty for unknown room", () => {
   assert.deepEqual(wallSpansForRoom([], "nope"), []);
 });
 
+test("wallSpansForEdge dedups coplanar shared edge by room id", () => {
+  const layout = normalizeLayout({
+    rooms: [
+      {
+        id: "roomA",
+        vertices: [
+          { x: 0, z: 0 },
+          { x: 2, z: 0 },
+          { x: 2, z: 2 },
+          { x: 0, z: 2 },
+        ],
+      },
+      {
+        id: "roomB",
+        vertices: [
+          { x: 2, z: 0 },
+          { x: 4, z: 0 },
+          { x: 4, z: 2 },
+          { x: 2, z: 2 },
+        ],
+      },
+    ],
+    connections: [],
+    placements: [],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+  const rooms = layoutOverlapRooms(layout);
+  assert.equal(wallSpansForEdge(rooms, "roomA", 1).length, 1);
+  assert.equal(wallSpansForEdge(rooms, "roomB", 3).length, 0);
+});
+
 test("shouldKeepFloorTriangle keeps overlap when inner room has lower id (outer ring)", () => {
   const layout = normalizeLayout({
     rooms: [
