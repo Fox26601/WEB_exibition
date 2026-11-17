@@ -678,11 +678,12 @@ export function GalleryRoomEditor({
 
       const rooms = current.rooms.map((r) => {
         if (r.id !== drag.targetId) return r;
+        const step = r.shape === "square" ? 45 : 90;
         return {
           ...r,
           transform: {
             ...r.transform,
-            rotation: ((r.transform.rotation || 0) + 90) % 360,
+            rotation: ((r.transform.rotation || 0) + step) % 360,
           },
           vertices: undefined,
         };

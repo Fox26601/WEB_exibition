@@ -215,7 +215,7 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   entranceHelp:
     "Entrance (foyer): not a room from the list — portal and spawn. Bright edge is the gallery door;",
   entranceHelpBody:
-    "outside. Snap the portal to a room (or a room to the entrance) — rotation adjusts automatically. Tap the block for +90°. Drag the empty canvas to pan the view.",
+    "outside. Snap the portal to a room (or a room to the entrance) — rotation adjusts automatically. Tap a room: square +45°, others +90°. Tap entrance +90°. Drag the empty canvas to pan the view.",
   entranceHelpPlaceDrag:
     " In Place mode, drag a work from the list onto the plan or move a marker.",
   entranceHelpRoomsMeta:
@@ -257,7 +257,7 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   entranceHelp:
     "Вход (фойе): не комната из списка — портал и spawn. Светлая грань — дверь в галерею;",
   entranceHelpBody:
-    "снаружи. Подведи портал к комнате (или комнату ко входу) — поворот подстроится сам. Тап по блоку — поворот 90°. По пустому полю — перетаскивание, чтобы сдвинуть вид схемы.",
+    "снаружи. Подведи портал к комнате (или комнату ко входу) — поворот подстроится сам. Тап: квадрат +45°, остальные +90°, вход +90°. По пустому полю — перетаскивание, чтобы сдвинуть вид схемы.",
   entranceHelpPlaceDrag:
     " В режиме Place перетащите работу со списка на план или сдвиньте маркер.",
   entranceHelpRoomsMeta: " Комнаты: перетаскивание, угол — stretch; дверей: {count}.",
