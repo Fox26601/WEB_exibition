@@ -25,6 +25,7 @@ import { adminEditorStrings, type Locale } from "@/lib/i18n";
 import {
   evaluateArtworkDrop,
   placementWorldPoint,
+  wallSnapPreviewWorld,
 } from "@/lib/placement-eval";
 import { ArtPlacementPalette } from "./art-placement-palette";
 import {
@@ -285,14 +286,12 @@ export function GalleryRoomEditor({
       const world = resolveWorldAtClient(clientX, clientY);
       if (!world) return;
       const current = normalizeLayout(layoutLiveRef.current);
-      const ignoreId =
-        drag.source === "reposition" ? drag.art.id : undefined;
       const result = evaluateArtworkDrop(
         drag.art,
         world,
         current,
         paletteFrame,
-        ignoreId,
+        drag.art.id,
       );
       if (!result.ok) {
         const msg =
@@ -305,26 +304,28 @@ export function GalleryRoomEditor({
         return;
       }
       let placement = result.placement;
-      if (drag.source === "reposition") {
-        const prev = current.placements.find((p) => p.artworkId === drag.art.id);
-        if (prev?.kind === "painting" && prev.wallHeightT != null) {
-          placement = { ...placement, wallHeightT: prev.wallHeightT };
-        }
+      const prev = current.placements.find((p) => p.artworkId === drag.art.id);
+      if (prev?.kind === "painting" && prev.wallHeightT != null) {
+        placement = { ...placement, wallHeightT: prev.wallHeightT };
       }
       upsertPlacement(placement);
     },
     [paletteFrame, resolveWorldAtClient, showPlaceToast, t, upsertPlacement],
   );
 
-  const beginPaletteDrag = useCallback(
+  const runPlacementDrag = useCallback(
     (
       art: Artwork,
+      source: "palette" | "reposition",
       captureEl: HTMLElement,
+      pointerId: number,
       startClientX: number,
       startClientY: number,
+      immediate: boolean,
     ) => {
       if (editorMode !== "place") return;
-      placeDragRef.current = { art, source: "palette" };
+      let dragging = immediate;
+
       const trackPointer = (clientX: number, clientY: number) => {
         const world = resolveWorldAtClient(clientX, clientY);
         if (!world) {
@@ -337,25 +338,58 @@ export function GalleryRoomEditor({
           world,
           current,
           paletteFrame,
+          art.id,
         );
-        setGhost({
-          world: result.ok ? result.world : world,
-          ok: result.ok,
-        });
+        let ghostWorld = world;
+        if (result.ok) {
+          ghostWorld = result.world;
+        } else if (art.type !== "model") {
+          const hint = wallSnapPreviewWorld(world, current.rooms);
+          if (hint) ghostWorld = hint;
+        }
+        setGhost({ world: ghostWorld, ok: result.ok });
       };
+
       const onMove = (ev: PointerEvent) => {
+        if (!dragging) {
+          const dist = Math.hypot(
+            ev.clientX - startClientX,
+            ev.clientY - startClientY,
+          );
+          if (dist < DRAG_THRESHOLD_PX) return;
+          dragging = true;
+          placeDragRef.current = { art, source };
+          captureEl.setPointerCapture?.(ev.pointerId);
+          ev.preventDefault();
+        }
         trackPointer(ev.clientX, ev.clientY);
       };
-      const onUp = (ev: PointerEvent) => {
+
+      const finish = (clientX: number, clientY: number, ev: PointerEvent) => {
         if (captureEl.hasPointerCapture(ev.pointerId)) {
           captureEl.releasePointerCapture(ev.pointerId);
         }
-        endPlaceDrag(ev.clientX, ev.clientY);
+        if (dragging) {
+          endPlaceDrag(clientX, clientY);
+        } else {
+          placeDragRef.current = null;
+          setGhost(null);
+        }
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         window.removeEventListener("pointercancel", onUp);
       };
-      trackPointer(startClientX, startClientY);
+
+      const onUp = (ev: PointerEvent) => {
+        finish(ev.clientX, ev.clientY, ev);
+      };
+
+      if (immediate) {
+        placeDragRef.current = { art, source };
+        captureEl.setPointerCapture?.(pointerId);
+        trackPointer(startClientX, startClientY);
+      }
+
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
@@ -363,47 +397,39 @@ export function GalleryRoomEditor({
     [editorMode, endPlaceDrag, paletteFrame, resolveWorldAtClient],
   );
 
+  const beginPaletteDrag = useCallback(
+    (art: Artwork, e: ReactPointerEvent) => {
+      if (editorMode !== "place" || e.button !== 0) return;
+      e.stopPropagation();
+      runPlacementDrag(
+        art,
+        "palette",
+        e.currentTarget as HTMLElement,
+        e.pointerId,
+        e.clientX,
+        e.clientY,
+        false,
+      );
+    },
+    [editorMode, runPlacementDrag],
+  );
+
   const beginReposition = useCallback(
     (art: Artwork, e: ReactPointerEvent) => {
       if (editorMode !== "place") return;
       e.preventDefault();
       e.stopPropagation();
-      placeDragRef.current = { art, source: "reposition" };
-      const captureEl = e.currentTarget as HTMLElement;
-      captureEl.setPointerCapture?.(e.pointerId);
-      const onMove = (ev: PointerEvent) => {
-        const world = resolveWorldAtClient(ev.clientX, ev.clientY);
-        if (!world) {
-          setGhost(null);
-          return;
-        }
-        const current = normalizeLayout(layoutLiveRef.current);
-        const result = evaluateArtworkDrop(
-          art,
-          world,
-          current,
-          paletteFrame,
-          art.id,
-        );
-        setGhost({
-          world: result.ok ? result.world : world,
-          ok: result.ok,
-        });
-      };
-      const onUp = (ev: PointerEvent) => {
-        if (captureEl.hasPointerCapture(ev.pointerId)) {
-          captureEl.releasePointerCapture(ev.pointerId);
-        }
-        endPlaceDrag(ev.clientX, ev.clientY);
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        window.removeEventListener("pointercancel", onUp);
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-      window.addEventListener("pointercancel", onUp);
+      runPlacementDrag(
+        art,
+        "reposition",
+        e.currentTarget as HTMLElement,
+        e.pointerId,
+        e.clientX,
+        e.clientY,
+        true,
+      );
     },
-    [editorMode, endPlaceDrag, paletteFrame, resolveWorldAtClient],
+    [editorMode, runPlacementDrag],
   );
 
   function addRoom(shape: RoomShape) {
