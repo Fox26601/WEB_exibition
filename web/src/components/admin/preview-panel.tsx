@@ -9,6 +9,7 @@ import type {
 } from "@/lib/catalog-types";
 import { emptyLocalized, LOCALES, emptyLayout } from "@/lib/catalog-types";
 import { LangSwitcher } from "@/components/lang-switcher";
+import { adminEditorStrings } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { GalleryRoomEditor, ensureLayout } from "./gallery-room-editor";
 
@@ -32,6 +33,7 @@ export function PreviewPanel() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [saveError, setSaveError] = useState("");
   const { locale, setLocale } = useGalleryLocale();
+  const adminT = adminEditorStrings(locale);
   const layoutRef = useRef<GalleryLayout>(emptyLayout());
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingLayout = useRef<GalleryLayout | null>(null);
@@ -296,18 +298,21 @@ export function PreviewPanel() {
             title="Publish live catalog from this draft"
             onClick={() => void publishLive()}
           >
-            Опубликовать на сайт
+            {adminT.publishToLive}
             {dirty ? " ·" : ""}
           </button>
         </div>
       </div>
 
       <p className="mb-4 text-sm text-[var(--paper-dim)]">
-        Draft autosaves on every layout change.
+        {adminT.draftAutosaveIntro}
         {liveUpdatedAt
-          ? ` Last live publish: ${new Date(liveUpdatedAt).toLocaleString()}.`
+          ? adminT.lastLivePublish.replace(
+              "{date}",
+              new Date(liveUpdatedAt).toLocaleString(),
+            )
           : ""}
-        {dirty ? " Unpublished draft changes." : " Live matches draft."}
+        {dirty ? adminT.unpublishedDraft : adminT.liveMatchesDraft}
       </p>
 
       {message ? (
@@ -332,7 +337,7 @@ export function PreviewPanel() {
               rel="noopener noreferrer"
               className="text-[var(--amber-bright)] underline-offset-2 hover:underline"
             >
-              Открыть черновик в 3D
+              {adminT.openDraft3d}
             </a>
           </p>
         ) : null}
@@ -343,8 +348,7 @@ export function PreviewPanel() {
           Artworks ({allArts.length})
         </h2>
         <p className="mb-4 text-sm text-[var(--paper-dim)]">
-          Upload and publish here. Place published works on the room plan in Place
-          mode.
+          {adminT.artworksPlaceHint}
         </p>
         <ul className="space-y-3">
           {allArts.map((art) => {

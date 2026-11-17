@@ -1,6 +1,10 @@
 "use client";
 
-import { useMemo, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useMemo,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { Artwork, ArtworkPlacement, FrameId } from "@/lib/catalog-types";
 import {
   FRAME_IDS,
@@ -8,8 +12,10 @@ import {
   MIN_WALL_HEIGHT_T,
 } from "@/lib/catalog-types";
 import { resolvedWallHeightT } from "@/lib/placement-eval";
-import { pickLocalized } from "@/lib/i18n";
+import { adminEditorStrings, pickLocalized } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n";
+
+const DRAG_THRESHOLD_PX = 6;
 
 type Props = {
   artworks: Artwork[];
@@ -17,11 +23,16 @@ type Props = {
   placements: ArtworkPlacement[];
   paletteFrame: FrameId;
   onPaletteFrameChange: (f: FrameId) => void;
-  onBeginDrag: (art: Artwork, e: ReactPointerEvent) => void;
+  onBeginDrag: (
+    art: Artwork,
+    captureEl: HTMLElement,
+    clientX: number,
+    clientY: number,
+  ) => void;
   onRemovePlacement: (artworkId: string) => void;
   onSetFrame: (artworkId: string, frameId: FrameId) => void;
   onSetWallHeight: (artworkId: string, wallHeightT: number) => void;
-  disabled?: boolean;
+  dragDisabled?: boolean;
 };
 
 export function ArtPlacementPalette({
@@ -34,25 +45,27 @@ export function ArtPlacementPalette({
   onRemovePlacement,
   onSetFrame,
   onSetWallHeight,
-  disabled,
+  dragDisabled,
 }: Props) {
   const placed = useMemo(
     () => new Set(placements.map((p) => p.artworkId)),
     [placements],
   );
+  const t = adminEditorStrings(locale);
 
   return (
     <aside className="flex h-full min-h-0 flex-col border border-[var(--line)] bg-[#1a1612] lg:w-[260px]">
       <div className="border-b border-[var(--line)] px-3 py-2">
         <h3 className="text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
-          Place on plan
+          {t.placeOnPlan}
         </h3>
         <p className="mt-1 text-[0.7rem] text-[var(--paper-dim)]">
-          Картину — на стену; скульптуру — на пол. Зелёный призрак = можно
-          отпустить.
+          {t.placeInstructions}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-1">
-          <span className="text-[0.65rem] text-[var(--paper-dim)]">Frame</span>
+          <span className="text-[0.65rem] text-[var(--paper-dim)]">
+            {t.frame}
+          </span>
           {FRAME_IDS.filter((id) => id !== "none").map((id) => (
             <button
               key={id}
@@ -61,7 +74,7 @@ export function ArtPlacementPalette({
                 paletteFrame === id ? "btn-solid" : "btn-ghost"
               }`}
               onClick={() => onPaletteFrameChange(id)}
-              disabled={disabled}
+              disabled={dragDisabled}
             >
               {id}
             </button>
@@ -85,8 +98,8 @@ export function ArtPlacementPalette({
                 art={art}
                 index={i + 1}
                 locale={locale}
-                disabled={disabled}
-                onBeginDrag={(e) => onBeginDrag(art, e)}
+                dragDisabled={dragDisabled}
+                onBeginDrag={(el, x, y) => onBeginDrag(art, el, x, y)}
               />
               {isPlaced ? (
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -98,7 +111,6 @@ export function ArtPlacementPalette({
                         onChange={(e) =>
                           onSetFrame(art.id, e.target.value as FrameId)
                         }
-                        disabled={disabled}
                       >
                         {FRAME_IDS.filter((f) => f !== "none").map((id) => (
                           <option key={id} value={id}>
@@ -114,7 +126,7 @@ export function ArtPlacementPalette({
                           max={MAX_WALL_HEIGHT_T}
                           step={0.01}
                           value={resolvedWallHeightT(placement)}
-                          disabled={disabled}
+                          onPointerDown={(e) => e.stopPropagation()}
                           onChange={(e) =>
                             onSetWallHeight(art.id, Number(e.target.value))
                           }
@@ -129,10 +141,9 @@ export function ArtPlacementPalette({
                   <button
                     type="button"
                     className="btn btn-danger !py-0.5 !px-1.5 !text-[0.6rem]"
-                    disabled={disabled}
                     onClick={() => onRemovePlacement(art.id)}
                   >
-                    Remove
+                    {t.remove}
                   </button>
                 </div>
               ) : null}
@@ -142,7 +153,7 @@ export function ArtPlacementPalette({
       </ul>
       {artworks.length === 0 ? (
         <p className="p-3 text-sm text-[var(--paper-dim)]">
-          Publish artworks first, then place them on the plan.
+          {t.publishArtworksFirst}
         </p>
       ) : null}
     </aside>
@@ -153,24 +164,63 @@ function PaletteItem({
   art,
   index,
   locale,
-  disabled,
+  dragDisabled,
   onBeginDrag,
 }: {
   art: Artwork;
   index: number;
   locale: Locale;
-  disabled?: boolean;
-  onBeginDrag: (e: ReactPointerEvent) => void;
+  dragDisabled?: boolean;
+  onBeginDrag: (
+    captureEl: HTMLElement,
+    clientX: number,
+    clientY: number,
+  ) => void;
 }) {
+  const t = adminEditorStrings(locale);
+  const dragActiveRef = useRef(false);
+
   return (
     <div
       className="flex gap-2 touch-none select-none"
-      style={{ cursor: disabled ? "not-allowed" : "grab" }}
+      style={{ cursor: dragDisabled ? "not-allowed" : "grab" }}
       onPointerDown={(e: ReactPointerEvent) => {
-        if (disabled) return;
-        e.preventDefault();
-        e.currentTarget.setPointerCapture(e.pointerId);
-        onBeginDrag(e);
+        if (dragDisabled || e.button !== 0) return;
+        dragActiveRef.current = false;
+        const el = e.currentTarget as HTMLElement;
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const pointerId = e.pointerId;
+
+        const onMove = (ev: PointerEvent) => {
+          if (dragActiveRef.current) return;
+          const dist = Math.hypot(ev.clientX - startX, ev.clientY - startY);
+          if (dist < DRAG_THRESHOLD_PX) return;
+          dragActiveRef.current = true;
+          ev.preventDefault();
+          el.setPointerCapture(pointerId);
+          onBeginDrag(el, ev.clientX, ev.clientY);
+        };
+
+        const cleanup = () => {
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+          window.removeEventListener("pointercancel", onUp);
+        };
+
+        const onUp = (ev: PointerEvent) => {
+          if (el.hasPointerCapture(pointerId)) {
+            el.releasePointerCapture(pointerId);
+          }
+          cleanup();
+          if (!dragActiveRef.current) {
+            void ev;
+          }
+        };
+
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
       }}
     >
       <span className="flex h-5 w-5 shrink-0 items-center justify-center bg-[#0e0c0a] text-[0.65rem]">
@@ -192,10 +242,10 @@ function PaletteItem({
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs">
-          {pickLocalized(art.title, locale) || "(untitled)"}
+          {pickLocalized(art.title, locale) || t.untitled}
         </p>
         <p className="text-[0.65rem] text-[var(--paper-dim)]">
-          {art.type === "model" ? "sculpture" : "painting"}
+          {art.type === "model" ? t.sculpture : t.painting}
         </p>
       </div>
     </div>

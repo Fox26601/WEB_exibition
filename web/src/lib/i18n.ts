@@ -166,6 +166,136 @@ export const UI: Record<
   },
 };
 
+export type AdminEditorStrings = {
+  roomPlanTitle: string;
+  planMode: string;
+  placeMode: string;
+  deleteRoom: string;
+  autosaveSaving: string;
+  autosaveSaved: string;
+  autosaveFailed: string;
+  retry: string;
+  placeBanner: string;
+  entranceHelp: string;
+  entranceHelpBody: string;
+  entranceHelpPlaceDrag: string;
+  entranceHelpRoomsMeta: string;
+  entranceHelpAddRoom: string;
+  entranceLabel: string;
+  dropNoSnap: string;
+  dropConflict: string;
+  dropOutside: string;
+  placeOnPlan: string;
+  placeInstructions: string;
+  frame: string;
+  remove: string;
+  painting: string;
+  sculpture: string;
+  publishArtworksFirst: string;
+  untitled: string;
+  publishToLive: string;
+  openDraft3d: string;
+  artworksPlaceHint: string;
+  draftAutosaveIntro: string;
+  lastLivePublish: string;
+  unpublishedDraft: string;
+  liveMatchesDraft: string;
+};
+
+const ADMIN_EDITOR_EN: AdminEditorStrings = {
+  roomPlanTitle: "Room plan & placement",
+  planMode: "Plan",
+  placeMode: "Place",
+  deleteRoom: "Delete room",
+  autosaveSaving: "Autosaving draft…",
+  autosaveSaved: "Draft saved",
+  autosaveFailed: "Autosave failed",
+  retry: "Retry",
+  placeBanner: "Enable Place mode to drag artworks onto the plan.",
+  entranceHelp:
+    "Entrance (foyer): not a room from the list — portal and spawn. Bright edge is the gallery door;",
+  entranceHelpBody:
+    "outside. Snap the portal to a room (or a room to the entrance) — rotation adjusts automatically. Tap the block for +90°. Drag the empty canvas to pan the view.",
+  entranceHelpPlaceDrag:
+    " In Place mode, drag a work from the list onto the plan or move a marker.",
+  entranceHelpRoomsMeta:
+    " Rooms: drag to move, corner handle to stretch; doors: {count}.",
+  entranceHelpAddRoom: " Add at least one room.",
+  entranceLabel: "entrance",
+  dropNoSnap: "Move closer to a wall.",
+  dropConflict: "Too close to another work.",
+  dropOutside: "Release inside a room.",
+  placeOnPlan: "Place on plan",
+  placeInstructions:
+    "Paintings go on walls; sculptures on the floor. Green ghost = you can drop.",
+  frame: "Frame",
+  remove: "Remove",
+  painting: "painting",
+  sculpture: "sculpture",
+  publishArtworksFirst: "Publish artworks first, then place them on the plan.",
+  untitled: "(untitled)",
+  publishToLive: "Publish to live site",
+  openDraft3d: "Open draft in 3D",
+  artworksPlaceHint:
+    "Upload and publish here. Place published works on the room plan in Place mode.",
+  draftAutosaveIntro: "Draft autosaves on every layout change.",
+  lastLivePublish: " Last live publish: {date}.",
+  unpublishedDraft: " Unpublished draft changes.",
+  liveMatchesDraft: " Live matches draft.",
+};
+
+const ADMIN_EDITOR_RU: AdminEditorStrings = {
+  roomPlanTitle: "План зала и расстановка",
+  planMode: "План",
+  placeMode: "Place",
+  deleteRoom: "Удалить комнату",
+  autosaveSaving: "Сохранение черновика…",
+  autosaveSaved: "Черновик сохранён",
+  autosaveFailed: "Ошибка автосохранения",
+  retry: "Повторить",
+  placeBanner: "Включите режим Place, чтобы перетаскивать работы на план.",
+  entranceHelp:
+    "Вход (фойе): не комната из списка — портал и spawn. Светлая грань — дверь в галерею;",
+  entranceHelpBody:
+    "снаружи. Подведи портал к комнате (или комнату ко входу) — поворот подстроится сам. Тап по блоку — поворот 90°. По пустому полю — перетаскивание, чтобы сдвинуть вид схемы.",
+  entranceHelpPlaceDrag:
+    " В режиме Place перетащите работу со списка на план или сдвиньте маркер.",
+  entranceHelpRoomsMeta: " Комнаты: перетаскивание, угол — stretch; дверей: {count}.",
+  entranceHelpAddRoom: " Добавьте хотя бы одну комнату.",
+  entranceLabel: "вход",
+  dropNoSnap: "Подведите ближе к стене.",
+  dropConflict: "Слишком близко к другой работе.",
+  dropOutside: "Отпустите внутри комнаты.",
+  placeOnPlan: "Расстановка на плане",
+  placeInstructions:
+    "Картину — на стену; скульптуру — на пол. Зелёный призрак = можно отпустить.",
+  frame: "Рама",
+  remove: "Убрать",
+  painting: "картина",
+  sculpture: "скульптура",
+  publishArtworksFirst: "Сначала опубликуйте работы, затем расставьте на плане.",
+  untitled: "(без названия)",
+  publishToLive: "Опубликовать на сайт",
+  openDraft3d: "Открыть черновик в 3D",
+  artworksPlaceHint:
+    "Загружайте и публикуйте здесь. На плане расставляйте опубликованные работы в режиме Place.",
+  draftAutosaveIntro: "Черновик сохраняется при каждом изменении плана.",
+  lastLivePublish: " Последняя публикация: {date}.",
+  unpublishedDraft: " Есть неопубликованные изменения.",
+  liveMatchesDraft: " Live совпадает с черновиком.",
+};
+
+export const ADMIN_EDITOR: Record<Locale, AdminEditorStrings> = {
+  en: ADMIN_EDITOR_EN,
+  ru: ADMIN_EDITOR_RU,
+  uk: ADMIN_EDITOR_EN,
+  he: ADMIN_EDITOR_EN,
+};
+
+export function adminEditorStrings(locale: Locale): AdminEditorStrings {
+  return ADMIN_EDITOR[locale] ?? ADMIN_EDITOR.en;
+}
+
 export function isLocale(value: string | null | undefined): value is Locale {
   return !!value && (LOCALES as readonly string[]).includes(value);
 }
