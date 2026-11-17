@@ -59,6 +59,99 @@ test("evaluateArtworkDrop snaps painting to nearest wall within range", () => {
   assert.equal(miss.reason, "no_snap");
 });
 
+test("evaluateArtworkDrop allows moving an artwork onto its own wall slot", () => {
+  const layout = normalizeLayout({
+    rooms: [squareRoom("r1", 0, 4)],
+    connections: [],
+    placements: [
+      {
+        artworkId: "a1",
+        kind: "painting",
+        roomId: "r1",
+        wallEdgeIndex: 0,
+        tAlongEdge: 0.5,
+        yaw: 0,
+        frameId: "wood",
+      },
+    ],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+
+  const art = {
+    id: "a1",
+    type: "image",
+    sort: 0,
+    published: true,
+    title: { en: "", ru: "", uk: "", he: "" },
+    text: { en: "", ru: "", uk: "", he: "" },
+    urlWall: "",
+    urlFull: "",
+    urlVideo: "",
+    urlPoster: "",
+    frameId: "wood",
+  };
+
+  const nearWall = { x: 0, z: 6.26 + 0.45 };
+  const drop = evaluateArtworkDrop(art, nearWall, layout, "metal");
+  assert.equal(drop.ok, true);
+  if (!drop.ok) return;
+  assert.equal(drop.placement.artworkId, "a1");
+
+  const withExplicitIgnore = evaluateArtworkDrop(
+    art,
+    nearWall,
+    layout,
+    "metal",
+    "a1",
+  );
+  assert.equal(withExplicitIgnore.ok, true);
+});
+
+test("evaluateArtworkDrop ignoreArtworkId skips another placement in conflict check", () => {
+  const layout = normalizeLayout({
+    rooms: [squareRoom("r1", 0, 4)],
+    connections: [],
+    placements: [
+      {
+        artworkId: "existing",
+        kind: "painting",
+        roomId: "r1",
+        wallEdgeIndex: 0,
+        tAlongEdge: 0.5,
+        yaw: 0,
+        frameId: "wood",
+      },
+    ],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+
+  const art = {
+    id: "a2",
+    type: "image",
+    sort: 1,
+    published: true,
+    title: { en: "", ru: "", uk: "", he: "" },
+    text: { en: "", ru: "", uk: "", he: "" },
+    urlWall: "",
+    urlFull: "",
+    urlVideo: "",
+    urlPoster: "",
+  };
+
+  const nearWall = { x: 0.2, z: 6.26 + 0.35 };
+  const conflict = evaluateArtworkDrop(art, nearWall, layout, "wood");
+  assert.equal(conflict.ok, false);
+
+  const ignored = evaluateArtworkDrop(
+    art,
+    nearWall,
+    layout,
+    "wood",
+    "existing",
+  );
+  assert.equal(ignored.ok, true);
+});
+
 test("evaluateArtworkDrop detects painting conflicts on same wall segment", () => {
   const layout = normalizeLayout({
     rooms: [squareRoom("r1", 0, 4)],

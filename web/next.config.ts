@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+const immutableNoTransform = {
+  key: "Cache-Control",
+  value: "public, max-age=31536000, immutable, no-transform",
+} as const;
+
 const immutable = {
   key: "Cache-Control",
   value: "public, max-age=31536000, immutable",
@@ -20,15 +25,19 @@ const nextConfig: NextConfig = {
         source: "/unity/:path*.wasm",
         headers: [
           { key: "Content-Type", value: "application/wasm" },
-          immutable,
+          immutableNoTransform,
         ],
       },
       {
         source: "/unity/:path*.data",
         headers: [
           { key: "Content-Type", value: "application/octet-stream" },
-          immutable,
+          immutableNoTransform,
         ],
+      },
+      {
+        source: "/unity/:path*.framework.js",
+        headers: [immutableNoTransform],
       },
       {
         source: "/unity/:path*.js",

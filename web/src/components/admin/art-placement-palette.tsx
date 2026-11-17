@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  useMemo,
-  useRef,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useMemo, type PointerEvent as ReactPointerEvent } from "react";
 import type { Artwork, ArtworkPlacement, FrameId } from "@/lib/catalog-types";
 import {
   FRAME_IDS,
@@ -15,19 +11,15 @@ import { resolvedWallHeightT } from "@/lib/placement-eval";
 import { adminEditorStrings, pickLocalized } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n";
 
-const DRAG_THRESHOLD_PX = 6;
-
 type Props = {
   artworks: Artwork[];
   locale: Locale;
   placements: ArtworkPlacement[];
   paletteFrame: FrameId;
   onPaletteFrameChange: (f: FrameId) => void;
-  onBeginDrag: (
+  onPaletteItemPointerDown: (
     art: Artwork,
-    captureEl: HTMLElement,
-    clientX: number,
-    clientY: number,
+    e: ReactPointerEvent<HTMLElement>,
   ) => void;
   onRemovePlacement: (artworkId: string) => void;
   onSetFrame: (artworkId: string, frameId: FrameId) => void;
@@ -41,7 +33,7 @@ export function ArtPlacementPalette({
   placements,
   paletteFrame,
   onPaletteFrameChange,
-  onBeginDrag,
+  onPaletteItemPointerDown,
   onRemovePlacement,
   onSetFrame,
   onSetWallHeight,
@@ -73,15 +65,20 @@ export function ArtPlacementPalette({
               className={`btn !py-0.5 !px-1.5 !text-[0.6rem] ${
                 paletteFrame === id ? "btn-solid" : "btn-ghost"
               }`}
-              onClick={() => onPaletteFrameChange(id)}
-              disabled={dragDisabled}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPaletteFrameChange(id);
+              }}
             >
               {id}
             </button>
           ))}
         </div>
       </div>
-      <ul className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+      <ul
+        className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2"
+        style={{ touchAction: "pan-y" }}
+      >
         {artworks.map((art, i) => {
           const placement = placements.find((p) => p.artworkId === art.id);
           const isPlaced = placed.has(art.id);
@@ -99,7 +96,7 @@ export function ArtPlacementPalette({
                 index={i + 1}
                 locale={locale}
                 dragDisabled={dragDisabled}
-                onBeginDrag={(el, x, y) => onBeginDrag(art, el, x, y)}
+                onPointerDown={(e) => onPaletteItemPointerDown(art, e)}
               />
               {isPlaced ? (
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -108,6 +105,7 @@ export function ArtPlacementPalette({
                       <select
                         className="!py-0.5 !text-[0.65rem]"
                         value={placement.frameId}
+                        onPointerDown={(e) => e.stopPropagation()}
                         onChange={(e) =>
                           onSetFrame(art.id, e.target.value as FrameId)
                         }
@@ -165,88 +163,52 @@ function PaletteItem({
   index,
   locale,
   dragDisabled,
-  onBeginDrag,
+  onPointerDown,
 }: {
   art: Artwork;
   index: number;
   locale: Locale;
   dragDisabled?: boolean;
-  onBeginDrag: (
-    captureEl: HTMLElement,
-    clientX: number,
-    clientY: number,
-  ) => void;
+  onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void;
 }) {
   const t = adminEditorStrings(locale);
-  const dragActiveRef = useRef(false);
+  const handleDown = (e: ReactPointerEvent<HTMLElement>) => {
+    if (dragDisabled) return;
+    onPointerDown(e);
+  };
 
   return (
-    <div
-      className="flex gap-2 touch-none select-none"
-      style={{ cursor: dragDisabled ? "not-allowed" : "grab" }}
-      onPointerDown={(e: ReactPointerEvent) => {
-        if (dragDisabled || e.button !== 0) return;
-        dragActiveRef.current = false;
-        const el = e.currentTarget as HTMLElement;
-        const startX = e.clientX;
-        const startY = e.clientY;
-        const pointerId = e.pointerId;
-
-        const onMove = (ev: PointerEvent) => {
-          if (dragActiveRef.current) return;
-          const dist = Math.hypot(ev.clientX - startX, ev.clientY - startY);
-          if (dist < DRAG_THRESHOLD_PX) return;
-          dragActiveRef.current = true;
-          ev.preventDefault();
-          el.setPointerCapture(pointerId);
-          onBeginDrag(el, ev.clientX, ev.clientY);
-        };
-
-        const cleanup = () => {
-          window.removeEventListener("pointermove", onMove);
-          window.removeEventListener("pointerup", onUp);
-          window.removeEventListener("pointercancel", onUp);
-        };
-
-        const onUp = (ev: PointerEvent) => {
-          if (el.hasPointerCapture(pointerId)) {
-            el.releasePointerCapture(pointerId);
-          }
-          cleanup();
-          if (!dragActiveRef.current) {
-            void ev;
-          }
-        };
-
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
-        window.addEventListener("pointercancel", onUp);
-      }}
-    >
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center bg-[#0e0c0a] text-[0.65rem]">
-        {index}
-      </span>
-      <div className="h-12 w-12 shrink-0 overflow-hidden bg-[#0e0c0a]">
-        {art.type === "model" ? (
-          <div className="flex h-full items-center justify-center text-[0.65rem] text-[var(--paper-dim)]">
-            GLB
-          </div>
-        ) : (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={art.urlWall || art.urlPoster || ""}
-            alt=""
-            className="h-full w-full object-cover pointer-events-none"
-          />
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-xs">
-          {pickLocalized(art.title, locale) || t.untitled}
-        </p>
-        <p className="text-[0.65rem] text-[var(--paper-dim)]">
-          {art.type === "model" ? t.sculpture : t.painting}
-        </p>
+    <div className="flex gap-2 select-none">
+      <div
+        className="flex min-w-0 flex-1 gap-2 touch-none"
+        style={{ cursor: dragDisabled ? "not-allowed" : "grab" }}
+        onPointerDown={handleDown}
+      >
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center bg-[#0e0c0a] text-[0.65rem]">
+          {index}
+        </span>
+        <div className="h-12 w-12 shrink-0 overflow-hidden bg-[#0e0c0a]">
+          {art.type === "model" ? (
+            <div className="flex h-full items-center justify-center text-[0.65rem] text-[var(--paper-dim)]">
+              GLB
+            </div>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={art.urlWall || art.urlPoster || ""}
+              alt=""
+              className="pointer-events-none h-full w-full object-cover"
+            />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-xs">
+            {pickLocalized(art.title, locale) || t.untitled}
+          </p>
+          <p className="text-[0.65rem] text-[var(--paper-dim)]">
+            {art.type === "model" ? t.sculpture : t.painting}
+          </p>
+        </div>
       </div>
     </div>
   );

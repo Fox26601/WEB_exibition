@@ -276,6 +276,17 @@ export function GalleryRoomEditor({
     [origin],
   );
 
+  const ignoreArtworkIdForDrag = useCallback(
+    (art: Artwork, source: PlaceDragState["source"]): string | undefined => {
+      if (source === "reposition") return art.id;
+      const current = normalizeLayout(layoutLiveRef.current);
+      return current.placements.some((p) => p.artworkId === art.id)
+        ? art.id
+        : undefined;
+    },
+    [],
+  );
+
   const endPlaceDrag = useCallback(
     (clientX: number, clientY: number) => {
       const drag = placeDragRef.current;
@@ -285,8 +296,7 @@ export function GalleryRoomEditor({
       const world = resolveWorldAtClient(clientX, clientY);
       if (!world) return;
       const current = normalizeLayout(layoutLiveRef.current);
-      const ignoreId =
-        drag.source === "reposition" ? drag.art.id : undefined;
+      const ignoreId = ignoreArtworkIdForDrag(drag.art, drag.source);
       const result = evaluateArtworkDrop(
         drag.art,
         world,
@@ -313,18 +323,30 @@ export function GalleryRoomEditor({
       }
       upsertPlacement(placement);
     },
-    [paletteFrame, resolveWorldAtClient, showPlaceToast, t, upsertPlacement],
+    [
+      ignoreArtworkIdForDrag,
+      paletteFrame,
+      resolveWorldAtClient,
+      showPlaceToast,
+      t,
+      upsertPlacement,
+    ],
   );
 
-  const beginPaletteDrag = useCallback(
+  const runPlacementDrag = useCallback(
     (
       art: Artwork,
-      captureEl: HTMLElement,
+      source: PlaceDragState["source"],
+      captureEl: HTMLElement | null,
+      pointerId: number | null,
       startClientX: number,
       startClientY: number,
     ) => {
       if (editorMode !== "place") return;
-      placeDragRef.current = { art, source: "palette" };
+      placeDragRef.current = { art, source };
+      if (captureEl != null && pointerId != null) {
+        captureEl.setPointerCapture?.(pointerId);
+      }
       const trackPointer = (clientX: number, clientY: number) => {
         const world = resolveWorldAtClient(clientX, clientY);
         if (!world) {
@@ -332,11 +354,13 @@ export function GalleryRoomEditor({
           return;
         }
         const current = normalizeLayout(layoutLiveRef.current);
+        const ignoreId = ignoreArtworkIdForDrag(art, source);
         const result = evaluateArtworkDrop(
           art,
           world,
           current,
           paletteFrame,
+          ignoreId,
         );
         setGhost({
           world: result.ok ? result.world : world,
@@ -347,7 +371,10 @@ export function GalleryRoomEditor({
         trackPointer(ev.clientX, ev.clientY);
       };
       const onUp = (ev: PointerEvent) => {
-        if (captureEl.hasPointerCapture(ev.pointerId)) {
+        if (
+          captureEl != null &&
+          captureEl.hasPointerCapture(ev.pointerId)
+        ) {
           captureEl.releasePointerCapture(ev.pointerId);
         }
         endPlaceDrag(ev.clientX, ev.clientY);
@@ -360,7 +387,57 @@ export function GalleryRoomEditor({
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
     },
-    [editorMode, endPlaceDrag, paletteFrame, resolveWorldAtClient],
+    [
+      editorMode,
+      endPlaceDrag,
+      ignoreArtworkIdForDrag,
+      paletteFrame,
+      resolveWorldAtClient,
+    ],
+  );
+
+  const onPaletteItemPointerDown = useCallback(
+    (art: Artwork, e: ReactPointerEvent<HTMLElement>) => {
+      if (editorMode !== "place" || e.button !== 0) return;
+      e.preventDefault();
+      const captureEl = e.currentTarget;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const pointerId = e.pointerId;
+      let started = false;
+
+      const teardown = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+
+      const onMove = (ev: PointerEvent) => {
+        if (started) return;
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD_PX) {
+          return;
+        }
+        started = true;
+        teardown();
+        runPlacementDrag(
+          art,
+          "palette",
+          captureEl,
+          pointerId,
+          ev.clientX,
+          ev.clientY,
+        );
+      };
+
+      const onUp = () => {
+        teardown();
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [editorMode, runPlacementDrag],
   );
 
   const beginReposition = useCallback(
@@ -368,42 +445,17 @@ export function GalleryRoomEditor({
       if (editorMode !== "place") return;
       e.preventDefault();
       e.stopPropagation();
-      placeDragRef.current = { art, source: "reposition" };
       const captureEl = e.currentTarget as HTMLElement;
-      captureEl.setPointerCapture?.(e.pointerId);
-      const onMove = (ev: PointerEvent) => {
-        const world = resolveWorldAtClient(ev.clientX, ev.clientY);
-        if (!world) {
-          setGhost(null);
-          return;
-        }
-        const current = normalizeLayout(layoutLiveRef.current);
-        const result = evaluateArtworkDrop(
-          art,
-          world,
-          current,
-          paletteFrame,
-          art.id,
-        );
-        setGhost({
-          world: result.ok ? result.world : world,
-          ok: result.ok,
-        });
-      };
-      const onUp = (ev: PointerEvent) => {
-        if (captureEl.hasPointerCapture(ev.pointerId)) {
-          captureEl.releasePointerCapture(ev.pointerId);
-        }
-        endPlaceDrag(ev.clientX, ev.clientY);
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        window.removeEventListener("pointercancel", onUp);
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-      window.addEventListener("pointercancel", onUp);
+      runPlacementDrag(
+        art,
+        "reposition",
+        captureEl,
+        e.pointerId,
+        e.clientX,
+        e.clientY,
+      );
     },
-    [editorMode, endPlaceDrag, paletteFrame, resolveWorldAtClient],
+    [editorMode, runPlacementDrag],
   );
 
   function addRoom(shape: RoomShape) {
@@ -1097,7 +1149,7 @@ export function GalleryRoomEditor({
             placements={normalized.placements}
             paletteFrame={paletteFrame}
             onPaletteFrameChange={setPaletteFrame}
-            onBeginDrag={beginPaletteDrag}
+            onPaletteItemPointerDown={onPaletteItemPointerDown}
             onRemovePlacement={removePlacement}
             onSetFrame={setPlacementFrame}
             onSetWallHeight={setPlacementWallHeight}
