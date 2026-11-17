@@ -1,4 +1,19 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+<<<<<<< HEAD
   "framework": "nextjs"
+=======
+  "framework": "nextjs",
+  "headers": [
+    {
+      "source": "/unity/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable, no-transform"
+        }
+      ]
+    }
+  ]
+>>>>>>> eefb78d (Fix Vercel monorepo build for repo-root GitHub deploys)
 }
