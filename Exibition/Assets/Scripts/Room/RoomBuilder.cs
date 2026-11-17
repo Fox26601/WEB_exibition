@@ -15,6 +15,10 @@ namespace Gallery.Room
         public const float SlotPitch = 3f;
         public const float MarginEnds = 2f;
         public const float WallThickness = 0.12f;
+        const float WallShellGap = 0.001f;
+        const float WallPlaneBias = 0.002f;
+        const float WallCornerInset = WallThickness * 0.5f;
+        const float GeomEps = 1e-5f;
 
         [SerializeField] Color floorColor = new Color(0.52f, 0.53f, 0.55f);
         [SerializeField] Color wallColor = new Color(0.68f, 0.69f, 0.72f);
@@ -403,9 +407,18 @@ namespace Gallery.Room
             string roomId,
             Vector3 roomCentroid)
         {
-            var mid = (a + b) * 0.5f;
             var edge = b - a;
             var len = edge.magnitude;
+            var dir = len > GeomEps ? edge / len : Vector3.forward;
+            if (doorwayWidth <= 0.01f && len > WallCornerInset * 2f + 0.12f)
+            {
+                a += dir * WallCornerInset;
+                b -= dir * WallCornerInset;
+                edge = b - a;
+                len = edge.magnitude;
+            }
+
+            var mid = (a + b) * 0.5f;
             var yaw = Mathf.Atan2(edge.x, edge.z) * Mathf.Rad2Deg;
             var inward = WallSnapUtility.InwardNormal(a, b, roomCentroid);
 
@@ -424,7 +437,7 @@ namespace Gallery.Room
                 return;
             }
 
-            var dir = edge.normalized;
+            dir = edge.normalized;
             var leftMid = mid - dir * (halfDoor + halfRemain * 0.5f);
             var rightMid = mid + dir * (halfDoor + halfRemain * 0.5f);
             CreateOrientedWall(parent, $"Wall_{edgeIndex}_L", leftMid, halfRemain, yaw, inward, roomId, edgeIndex);
@@ -449,7 +462,7 @@ namespace Gallery.Room
             var h = overrideHeight > 0f ? overrideHeight : Height;
             var l = overrideLength > 0f ? overrideLength : length;
             var y = mid.y > 0.01f ? mid.y : h * 0.5f;
-            var worldMid = new Vector3(mid.x, y, mid.z);
+            var worldMid = new Vector3(mid.x, y, mid.z) + inward * WallPlaneBias;
             var rot = Quaternion.Euler(0f, yaw, 0f);
 
             var root = new GameObject(name);
@@ -458,20 +471,22 @@ namespace Gallery.Room
             root.transform.rotation = rot;
 
             var halfT = WallThickness * 0.5f;
+            var shellDepth = Mathf.Max(0.04f, halfT - WallShellGap * 0.5f);
+            var shellOffset = (shellDepth + WallShellGap) * 0.5f;
             var interiorSign = Vector3.Dot(rot * Vector3.right, inward) >= 0f ? 1f : -1f;
             var interior = GameObject.CreatePrimitive(PrimitiveType.Cube);
             interior.name = "InteriorShell";
             interior.transform.SetParent(root.transform, false);
-            interior.transform.localPosition = new Vector3(interiorSign * halfT * 0.5f, 0f, 0f);
-            interior.transform.localScale = new Vector3(halfT, h, Mathf.Max(0.05f, l));
+            interior.transform.localPosition = new Vector3(interiorSign * shellOffset, 0f, 0f);
+            interior.transform.localScale = new Vector3(shellDepth, h, Mathf.Max(0.05f, l));
             var interiorR = interior.GetComponent<MeshRenderer>();
             interiorR.sharedMaterial = _wallMaterial ?? CreateMaterial(wallColor);
 
             var exterior = GameObject.CreatePrimitive(PrimitiveType.Cube);
             exterior.name = "ExteriorShell";
             exterior.transform.SetParent(root.transform, false);
-            exterior.transform.localPosition = new Vector3(-interiorSign * halfT * 0.5f, 0f, 0f);
-            exterior.transform.localScale = new Vector3(halfT, h, Mathf.Max(0.05f, l));
+            exterior.transform.localPosition = new Vector3(-interiorSign * shellOffset, 0f, 0f);
+            exterior.transform.localScale = new Vector3(shellDepth, h, Mathf.Max(0.05f, l));
             var exteriorR = exterior.GetComponent<MeshRenderer>();
             exteriorR.sharedMaterial = _wallMaterial ?? CreateMaterial(wallColor);
 

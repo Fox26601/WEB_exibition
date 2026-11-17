@@ -72,5 +72,73 @@ namespace Gallery.EditorTests
                 Is.True,
                 "outer floor must remain where a lower-id room sits inside");
         }
+
+        [Test]
+        public void WallSpans_Dedup_Coplanar_Shared_Edge_By_Room_Id()
+        {
+            static Vec2Data V(float x, float z) => new Vec2Data { x = x, z = z };
+
+            var layout = new GalleryLayoutData
+            {
+                rooms = new[]
+                {
+                    new GalleryRoomData
+                    {
+                        id = "roomA",
+                        vertices = new[] { V(0f, 0f), V(2f, 0f), V(2f, 2f), V(0f, 2f) },
+                    },
+                    new GalleryRoomData
+                    {
+                        id = "roomB",
+                        vertices = new[] { V(2f, 0f), V(4f, 0f), V(4f, 2f), V(2f, 2f) },
+                    },
+                },
+            };
+
+            var rooms = RoomOverlapClip.BuildOverlapRooms(layout);
+            var sharedOnA = RoomOverlapClip.WallSpansForEdge(rooms, "roomA", 1);
+            var sharedOnB = RoomOverlapClip.WallSpansForEdge(rooms, "roomB", 3);
+
+            Assert.That(sharedOnA.Count, Is.EqualTo(1), "lower-id room keeps the shared wall");
+            Assert.That(sharedOnB.Count, Is.EqualTo(0), "higher-id room must not duplicate coplanar wall");
+        }
+
+        [Test]
+        public void WallSpans_Drop_SubSpans_Shorter_Than_MinSpan()
+        {
+            static Vec2Data V(float x, float z) => new Vec2Data { x = x, z = z };
+
+            var layout = new GalleryLayoutData
+            {
+                rooms = new[]
+                {
+                    new GalleryRoomData
+                    {
+                        id = "solo",
+                        vertices = new[] { V(0f, 0f), V(4f, 0f), V(4f, 4f), V(0f, 4f) },
+                    },
+                    new GalleryRoomData
+                    {
+                        id = "hex",
+                        shape = "hexagon",
+                        transform = new RoomTransformData { x = 2f, z = 2f, rotation = 0f, scaleX = 3f, scaleZ = 3f },
+                    },
+                },
+            };
+
+            var rooms = RoomOverlapClip.BuildOverlapRooms(layout);
+            var tiny = 0;
+            foreach (var edge in new[] { 0, 1, 2, 3 })
+            {
+                var spans = RoomOverlapClip.WallSpansForEdge(rooms, "solo", edge);
+                for (var i = 0; i < spans.Count; i++)
+                {
+                    var s = spans[i];
+                    if ((s.t1 - s.t0) * 4f < RoomOverlapClip.MinSpan) tiny++;
+                }
+            }
+
+            Assert.That(tiny, Is.EqualTo(0));
+        }
     }
 }

@@ -8,7 +8,8 @@ import {
 } from "./layout-geometry";
 
 const EPS = 1e-6;
-const MIN_SPAN = 0.08;
+const MIN_SPAN = 0.12;
+const BOUNDARY_TOL = 0.035;
 
 export type WallSpan = { t0: number; t1: number };
 
@@ -73,7 +74,67 @@ function midpointInsideOtherRoom(
   const mid = lerp2(a, b, (t0 + t1) * 0.5);
   for (const other of rooms) {
     if (other.id === ownerId) continue;
-    if (pointInPolygon(mid, other.verts)) return true;
+    if (!pointInPolygon(mid, other.verts)) continue;
+    if (pointOnPolygonBoundary(mid, other.verts)) continue;
+    return true;
+  }
+  return false;
+}
+
+function pointOnPolygonBoundary(p: Vec2, verts: Vec2[]): boolean {
+  for (let i = 0; i < verts.length; i++) {
+    const c = verts[i];
+    const d = verts[(i + 1) % verts.length];
+    const cdx = d.x - c.x;
+    const cdz = d.z - c.z;
+    const cdLen = Math.hypot(cdx, cdz);
+    if (cdLen < EPS) continue;
+    const cdDir = { x: cdx / cdLen, z: cdz / cdLen };
+    if (pointOnCollinearEdge(p, cdDir, c, d)) return true;
+  }
+  return false;
+}
+
+function pointOnCollinearEdge(p: Vec2, edgeDir: Vec2, c: Vec2, d: Vec2): boolean {
+  const cdx = d.x - c.x;
+  const cdz = d.z - c.z;
+  const cdLen = Math.hypot(cdx, cdz);
+  if (cdLen < EPS) return false;
+  const cdDir = { x: cdx / cdLen, z: cdz / cdLen };
+  const cross = edgeDir.x * cdDir.z - edgeDir.z * cdDir.x;
+  if (Math.abs(cross) > 0.02) return false;
+  const toPx = p.x - c.x;
+  const toPz = p.z - c.z;
+  const perp = Math.abs(toPx * cdDir.z - toPz * cdDir.x);
+  if (perp > BOUNDARY_TOL) return false;
+  const u = toPx * cdDir.x + toPz * cdDir.z;
+  return u >= -BOUNDARY_TOL && u <= cdLen + BOUNDARY_TOL;
+}
+
+function isDuplicateCoplanarWall(
+  rooms: OverlapRoom[],
+  roomId: string,
+  a: Vec2,
+  b: Vec2,
+  t0: number,
+  t1: number,
+): boolean {
+  const mid = lerp2(a, b, (t0 + t1) * 0.5);
+  const abx = b.x - a.x;
+  const abz = b.z - a.z;
+  const abLen = Math.hypot(abx, abz);
+  if (abLen < EPS) return false;
+  const abDir = { x: abx / abLen, z: abz / abLen };
+
+  for (const other of rooms) {
+    if (other.id === roomId) continue;
+    if (other.id >= roomId) continue;
+    if (pointInPolygon(mid, other.verts)) continue;
+    for (let j = 0; j < other.verts.length; j++) {
+      const c = other.verts[j];
+      const d = other.verts[(j + 1) % other.verts.length];
+      if (pointOnCollinearEdge(mid, abDir, c, d)) return true;
+    }
   }
   return false;
 }
@@ -95,6 +156,7 @@ export function wallSpansForEdge(
     const t1 = splits[i + 1];
     if (t1 - t0 < MIN_SPAN / Math.hypot(b.x - a.x, b.z - a.z)) continue;
     if (midpointInsideOtherRoom(rooms, roomId, a, b, t0, t1)) continue;
+    if (isDuplicateCoplanarWall(rooms, roomId, a, b, t0, t1)) continue;
     spans.push({ t0, t1 });
   }
   return spans;
