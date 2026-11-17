@@ -3,25 +3,7 @@
   "framework": "nextjs",
   "headers": [
     {
-      "source": "/unity/(.*)\\.wasm",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable, no-transform"
-        }
-      ]
-    },
-    {
-      "source": "/unity/(.*)\\.data",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=31536000, immutable, no-transform"
-        }
-      ]
-    },
-    {
-      "source": "/unity/(.*)\\.framework\\.js",
+      "source": "/unity/:path*",
       "headers": [
         {
           "key": "Cache-Control",
