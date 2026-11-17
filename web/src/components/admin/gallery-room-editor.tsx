@@ -21,7 +21,7 @@ import {
   ROOM_SHAPES,
   normalizeLayout,
 } from "@/lib/catalog-types";
-import type { Locale } from "@/lib/i18n";
+import { adminEditorStrings, type Locale } from "@/lib/i18n";
 import {
   evaluateArtworkDrop,
   placementWorldPoint,
@@ -174,7 +174,14 @@ export function GalleryRoomEditor({
   locale,
 }: Props) {
   const placementEnabled = Boolean(artworks?.length && locale);
-  const [editorMode, setEditorMode] = useState<EditorMode>("plan");
+  const editorLocale: Locale = locale ?? "en";
+  const t = adminEditorStrings(editorLocale);
+  const [editorMode, setEditorMode] = useState<EditorMode>(() => {
+    const pe = Boolean(artworks?.length && locale);
+    if (!pe) return "plan";
+    const initial = normalizeLayout(layout);
+    return initial.placements.length > 0 || pe ? "place" : "plan";
+  });
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [selectedShape, setSelectedShape] = useState<RoomShape>("square");
   const [panOffset, setPanOffset] = useState<PanOffset>({ x: 0, y: 0 });
@@ -290,10 +297,10 @@ export function GalleryRoomEditor({
       if (!result.ok) {
         const msg =
           result.reason === "no_snap"
-            ? "Подведите ближе к стене."
+            ? t.dropNoSnap
             : result.reason === "conflict"
-              ? "Слишком близко к другой работе."
-              : "Отпустите внутри комнаты.";
+              ? t.dropConflict
+              : t.dropOutside;
         showPlaceToast(msg);
         return;
       }
@@ -306,11 +313,16 @@ export function GalleryRoomEditor({
       }
       upsertPlacement(placement);
     },
-    [paletteFrame, resolveWorldAtClient, showPlaceToast, upsertPlacement],
+    [paletteFrame, resolveWorldAtClient, showPlaceToast, t, upsertPlacement],
   );
 
   const beginPaletteDrag = useCallback(
-    (art: Artwork, e: ReactPointerEvent) => {
+    (
+      art: Artwork,
+      captureEl: HTMLElement,
+      startClientX: number,
+      startClientY: number,
+    ) => {
       if (editorMode !== "place") return;
       placeDragRef.current = { art, source: "palette" };
       const trackPointer = (clientX: number, clientY: number) => {
@@ -335,12 +347,15 @@ export function GalleryRoomEditor({
         trackPointer(ev.clientX, ev.clientY);
       };
       const onUp = (ev: PointerEvent) => {
+        if (captureEl.hasPointerCapture(ev.pointerId)) {
+          captureEl.releasePointerCapture(ev.pointerId);
+        }
         endPlaceDrag(ev.clientX, ev.clientY);
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         window.removeEventListener("pointercancel", onUp);
       };
-      trackPointer(e.clientX, e.clientY);
+      trackPointer(startClientX, startClientY);
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
@@ -354,7 +369,8 @@ export function GalleryRoomEditor({
       e.preventDefault();
       e.stopPropagation();
       placeDragRef.current = { art, source: "reposition" };
-      (e.target as Element).setPointerCapture?.(e.pointerId);
+      const captureEl = e.currentTarget as HTMLElement;
+      captureEl.setPointerCapture?.(e.pointerId);
       const onMove = (ev: PointerEvent) => {
         const world = resolveWorldAtClient(ev.clientX, ev.clientY);
         if (!world) {
@@ -375,6 +391,9 @@ export function GalleryRoomEditor({
         });
       };
       const onUp = (ev: PointerEvent) => {
+        if (captureEl.hasPointerCapture(ev.pointerId)) {
+          captureEl.releasePointerCapture(ev.pointerId);
+        }
         endPlaceDrag(ev.clientX, ev.clientY);
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
@@ -427,6 +446,7 @@ export function GalleryRoomEditor({
 
   function onCanvasPanStart(e: ReactPointerEvent<SVGRectElement>) {
     if (e.button !== 0) return;
+    if (editorMode === "place" && placeDragRef.current) return;
     e.preventDefault();
     const svg = svgRef.current;
     if (!svg) return;
@@ -512,6 +532,7 @@ export function GalleryRoomEditor({
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
+      if (placeDragRef.current) return;
       const drag = dragRef.current;
       const svg = svgRef.current;
       if (!drag || !svg) return;
@@ -677,11 +698,11 @@ export function GalleryRoomEditor({
 
   const statusLabel =
     saveStatus === "saving"
-      ? "Autosaving draft…"
+      ? t.autosaveSaving
       : saveStatus === "saved"
-        ? "Draft saved"
+        ? t.autosaveSaved
         : saveStatus === "error"
-          ? saveError || "Autosave failed"
+          ? saveError || t.autosaveFailed
           : "";
 
   const entranceVerts = entranceWorldVertices(normalized.entrance);
@@ -731,25 +752,32 @@ export function GalleryRoomEditor({
     <>
       <div className="flex flex-wrap gap-2 border-b border-[var(--line)] px-4 py-3">
         {placementEnabled ? (
-          <div className="flex w-full flex-wrap items-center gap-2 pb-2">
-            <button
-              type="button"
-              className={`btn !py-1.5 !px-3 !text-[0.7rem] ${
-                planMode ? "btn-solid" : "btn-ghost"
-              }`}
-              onClick={() => setEditorMode("plan")}
-            >
-              Plan
-            </button>
-            <button
-              type="button"
-              className={`btn !py-1.5 !px-3 !text-[0.7rem] ${
-                !planMode ? "btn-solid" : "btn-ghost"
-              }`}
-              onClick={() => setEditorMode("place")}
-            >
-              Place
-            </button>
+          <div className="flex w-full flex-col gap-2 pb-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={`btn !py-1.5 !px-3 !text-[0.7rem] ${
+                  planMode ? "btn-solid" : "btn-ghost"
+                }`}
+                onClick={() => setEditorMode("plan")}
+              >
+                {t.planMode}
+              </button>
+              <button
+                type="button"
+                className={`btn !py-1.5 !px-3 !text-[0.7rem] ${
+                  !planMode ? "btn-solid" : "btn-ghost"
+                }`}
+                onClick={() => setEditorMode("place")}
+              >
+                {t.placeMode}
+              </button>
+            </div>
+            {planMode ? (
+              <p className="text-[0.75rem] text-[var(--amber-bright)]">
+                {t.placeBanner}
+              </p>
+            ) : null}
           </div>
         ) : null}
         {planMode
@@ -775,25 +803,19 @@ export function GalleryRoomEditor({
             className="btn btn-danger !py-1.5 !px-3 !text-[0.7rem]"
             onClick={() => removeRoom(selectedRoomId!)}
           >
-            Delete room
+            {t.deleteRoom}
           </button>
         ) : null}
-        <p
-          className="w-full text-sm text-[var(--paper-dim)]"
-          title="Entrance: bright edge is the gallery door; spawn is outside. Snap rotates the block for you. Tap entrance for +90°."
-        >
-          <span className="text-[var(--amber-bright)]">Вход (фойе):</span> не
-          комната из списка — портал и spawn. Светлая грань — дверь в галерею;{" "}
-          <span className="text-[#8aa0b8]">spawn</span> снаружи. Подведи портал к
-          комнате (или комнату ко входу) — поворот подстроится сам. Тап по блоку
-          — поворот 90°. По пустому полю — перетаскивание, чтобы сдвинуть вид
-          схемы.
-          {placementEnabled
-            ? " В режиме Place перетащите работу со списка на план или сдвиньте маркер."
-            : ""}
+        <p className="w-full text-sm text-[var(--paper-dim)]">
+          <span className="text-[var(--amber-bright)]">{t.entranceHelp}</span>{" "}
+          <span className="text-[#8aa0b8]">spawn</span> {t.entranceHelpBody}
+          {placementEnabled && !planMode ? t.entranceHelpPlaceDrag : ""}
           {normalized.rooms.length > 0
-            ? ` Комнаты: перетаскивание, угол — stretch; дверей: ${normalized.connections.length}.`
-            : " Добавьте хотя бы одну комнату."}
+            ? t.entranceHelpRoomsMeta.replace(
+                "{count}",
+                String(normalized.connections.length),
+              )
+            : t.entranceHelpAddRoom}
         </p>
       </div>
 
@@ -891,7 +913,7 @@ export function GalleryRoomEditor({
               fontSize={11}
               className="pointer-events-none select-none"
             >
-              вход
+              {t.entranceLabel}
             </text>
           </g>
 
@@ -1041,7 +1063,7 @@ export function GalleryRoomEditor({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs uppercase tracking-[0.14em] text-[var(--paper-dim)]">
-            Room plan & placement
+            {t.roomPlanTitle}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--paper-dim)]">
@@ -1060,7 +1082,7 @@ export function GalleryRoomEditor({
               className="btn btn-ghost !py-1 !px-2 !text-[0.65rem]"
               onClick={onRetrySave}
             >
-              Retry
+              {t.retry}
             </button>
           ) : null}
         </div>
@@ -1079,7 +1101,7 @@ export function GalleryRoomEditor({
             onRemovePlacement={removePlacement}
             onSetFrame={setPlacementFrame}
             onSetWallHeight={setPlacementWallHeight}
-            disabled={editorMode !== "place"}
+            dragDisabled={editorMode !== "place"}
           />
         </div>
       ) : (
