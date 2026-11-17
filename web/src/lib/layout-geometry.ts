@@ -166,8 +166,17 @@ export function findRoomAtPoint(
 }
 
 const SNAP_DIST = 0.7;
+/** Larger capture when square aligns to triangle / hexagon on drag-release. */
+const SNAP_DIST_POLY_ASSIST = 3.2;
+const POLY_ASSIST_MAX_CENTER_SHIFT = 4.5;
 /** Edges must be nearly parallel / antiparallel before soft-snap or connection. */
 const PARALLEL_DOT_MIN = 0.85;
+const PARALLEL_DOT_POLY = 0.995;
+
+export type SoftSnapRoomOptions = {
+  /** Keep transform.rotation; translation-only snap (room tap). */
+  lockRotation?: boolean;
+};
 
 type EdgeRef = { roomId: string; edgeIndex: number; a: Vec2; b: Vec2; mid: Vec2 };
 
@@ -178,10 +187,50 @@ function unitEdgeDir(a: Vec2, b: Vec2): Vec2 {
   return { x: dx / len, z: dz / len };
 }
 
-function edgesNearlyParallel(a: EdgeRef, b: EdgeRef): boolean {
+function edgesNearlyParallel(
+  a: EdgeRef,
+  b: EdgeRef,
+  dotMin = PARALLEL_DOT_MIN,
+): boolean {
   const da = unitEdgeDir(a.a, a.b);
   const db = unitEdgeDir(b.a, b.b);
-  return Math.abs(da.x * db.x + da.z * db.z) >= PARALLEL_DOT_MIN;
+  return Math.abs(da.x * db.x + da.z * db.z) >= dotMin;
+}
+
+function edgeAzimuthDeg(a: Vec2, b: Vec2): number {
+  return (Math.atan2(b.z - a.z, b.x - a.x) * 180) / Math.PI;
+}
+
+function normDeg(deg: number): number {
+  return ((deg % 360) + 360) % 360;
+}
+
+/** Pick square rotation so one edge is parallel to target edge azimuth. */
+export function squareRotationParallelToEdge(
+  currentR: number,
+  targetAzimuthDeg: number,
+): number {
+  const theta = normDeg(targetAzimuthDeg);
+  const candidates = [theta, theta - 90];
+  const cur = normDeg(currentR);
+  let best = cur;
+  let bestDelta = 999;
+  for (const raw of candidates) {
+    const r = normDeg(raw);
+    let delta = Math.abs(r - cur);
+    if (delta > 180) delta = 360 - delta;
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      best = r;
+    }
+  }
+  return best;
+}
+
+function centerShiftSq(room: GalleryRoom, next: GalleryRoom): number {
+  const dx = next.transform.x - room.transform.x;
+  const dz = next.transform.z - room.transform.z;
+  return dx * dx + dz * dz;
 }
 
 /** World verts for fixed entrance footprint; portal edge faces +local Z. */
@@ -279,16 +328,25 @@ function isPolygonSnapTarget(room: GalleryRoom | undefined): boolean {
   return room?.shape === "triangle" || room?.shape === "hexagon";
 }
 
+type TranslateSnapOpts = {
+  maxDist?: number;
+  parallelDotMin?: number;
+};
+
 /** Translation-only soft snap at the room's current rotation. */
 export function softSnapRoomTranslate(
   room: GalleryRoom,
   others: GalleryRoom[],
+  opts?: TranslateSnapOpts,
 ): { room: GalleryRoom; snappedTo: EdgeRef | null; ownEdge: number } {
   if (others.length === 0) return { room, snappedTo: null, ownEdge: -1 };
 
+  const maxDist = opts?.maxDist ?? SNAP_DIST;
+  const dotMin = opts?.parallelDotMin ?? PARALLEL_DOT_MIN;
+
   const ownEdges = allEdges([room]);
   const otherEdges = allEdges(others);
-  let bestDist = SNAP_DIST;
+  let bestDist = maxDist;
   let bestOwn = -1;
   let bestOther: EdgeRef | null = null;
   let dx = 0;
@@ -296,7 +354,7 @@ export function softSnapRoomTranslate(
 
   for (const oe of ownEdges) {
     for (const te of otherEdges) {
-      if (!edgesNearlyParallel(oe, te)) continue;
+      if (!edgesNearlyParallel(oe, te, dotMin)) continue;
       const d = Math.hypot(oe.mid.x - te.mid.x, oe.mid.z - te.mid.z);
       if (d < bestDist) {
         bestDist = d;
@@ -327,15 +385,93 @@ export function softSnapRoomTranslate(
   };
 }
 
+function squarePolyEdgeAssist(
+  room: GalleryRoom,
+  others: GalleryRoom[],
+): { room: GalleryRoom; snappedTo: EdgeRef | null; ownEdge: number } | null {
+  const polyRooms = others.filter(
+    (o) => o.shape === "triangle" || o.shape === "hexagon",
+  );
+  if (polyRooms.length === 0) return null;
+
+  const polyEdges = allEdges(polyRooms);
+  const baseR = room.transform.rotation ?? 0;
+  let best: { room: GalleryRoom; snappedTo: EdgeRef | null; ownEdge: number } | null =
+    null;
+  let bestScore = SNAP_DIST_POLY_ASSIST + 1;
+
+  for (const te of polyEdges) {
+    const targetRoom = roomById(others, te.roomId);
+    if (!isPolygonSnapTarget(targetRoom)) continue;
+    const theta = edgeAzimuthDeg(te.a, te.b);
+    for (const rot of [normDeg(theta), normDeg(theta - 90)]) {
+      const candidate: GalleryRoom = {
+        ...room,
+        transform: { ...room.transform, rotation: rot },
+        vertices: undefined,
+      };
+      const snapped = softSnapRoomTranslate(candidate, others, {
+        maxDist: SNAP_DIST_POLY_ASSIST,
+        parallelDotMin: PARALLEL_DOT_POLY,
+      });
+      if (!snapped.snappedTo) continue;
+      const snapTarget = roomById(others, snapped.snappedTo.roomId);
+      if (!isPolygonSnapTarget(snapTarget)) continue;
+      if (
+        centerShiftSq(room, snapped.room) >
+        POLY_ASSIST_MAX_CENTER_SHIFT * POLY_ASSIST_MAX_CENTER_SHIFT
+      ) {
+        continue;
+      }
+      const score = snapAlignmentScore(candidate, snapped);
+      if (score < bestScore) {
+        bestScore = score;
+        best = snapped;
+      }
+    }
+  }
+
+  if (best) return best;
+
+  const baseRot = normDeg(baseR);
+  for (let k = 1; k < 8; k++) {
+    const rot = normDeg(baseRot + k * 45);
+    const candidate: GalleryRoom = {
+      ...room,
+      transform: { ...room.transform, rotation: rot },
+      vertices: undefined,
+    };
+    const snapped = softSnapRoomTranslate(candidate, others, {
+      maxDist: SNAP_DIST_POLY_ASSIST,
+      parallelDotMin: PARALLEL_DOT_POLY,
+    });
+    if (!snapped.snappedTo) continue;
+    const target = roomById(others, snapped.snappedTo.roomId);
+    if (!isPolygonSnapTarget(target)) continue;
+    const score = snapAlignmentScore(candidate, snapped);
+    if (score < bestScore) {
+      bestScore = score;
+      best = snapped;
+    }
+  }
+
+  return best;
+}
+
 /**
  * Soft magnetic snap: nudge transform so parallel edges meet.
- * Square rooms near triangles / hexagons also try 45° rotation steps so diamond
- * orientation can align without disturbing entrance or square-square snaps.
+ * Square near triangles / hexagons: on drag, align rotation to target edge
+ * azimuth (60°, 30°, …), not fuzzy 45°↔60°.
  */
 export function softSnapRoom(
   room: GalleryRoom,
   others: GalleryRoom[],
+  opts?: SoftSnapRoomOptions,
 ): { room: GalleryRoom; snappedTo: EdgeRef | null; ownEdge: number } {
+  if (opts?.lockRotation) {
+    return softSnapRoomTranslate(room, others);
+  }
+
   const primary = softSnapRoomTranslate(room, others);
   const othersHavePoly =
     room.shape === "square" &&
@@ -344,38 +480,14 @@ export function softSnapRoom(
 
   if (primary.snappedTo?.roomId === ENTRANCE_ROOM_ID) return primary;
 
-  const primaryTarget = primary.snappedTo
-    ? roomById(others, primary.snappedTo.roomId)
-  : undefined;
-  if (
-    primary.snappedTo &&
-    primaryTarget?.id !== ENTRANCE_ROOM_ID &&
-    (primaryTarget?.shape === "square" || primaryTarget?.shape === "pentagon")
-  ) {
-    return primary;
-  }
-
-  const baseRot = ((room.transform.rotation ?? 0) % 360 + 360) % 360;
   let best = primary;
   let bestScore = snapAlignmentScore(room, primary);
 
-  for (let k = 0; k < 8; k++) {
-    const rot = (baseRot + k * 45) % 360;
-    if (k === 0 && rot === baseRot) continue;
-    const candidate: GalleryRoom = {
-      ...room,
-      transform: { ...room.transform, rotation: rot },
-      vertices: undefined,
-    };
-    const snapped = softSnapRoomTranslate(candidate, others);
-    if (!snapped.snappedTo) continue;
-    const target = roomById(others, snapped.snappedTo.roomId);
-    if (target?.id === ENTRANCE_ROOM_ID) continue;
-    if (!isPolygonSnapTarget(target) && target?.shape !== "square") continue;
-    const score = snapAlignmentScore(candidate, snapped);
+  const polyAssist = squarePolyEdgeAssist(room, others);
+  if (polyAssist?.snappedTo) {
+    const score = snapAlignmentScore(room, polyAssist);
     if (score < bestScore) {
-      bestScore = score;
-      best = snapped;
+      best = polyAssist;
     }
   }
 

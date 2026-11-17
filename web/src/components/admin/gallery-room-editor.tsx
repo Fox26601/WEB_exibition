@@ -42,6 +42,7 @@ import {
   rotateEntranceToAlignPortal,
   softSnapEntrance,
   softSnapRoom,
+  softSnapRoomTranslate,
   type Vec2,
 } from "@/lib/layout-geometry";
 
@@ -694,7 +695,7 @@ export function GalleryRoomEditor({
         rooms.filter((r) => r.id !== drag.targetId),
         current.entrance,
       );
-      const snapped = softSnapRoom(moving, others);
+      const snapped = softSnapRoomTranslate(moving, others);
       let entrance = current.entrance;
       if (snapped.snappedTo?.roomId === ENTRANCE_ROOM_ID) {
         entrance = rotateEntranceToAlignPortal(entrance, snapped.snappedTo);

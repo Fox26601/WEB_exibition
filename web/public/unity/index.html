@@ -52,16 +52,18 @@
       }
 
       var buildUrl = "Build";
-      var loaderUrl = buildUrl + "/WebGL.loader.js";
+      var cacheV = "034";
+      var vq = "?v=" + cacheV;
+      var loaderUrl = buildUrl + "/WebGL.loader.js" + vq;
       var config = {
         arguments: [],
-        dataUrl: buildUrl + "/WebGL.data",
-        frameworkUrl: buildUrl + "/WebGL.framework.js",
-        codeUrl: buildUrl + "/WebGL.wasm",
+        dataUrl: buildUrl + "/WebGL.data" + vq,
+        frameworkUrl: buildUrl + "/WebGL.framework.js" + vq,
+        codeUrl: buildUrl + "/WebGL.wasm" + vq,
         streamingAssetsUrl: "StreamingAssets",
         companyName: "DefaultCompany",
         productName: "Exibition",
-        productVersion: "0.1.0",
+        productVersion: "0.3.4-overlap-walls",
         showBanner: unityShowBanner,
         // errorHandler: function(err, url, line) {
         //    alert("error " + err + " occurred at line " + line);
