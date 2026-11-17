@@ -257,8 +257,30 @@ function allEdges(rooms: GalleryRoom[]): EdgeRef[] {
   return out;
 }
 
-/** Soft magnetic snap: if moving room's edge mid is near another room's edge mid, nudge transform. */
-export function softSnapRoom(
+function snapAlignmentScore(
+  room: GalleryRoom,
+  result: { room: GalleryRoom; snappedTo: EdgeRef | null; ownEdge: number },
+): number {
+  if (!result.snappedTo || result.ownEdge < 0) return SNAP_DIST + 1;
+  const ownEdges = allEdges([result.room]);
+  const oe = ownEdges.find((e) => e.edgeIndex === result.ownEdge);
+  if (!oe) return SNAP_DIST + 1;
+  return Math.hypot(
+    oe.mid.x - result.snappedTo.mid.x,
+    oe.mid.z - result.snappedTo.mid.z,
+  );
+}
+
+function roomById(rooms: GalleryRoom[], id: string): GalleryRoom | undefined {
+  return rooms.find((r) => r.id === id);
+}
+
+function isPolygonSnapTarget(room: GalleryRoom | undefined): boolean {
+  return room?.shape === "triangle" || room?.shape === "hexagon";
+}
+
+/** Translation-only soft snap at the room's current rotation. */
+export function softSnapRoomTranslate(
   room: GalleryRoom,
   others: GalleryRoom[],
 ): { room: GalleryRoom; snappedTo: EdgeRef | null; ownEdge: number } {
@@ -303,6 +325,61 @@ export function softSnapRoom(
     snappedTo: bestOther,
     ownEdge: bestOwn,
   };
+}
+
+/**
+ * Soft magnetic snap: nudge transform so parallel edges meet.
+ * Square rooms near triangles / hexagons also try 45° rotation steps so diamond
+ * orientation can align without disturbing entrance or square-square snaps.
+ */
+export function softSnapRoom(
+  room: GalleryRoom,
+  others: GalleryRoom[],
+): { room: GalleryRoom; snappedTo: EdgeRef | null; ownEdge: number } {
+  const primary = softSnapRoomTranslate(room, others);
+  const othersHavePoly =
+    room.shape === "square" &&
+    others.some((o) => o.shape === "triangle" || o.shape === "hexagon");
+  if (!othersHavePoly) return primary;
+
+  if (primary.snappedTo?.roomId === ENTRANCE_ROOM_ID) return primary;
+
+  const primaryTarget = primary.snappedTo
+    ? roomById(others, primary.snappedTo.roomId)
+  : undefined;
+  if (
+    primary.snappedTo &&
+    primaryTarget?.id !== ENTRANCE_ROOM_ID &&
+    (primaryTarget?.shape === "square" || primaryTarget?.shape === "pentagon")
+  ) {
+    return primary;
+  }
+
+  const baseRot = ((room.transform.rotation ?? 0) % 360 + 360) % 360;
+  let best = primary;
+  let bestScore = snapAlignmentScore(room, primary);
+
+  for (let k = 0; k < 8; k++) {
+    const rot = (baseRot + k * 45) % 360;
+    if (k === 0 && rot === baseRot) continue;
+    const candidate: GalleryRoom = {
+      ...room,
+      transform: { ...room.transform, rotation: rot },
+      vertices: undefined,
+    };
+    const snapped = softSnapRoomTranslate(candidate, others);
+    if (!snapped.snappedTo) continue;
+    const target = roomById(others, snapped.snappedTo.roomId);
+    if (target?.id === ENTRANCE_ROOM_ID) continue;
+    if (!isPolygonSnapTarget(target) && target?.shape !== "square") continue;
+    const score = snapAlignmentScore(candidate, snapped);
+    if (score < bestScore) {
+      bestScore = score;
+      best = snapped;
+    }
+  }
+
+  return best;
 }
 
 function portalEdgeRef(entrance: GalleryEntrancePose): EdgeRef {

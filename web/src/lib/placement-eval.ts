@@ -42,6 +42,16 @@ function paintingFrame(art: Artwork, paletteFrame: FrameId): FrameId {
   return paletteFrame;
 }
 
+export function wallSnapPreviewWorld(
+  world: Vec2,
+  rooms: GalleryRoom[],
+): Vec2 | null {
+  const snap = bestWallSnap(world, rooms);
+  if (!snap) return null;
+  const tAlong = Math.max(T_ALONG_MIN, Math.min(T_ALONG_MAX, snap.t));
+  return pointAlongEdge(snap.a, snap.b, tAlong);
+}
+
 function bestWallSnap(
   world: Vec2,
   rooms: GalleryRoom[],

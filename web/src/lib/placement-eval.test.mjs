@@ -97,6 +97,44 @@ test("evaluateArtworkDrop detects painting conflicts on same wall segment", () =
   assert.equal(conflict.reason, "conflict");
 });
 
+test("evaluateArtworkDrop ignoreArtworkId skips self conflict on re-drop", () => {
+  const layout = normalizeLayout({
+    rooms: [squareRoom("r1", 0, 4)],
+    connections: [],
+    placements: [
+      {
+        artworkId: "existing",
+        kind: "painting",
+        roomId: "r1",
+        wallEdgeIndex: 0,
+        tAlongEdge: 0.5,
+        yaw: 0,
+        frameId: "wood",
+      },
+    ],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+
+  const art = {
+    id: "existing",
+    type: "image",
+    sort: 0,
+    published: true,
+    title: { en: "", ru: "", uk: "", he: "" },
+    text: { en: "", ru: "", uk: "", he: "" },
+    urlWall: "",
+    urlFull: "",
+    urlVideo: "",
+    urlPoster: "",
+  };
+
+  const nearWall = { x: 0.2, z: 6.26 + 0.35 };
+  const again = evaluateArtworkDrop(art, nearWall, layout, "metal", "existing");
+  assert.equal(again.ok, true);
+  if (!again.ok) return;
+  assert.equal(again.placement.frameId, "metal");
+});
+
 test("placementWorldPoint resolves sculpture floor and painting wall", () => {
   const layout = normalizeLayout({
     rooms: [squareRoom("r1", 0, 4)],

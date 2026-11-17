@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const immutable = {
   key: "Cache-Control",
-  value: "public, max-age=31536000, immutable",
+  value: "public, max-age=31536000, immutable, no-transform",
 } as const;
 
 const nextConfig: NextConfig = {

@@ -19,6 +19,9 @@ namespace Gallery.Room
         [SerializeField] Color floorColor = new Color(0.52f, 0.53f, 0.55f);
         [SerializeField] Color wallColor = new Color(0.68f, 0.69f, 0.72f);
 
+        Material _floorMaterial;
+        Material _wallMaterial;
+
         Transform _root;
         float _length = L0;
         float _galleryStartZ;
@@ -75,6 +78,8 @@ namespace Gallery.Room
             _length = ComputeLength(artworkCount);
             _galleryEndZ = _galleryStartZ + _length;
             Clear();
+            _floorMaterial = RuntimeMaterials.CreateFloor(floorColor);
+            _wallMaterial = RuntimeMaterials.Create(wallColor);
 
             _root = new GameObject("Room").transform;
             _root.SetParent(transform, false);
@@ -109,6 +114,8 @@ namespace Gallery.Room
             _layout = layout;
             _roomVerts.Clear();
             Clear();
+            _floorMaterial = RuntimeMaterials.CreateFloor(floorColor);
+            _wallMaterial = RuntimeMaterials.Create(wallColor);
 
             _root = new GameObject("LayoutRooms").transform;
             _root.SetParent(transform, false);
@@ -279,11 +286,13 @@ namespace Gallery.Room
                 normals[i] = Vector3.up;
             mesh.normals = normals;
             mesh.RecalculateBounds();
+            mesh.UploadMeshData(true);
 
             var floorGo = new GameObject("Floor");
             floorGo.transform.SetParent(parent, false);
             floorGo.AddComponent<MeshFilter>().sharedMesh = mesh;
-            floorGo.AddComponent<MeshRenderer>().sharedMaterial = RuntimeMaterials.CreateFloor(floorColor);
+            floorGo.AddComponent<MeshRenderer>().sharedMaterial =
+                _floorMaterial ?? RuntimeMaterials.CreateFloor(floorColor);
             var col = floorGo.AddComponent<MeshCollider>();
             col.convex = false;
             col.sharedMesh = mesh;
@@ -410,7 +419,7 @@ namespace Gallery.Room
             interior.transform.localPosition = new Vector3(interiorSign * halfT * 0.5f, 0f, 0f);
             interior.transform.localScale = new Vector3(halfT, h, Mathf.Max(0.05f, l));
             var interiorR = interior.GetComponent<MeshRenderer>();
-            interiorR.sharedMaterial = CreateMaterial(wallColor);
+            interiorR.sharedMaterial = _wallMaterial ?? CreateMaterial(wallColor);
 
             var exterior = GameObject.CreatePrimitive(PrimitiveType.Cube);
             exterior.name = "ExteriorShell";
@@ -418,7 +427,7 @@ namespace Gallery.Room
             exterior.transform.localPosition = new Vector3(-interiorSign * halfT * 0.5f, 0f, 0f);
             exterior.transform.localScale = new Vector3(halfT, h, Mathf.Max(0.05f, l));
             var exteriorR = exterior.GetComponent<MeshRenderer>();
-            exteriorR.sharedMaterial = CreateMaterial(wallColor);
+            exteriorR.sharedMaterial = _wallMaterial ?? CreateMaterial(wallColor);
 
             var box = root.AddComponent<BoxCollider>();
             box.size = new Vector3(WallThickness, h, Mathf.Max(0.05f, l));
