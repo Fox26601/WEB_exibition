@@ -9,6 +9,7 @@ import {
   type GalleryLayout,
 } from "./catalog-types";
 import { readBlobText, writeBlobText } from "./blob-store";
+import { syncPaintingYaws } from "./placement-eval";
 
 const LIVE_KEY = "catalog-live.json";
 const DRAFT_KEY = "catalog-draft.json";
@@ -60,7 +61,7 @@ async function saveCatalogBestEffort(
 /** Fill empty sample media URLs from defaults (in-memory) so seed catalogs texture in 3D. */
 function ensureSampleMedia(catalog: Catalog): Catalog {
   const defaults = createDefaultCatalog();
-  catalog.layout = normalizeLayout(catalog.layout);
+  catalog.layout = syncPaintingYaws(normalizeLayout(catalog.layout));
   catalog.settings = normalizeSettings(catalog.settings);
   const byId = new Map(defaults.artworks.map((a) => [a.id, a]));
   for (const art of catalog.artworks) {
@@ -184,7 +185,7 @@ export async function updateSettings(
 /** Debounced admin autosave target: replace draft layout only. */
 export async function saveDraftLayout(layout: GalleryLayout): Promise<Catalog> {
   const draft = await loadCatalog("draft");
-  draft.layout = normalizeLayout(layout);
+  draft.layout = syncPaintingYaws(normalizeLayout(layout));
   await saveCatalog("draft", draft);
   return draft;
 }

@@ -269,9 +269,8 @@ namespace Gallery.Room
             var inward = InwardNormal(a, b, centroid);
             var hangY = PaintingHeightFromPlacement(placement);
             position = along + inward * WallInset + Vector3.up * hangY;
-            var yaw = placement.yaw;
-            if (Mathf.Approximately(yaw, 0f))
-                yaw = Mathf.Atan2(inward.x, inward.z) * Mathf.Rad2Deg;
+            // Always face into the room from wall geometry (catalog yaw may be legacy web flip).
+            var yaw = Mathf.Atan2(inward.x, inward.z) * Mathf.Rad2Deg;
             rotation = Quaternion.Euler(0f, yaw, 0f);
             return true;
         }
