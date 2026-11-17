@@ -47,6 +47,13 @@ export async function POST(req: NextRequest) {
     "image/webp",
   );
 
+  if (!wall || !full) {
+    return NextResponse.json(
+      { error: "Failed to store processed images" },
+      { status: 503 },
+    );
+  }
+
   return NextResponse.json({
     urlWall: wall.url,
     urlFull: full.url,

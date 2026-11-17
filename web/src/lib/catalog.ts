@@ -20,26 +20,40 @@ function keyFor(kind: CatalogKind): string {
 }
 
 export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
-  const raw = await readBlobText(keyFor(kind));
-  if (!raw) {
-    const empty = createDefaultCatalog();
-    if (kind === "draft") {
-      const live = await readBlobText(LIVE_KEY);
-      if (live) {
-        try {
-          return ensureSampleMedia(JSON.parse(live) as Catalog);
-        } catch {
-          /* fall through */
+  try {
+    const raw = await readBlobText(keyFor(kind));
+    if (!raw) {
+      const empty = createDefaultCatalog();
+      if (kind === "draft") {
+        const live = await readBlobText(LIVE_KEY);
+        if (live) {
+          try {
+            return ensureSampleMedia(JSON.parse(live) as Catalog);
+          } catch {
+            /* fall through */
+          }
         }
       }
+      await saveCatalogBestEffort(kind, empty);
+      return empty;
     }
-    await saveCatalog(kind, empty);
-    return empty;
-  }
-  try {
-    return ensureSampleMedia(JSON.parse(raw) as Catalog);
+    try {
+      return ensureSampleMedia(JSON.parse(raw) as Catalog);
+    } catch {
+      return createDefaultCatalog();
+    }
   } catch {
     return createDefaultCatalog();
+  }
+}
+
+async function saveCatalogBestEffort(
+  kind: CatalogKind,
+  catalog: Catalog,
+): Promise<void> {
+  try {
+    await saveCatalog(kind, catalog);
+  } catch {
   }
 }
 
