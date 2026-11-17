@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Gallery.Room
 {
     /// <summary>Ear-clipping triangulation for simple polygons in the XZ plane (y ignored).</summary>
-    static class PolygonTriangulation
+    public static class PolygonTriangulation
     {
         public static bool TryTriangulateXZ(Vector3[] verts, out int[] triangles)
         {
