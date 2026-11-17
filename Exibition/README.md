@@ -31,6 +31,7 @@ Procedural WebGL art gallery. Open this folder in **Unity Hub** with Editor **60
 | Path | Role |
 |------|------|
 | `Assets/Scripts/` | Gallery C# (`RoomBuilder`, `ArtworkSpawner`, `PlayerController`, `InteractionRaycaster`, `MediaBridge`, `CatalogLoader`, `LocaleUI`, `QualityTier`, `GalleryBootstrap`) |
+| `Assets/Scripts/Room/StarSkybox.cs` | Procedural night sky (runtime cubemap + combined star mesh; no third-party sky texture) |
 | `Assets/Plugins/WebGL/MediaBridge.jslib` | HTML image/video overlays for WebGL |
 | `Assets/StreamingAssets/catalog.json` | Sample catalog for offline Editor Play |
 | `Assets/Scenes/Gallery.unity` | Playable scene |
