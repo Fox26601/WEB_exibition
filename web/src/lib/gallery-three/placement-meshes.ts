@@ -177,7 +177,6 @@ export function addCorridorArtworks(
     if (texUrl) {
       void loadColorTexture(texUrl).then((tex) => {
         if (!tex) return;
-        orientGalleryPosterTexture(tex);
         applyTextureToMaterial(canvasMat, tex);
         disposables.push(tex);
       });
