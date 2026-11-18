@@ -8,12 +8,13 @@ import { buildWallAlongEdge } from "./wall-mesh";
 /**
  * Instantiate Three.js wall meshes from a domain LayoutWallPlan.
  * Segment join pads come from the plan (vertex T/2); doorway ends stay flush.
+ * `wallMatForRoom` supplies the owning room's wall tint material.
  */
 export function buildWallMeshesFromPlan(
   roomRoots: Map<string, THREE.Object3D>,
   plan: LayoutWallPlan,
   layout: GalleryLayout,
-  wallMat: THREE.Material,
+  wallMatForRoom: (roomId: string) => THREE.Material,
 ): void {
   for (const seg of plan.segments) {
     const room = layout.rooms.find((r) => r.id === seg.roomId);
@@ -28,7 +29,7 @@ export function buildWallMeshesFromPlan(
       aSpan,
       bSpan,
       seg.doorwayWidth,
-      wallMat,
+      wallMatForRoom(seg.roomId),
       verts,
       {
         joinA: seg.join0,

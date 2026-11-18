@@ -29,3 +29,6 @@ export const MAX_PIXEL_RATIO = 2;
 /** Slightly darker than WALL_COLOR so floors read as a distinct ground plane. */
 export const FLOOR_COLOR = 0x6e7278;
 export const WALL_COLOR = 0xadb0b8;
+/** CSS hex mirrors of FLOOR_COLOR / WALL_COLOR for layout persistence. */
+export const FLOOR_COLOR_HEX = "#6e7278";
+export const WALL_COLOR_HEX = "#adb0b8";

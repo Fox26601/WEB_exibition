@@ -91,4 +91,63 @@ describe("buildLayoutScene floors", () => {
 
     floorMat.dispose();
   });
+
+  it("tints floor/wall materials from per-room colors", () => {
+    const base = normalizeLayout(fixture.layout);
+    assert.ok(base.rooms.length >= 1, "fixture needs a room");
+    // Isolated room so wall-plan ownership is unambiguous.
+    const alone = {
+      ...base,
+      rooms: [
+        {
+          ...base.rooms[0],
+          floorColor: "#5a6068",
+          wallColor: "#c4b8a8",
+        },
+      ],
+      connections: [],
+    };
+    const floorMat = makeFloorMaterial();
+    const wallMat = makeWallMaterial();
+    const built = buildLayoutScene(alone, {}, { floorMat, wallMat });
+
+    const tintedFloor = built.root.getObjectByName(`Floor_${alone.rooms[0].id}`);
+    assert.ok(tintedFloor?.isMesh);
+    assert.notEqual(tintedFloor.material, floorMat);
+    assert.equal(tintedFloor.material.color.getHex(), 0x5a6068);
+
+    const wallMeshes = [];
+    built.root.traverse((obj) => {
+      const mesh = /** @type {THREE.Mesh} */ (obj);
+      if (mesh.isMesh && mesh !== tintedFloor) wallMeshes.push(mesh);
+    });
+    assert.ok(wallMeshes.length > 0, "room has wall meshes");
+    for (const mesh of wallMeshes) {
+      assert.equal(mesh.material.color.getHex(), 0xc4b8a8);
+      assert.notEqual(mesh.material, wallMat);
+    }
+
+    // Default-colored second room still shares foyer mats.
+    const mixed = {
+      ...base,
+      rooms: [
+        alone.rooms[0],
+        { ...base.rooms[0], id: "default-room", floorColor: undefined, wallColor: undefined },
+      ],
+      connections: [],
+    };
+    const mixedBuilt = buildLayoutScene(
+      normalizeLayout(mixed),
+      {},
+      { floorMat, wallMat },
+    );
+    const defaultFloor = mixedBuilt.root.getObjectByName("Floor_default-room");
+    assert.ok(defaultFloor?.isMesh);
+    assert.equal(defaultFloor.material, floorMat);
+
+    mixedBuilt.dispose();
+    built.dispose();
+    floorMat.dispose();
+    wallMat.dispose();
+  });
 });

@@ -4,8 +4,26 @@ import {
   MIN_WALL_HEIGHT_T,
   type GalleryLayout,
 } from "./catalog-types";
+import { normalizeHexColor } from "./room-surface-colors";
 
 const vecSchema = z.object({ x: z.number(), z: z.number() });
+
+/** Optional CSS hex `#RGB` / `#RRGGBB` — normalized to `#rrggbb` on parse. */
+export const hexColorSchema = z
+  .string()
+  .optional()
+  .transform((value, ctx) => {
+    if (value === undefined) return undefined;
+    const normalized = normalizeHexColor(value);
+    if (!normalized) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Expected CSS hex color #RGB or #RRGGBB",
+      });
+      return z.NEVER;
+    }
+    return normalized;
+  });
 
 /** Zod body for PUT /api/admin/layout — keep in sync with GalleryLayout. */
 export const layoutApiSchema = z.object({
@@ -21,6 +39,8 @@ export const layoutApiSchema = z.object({
         scaleZ: z.number(),
       }),
       vertices: z.array(vecSchema).optional(),
+      floorColor: hexColorSchema,
+      wallColor: hexColorSchema,
     }),
   ),
   connections: z.array(

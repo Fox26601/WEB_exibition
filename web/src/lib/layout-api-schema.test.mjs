@@ -7,13 +7,14 @@ import {
 } from "./catalog-types.ts";
 import { parseLayoutApiBody } from "./layout-api-schema.ts";
 
-function sampleBody(wallHeightT) {
+function sampleBody(wallHeightT, roomColors) {
   return {
     rooms: [
       {
         id: "r1",
         shape: "square",
         transform: { x: 0, z: 4, rotation: 0, scaleX: 3.2, scaleZ: 3.2 },
+        ...(roomColors ?? {}),
       },
     ],
     connections: [],
@@ -54,4 +55,32 @@ test("layout API schema rejects wallHeightT outside hang range", () => {
   assert.equal(tooHigh.ok, false);
   const okDefault = parseLayoutApiBody(sampleBody(DEFAULT_WALL_HEIGHT_T));
   assert.equal(okDefault.ok, true);
+});
+
+test("layout API schema keeps room floorColor/wallColor hex", () => {
+  const parsed = parseLayoutApiBody(
+    sampleBody(undefined, {
+      floorColor: "#5A6068",
+      wallColor: "#C4B8A8",
+    }),
+  );
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.layout.rooms[0].floorColor, "#5a6068");
+  assert.equal(parsed.layout.rooms[0].wallColor, "#c4b8a8");
+});
+
+test("layout API schema rejects invalid room surface hex", () => {
+  const bad = parseLayoutApiBody(
+    sampleBody(undefined, { floorColor: "red", wallColor: "#adb0b8" }),
+  );
+  assert.equal(bad.ok, false);
+});
+
+test("layout API schema accepts omitted room colors (legacy)", () => {
+  const parsed = parseLayoutApiBody(sampleBody(undefined));
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.layout.rooms[0].floorColor, undefined);
+  assert.equal(parsed.layout.rooms[0].wallColor, undefined);
 });

@@ -23,6 +23,14 @@ import {
 } from "@/lib/catalog-types";
 import { adminEditorStrings, type Locale } from "@/lib/i18n";
 import {
+  DEFAULT_FLOOR_COLOR_HEX,
+  DEFAULT_WALL_COLOR_HEX,
+  ROOM_SURFACE_SWATCHES,
+  clampHexColor,
+  planRoomSvgColors,
+  shapePreviewPoints,
+} from "@/lib/room-surface-colors";
+import {
   evaluateArtworkDrop,
   placementWorldPoint,
   wallSnapPreviewWorld,
@@ -166,6 +174,8 @@ export function GalleryRoomEditor({
   });
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [selectedShape, setSelectedShape] = useState<RoomShape>("square");
+  const [draftFloorColor, setDraftFloorColor] = useState(DEFAULT_FLOOR_COLOR_HEX);
+  const [draftWallColor, setDraftWallColor] = useState(DEFAULT_WALL_COLOR_HEX);
   const [panOffset, setPanOffset] = useState<PanOffset>({ x: 0, y: 0 });
   const [paletteFrame, setPaletteFrame] = useState<FrameId>("wood");
   const [ghost, setGhost] = useState<GhostState | null>(null);
@@ -413,11 +423,53 @@ export function GalleryRoomEditor({
     [editorMode, runPlacementDrag],
   );
 
+  const selectedRoom = useMemo(
+    () => normalized.rooms.find((r) => r.id === selectedRoomId) ?? null,
+    [normalized.rooms, selectedRoomId],
+  );
+
+  const activeFloorColor = selectedRoom
+    ? clampHexColor(selectedRoom.floorColor, DEFAULT_FLOOR_COLOR_HEX)
+    : draftFloorColor;
+  const activeWallColor = selectedRoom
+    ? clampHexColor(selectedRoom.wallColor, DEFAULT_WALL_COLOR_HEX)
+    : draftWallColor;
+
+  function setActiveFloorColor(next: string) {
+    const hex = clampHexColor(next, DEFAULT_FLOOR_COLOR_HEX);
+    if (selectedRoom) {
+      commit({
+        ...normalized,
+        rooms: normalized.rooms.map((r) =>
+          r.id === selectedRoom.id ? { ...r, floorColor: hex } : r,
+        ),
+      });
+      return;
+    }
+    setDraftFloorColor(hex);
+  }
+
+  function setActiveWallColor(next: string) {
+    const hex = clampHexColor(next, DEFAULT_WALL_COLOR_HEX);
+    if (selectedRoom) {
+      commit({
+        ...normalized,
+        rooms: normalized.rooms.map((r) =>
+          r.id === selectedRoom.id ? { ...r, wallColor: hex } : r,
+        ),
+      });
+      return;
+    }
+    setDraftWallColor(hex);
+  }
+
   function addRoom(shape: RoomShape) {
     const room: GalleryRoom = {
       id: crypto.randomUUID(),
       shape,
       transform: defaultRoomTransform(shape, normalized.rooms.length),
+      floorColor: draftFloorColor,
+      wallColor: draftWallColor,
     };
     const others = roomsWithEntrance(normalized.rooms, normalized.entrance);
     const snapped = softSnapRoom(room, others);
@@ -788,31 +840,76 @@ export function GalleryRoomEditor({
             ) : null}
           </div>
         ) : null}
-        {planMode
-          ? ROOM_SHAPES.map((shape) => (
-              <button
-                key={shape}
-                type="button"
-                className={`btn !py-1.5 !px-3 !text-[0.7rem] ${
-                  selectedShape === shape ? "btn-solid" : "btn-ghost"
-                }`}
-                onClick={() => {
-                  setSelectedShape(shape);
-                  addRoom(shape);
+        {planMode ? (
+          <div className="flex w-full flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-[0.7rem] uppercase tracking-wide text-[var(--paper-dim)]">
+                {t.surfaces}
+              </span>
+              <span
+                className="inline-block h-7 w-7 shrink-0 rounded-sm border-2"
+                style={{
+                  background: activeFloorColor,
+                  borderColor: activeWallColor,
                 }}
-              >
-                + {shape}
-              </button>
-            ))
-          : null}
-        {planMode && canDeleteSelected ? (
-          <button
-            type="button"
-            className="btn btn-danger !py-1.5 !px-3 !text-[0.7rem]"
-            onClick={() => removeRoom(selectedRoomId!)}
-          >
-            {t.deleteRoom}
-          </button>
+                title={`${t.floor} / ${t.walls}`}
+                aria-hidden
+              />
+              <SurfaceColorControl
+                label={t.floor}
+                value={activeFloorColor}
+                onChange={setActiveFloorColor}
+              />
+              <SurfaceColorControl
+                label={t.walls}
+                value={activeWallColor}
+                onChange={setActiveWallColor}
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[0.7rem] uppercase tracking-wide text-[var(--paper-dim)]">
+                {t.addRoom}
+              </span>
+              {ROOM_SHAPES.map((shape) => (
+                <button
+                  key={shape}
+                  type="button"
+                  className={`btn !flex !items-center !gap-1.5 !py-1.5 !px-2.5 !text-[0.7rem] ${
+                    selectedShape === shape ? "btn-solid" : "btn-ghost"
+                  }`}
+                  onClick={() => {
+                    setSelectedShape(shape);
+                    addRoom(shape);
+                  }}
+                >
+                  <svg
+                    width={18}
+                    height={18}
+                    viewBox="0 0 24 24"
+                    aria-hidden
+                    className="shrink-0"
+                  >
+                    <polygon
+                      points={shapePreviewPoints(shape)}
+                      fill={activeFloorColor}
+                      stroke={activeWallColor}
+                      strokeWidth={1.5}
+                    />
+                  </svg>
+                  {shape}
+                </button>
+              ))}
+              {canDeleteSelected ? (
+                <button
+                  type="button"
+                  className="btn btn-danger !py-1.5 !px-3 !text-[0.7rem]"
+                  onClick={() => removeRoom(selectedRoomId!)}
+                >
+                  {t.deleteRoom}
+                </button>
+              ) : null}
+            </div>
+          </div>
         ) : null}
         <p className="w-full text-sm text-[var(--paper-dim)]">
           <span className="text-[var(--amber-bright)]">{t.entranceHelp}</span>{" "}
@@ -935,13 +1032,15 @@ export function GalleryRoomEditor({
             );
             const c = roomCentroid(verts);
             const label = worldToSvg(c, origin, panOffset);
+            const colors = planRoomSvgColors(room, selected);
             return (
               <g key={room.id}>
                 <path
                   d={polygonPath(verts, origin, panOffset)}
-                  fill={selected ? "#2a241c" : "#1c1814"}
-                  stroke={selected ? "#d4a574" : "#5a4a3a"}
-                  strokeWidth={selected ? 2.5 : 1.5}
+                  fill={colors.fill}
+                  stroke={colors.stroke}
+                  strokeWidth={selected ? 3 : 1.5}
+                  opacity={selected ? 1 : 0.92}
                   className={interactRooms ? undefined : "pointer-events-none"}
                   onPointerDown={
                     interactRooms
@@ -967,7 +1066,7 @@ export function GalleryRoomEditor({
                   y={label.y}
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  fill="#9a8b78"
+                  fill={colors.labelFill}
                   fontSize={11}
                   className="pointer-events-none select-none"
                 >
@@ -1121,4 +1220,47 @@ export function GalleryRoomEditor({
 
 export function ensureLayout(layout?: GalleryLayout | null): GalleryLayout {
   return normalizeLayout(layout);
+}
+
+function SurfaceColorControl({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (hex: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-[0.68rem] text-[var(--paper-dim)]">{label}</span>
+      <div className="flex items-center gap-1">
+        {ROOM_SURFACE_SWATCHES.map((swatch) => (
+          <button
+            key={`${label}-${swatch}`}
+            type="button"
+            className="h-5 w-5 shrink-0 rounded-sm border border-[var(--line)]"
+            style={{
+              background: swatch,
+              outline:
+                value === swatch ? "2px solid var(--amber-bright)" : undefined,
+              outlineOffset: 1,
+            }}
+            aria-label={`${label} ${swatch}`}
+            onClick={() => onChange(swatch)}
+          />
+        ))}
+      </div>
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-6 w-7 cursor-pointer border border-[var(--line)] bg-transparent p-0"
+        aria-label={label}
+      />
+      <span className="font-mono text-[0.65rem] text-[var(--paper-dim)]">
+        {value}
+      </span>
+    </div>
+  );
 }

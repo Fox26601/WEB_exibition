@@ -10,6 +10,12 @@ import {
   computeAabbXZ,
   triangulatePolygonXZ,
 } from "@/lib/polygon-floor";
+import {
+  DEFAULT_FLOOR_COLOR_HEX,
+  DEFAULT_WALL_COLOR_HEX,
+  clampHexColor,
+  parseHexToNumber,
+} from "@/lib/room-surface-colors";
 import { buildLayoutWallPlan } from "@/lib/wall-plan";
 import {
   FLOOR_COLOR,
@@ -25,8 +31,9 @@ export function makeSurfaceMaterial(
   color: number,
   map?: THREE.Texture,
 ): THREE.MeshStandardMaterial {
+  // Color always applied so per-room tints multiply with optional maps.
   const mat = new THREE.MeshStandardMaterial({
-    color: map ? 0xffffff : color,
+    color,
     roughness: 0.92,
     metalness: 0,
     side: THREE.FrontSide,
@@ -136,10 +143,44 @@ export type LayoutBuildResult = {
   dispose: () => void;
 };
 
+function materialCache(
+  sharedDefault: THREE.MeshStandardMaterial | undefined,
+  defaultHex: string,
+  defaultNumeric: number,
+  map: THREE.Texture | undefined,
+): {
+  get: (hex: string | undefined) => THREE.MeshStandardMaterial;
+  owned: THREE.MeshStandardMaterial[];
+} {
+  const byHex = new Map<string, THREE.MeshStandardMaterial>();
+  const owned: THREE.MeshStandardMaterial[] = [];
+
+  const get = (hex: string | undefined): THREE.MeshStandardMaterial => {
+    const key = clampHexColor(hex, defaultHex);
+    const existing = byHex.get(key);
+    if (existing) return existing;
+
+    if (key === defaultHex && sharedDefault) {
+      byHex.set(key, sharedDefault);
+      return sharedDefault;
+    }
+
+    const mat = makeSurfaceMaterial(
+      key === defaultHex ? defaultNumeric : parseHexToNumber(key),
+      map,
+    );
+    byHex.set(key, mat);
+    owned.push(mat);
+    return mat;
+  };
+
+  return { get, owned };
+}
+
 /**
  * Floors + wall-plan slabs only. Open sky: no ceiling lid/skirt.
  * Corner joints: butt spans (WALL_CORNER_JOIN=0) — exact lengths, no posts/fat miters.
- * Floor material matches foyer (`makeFloorMaterial` / shared instance).
+ * Default rooms reuse foyer shared mats; custom floorColor/wallColor get tinted mats.
  */
 export function buildLayoutScene(
   layoutInput: GalleryLayout,
@@ -155,6 +196,20 @@ export function buildLayoutScene(
   const ownsWall = !shared?.wallMat;
   const floorMat = shared?.floorMat ?? makeFloorMaterial(textures.floor);
   const wallMat = shared?.wallMat ?? makeWallMaterial(textures.wall);
+
+  const floors = materialCache(
+    floorMat,
+    DEFAULT_FLOOR_COLOR_HEX,
+    FLOOR_COLOR,
+    textures.floor,
+  );
+  const walls = materialCache(
+    wallMat,
+    DEFAULT_WALL_COLOR_HEX,
+    WALL_COLOR,
+    textures.wall,
+  );
+
   const overlapRooms = layoutOverlapRooms(layout);
   const roomRoots = new Map<string, THREE.Object3D>();
 
@@ -165,12 +220,21 @@ export function buildLayoutScene(
     const verts = roomWorldVertices(room);
     if (verts.length < 3) continue;
 
-    buildRoomFloor(roomRoot, room.id, verts, overlapRooms, floorMat);
+    buildRoomFloor(
+      roomRoot,
+      room.id,
+      verts,
+      overlapRooms,
+      floors.get(room.floorColor),
+    );
     roomRoots.set(room.id, roomRoot);
     root.add(roomRoot);
   }
 
-  buildWallMeshesFromPlan(roomRoots, plan, layout, wallMat);
+  buildWallMeshesFromPlan(roomRoots, plan, layout, (roomId) => {
+    const room = layout.rooms.find((r) => r.id === roomId);
+    return walls.get(room?.wallColor);
+  });
 
   return {
     root,
@@ -181,6 +245,8 @@ export function buildLayoutScene(
         const mesh = obj as THREE.Mesh;
         if (mesh.isMesh) mesh.geometry?.dispose();
       });
+      for (const mat of floors.owned) mat.dispose();
+      for (const mat of walls.owned) mat.dispose();
       if (ownsFloor) floorMat.dispose();
       if (ownsWall) wallMat.dispose();
     },

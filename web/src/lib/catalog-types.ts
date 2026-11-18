@@ -1,3 +1,9 @@
+import {
+  DEFAULT_FLOOR_COLOR_HEX,
+  DEFAULT_WALL_COLOR_HEX,
+  clampHexColor,
+} from "./room-surface-colors";
+
 export const LOCALES = ["en", "ru", "uk", "he"] as const;
 export type Locale = (typeof LOCALES)[number];
 
@@ -58,6 +64,10 @@ export interface GalleryRoom {
   transform: RoomTransform;
   /** Optional world-space override; otherwise derived from shape + transform. */
   vertices?: { x: number; z: number }[];
+  /** CSS hex `#RRGGBB` floor tint (defaults applied in normalizeLayout). */
+  floorColor?: string;
+  /** CSS hex `#RRGGBB` wall tint (defaults applied in normalizeLayout). */
+  wallColor?: string;
 }
 
 export interface RoomConnection {
@@ -252,11 +262,19 @@ export function normalizeEntrancePose(
   };
 }
 
+export function normalizeRoom(room: GalleryRoom): GalleryRoom {
+  return {
+    ...room,
+    floorColor: clampHexColor(room.floorColor, DEFAULT_FLOOR_COLOR_HEX),
+    wallColor: clampHexColor(room.wallColor, DEFAULT_WALL_COLOR_HEX),
+  };
+}
+
 export function normalizeLayout(layout?: GalleryLayout | null): GalleryLayout {
   if (!layout) return emptyLayout();
-  const rooms = (Array.isArray(layout.rooms) ? layout.rooms : []).filter(
-    (r) => r && r.id !== ENTRANCE_ROOM_ID,
-  );
+  const rooms = (Array.isArray(layout.rooms) ? layout.rooms : [])
+    .filter((r) => r && r.id !== ENTRANCE_ROOM_ID)
+    .map((r) => normalizeRoom(r));
   return {
     rooms,
     connections: Array.isArray(layout.connections) ? layout.connections : [],
