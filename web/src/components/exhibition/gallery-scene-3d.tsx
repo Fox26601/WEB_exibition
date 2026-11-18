@@ -23,6 +23,10 @@ import {
   layoutSpawnPoint,
   layoutWalkBounds,
 } from "@/lib/gallery-three/painting-pose";
+import {
+  createGalleryTextureLoader,
+  loadColorTexture,
+} from "@/lib/gallery-three/texture-load";
 import { applySkyToScene, loadNightSky } from "@/lib/gallery-three/sky";
 import { roomLength } from "@/lib/room";
 
@@ -79,24 +83,21 @@ export function GalleryScene3D({
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     mount.appendChild(renderer.domElement);
 
-    const loader = new THREE.TextureLoader();
+    const loader = createGalleryTextureLoader();
     const texDisposables: THREE.Texture[] = [];
-    let floorTex: THREE.Texture | undefined;
-    let wallTex: THREE.Texture | undefined;
-    loader.load("/samples/sample-04.jpg", (t) => {
-      t.colorSpace = THREE.SRGBColorSpace;
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.repeat.set(4, 4);
-      wallTex = t;
-      texDisposables.push(t);
-    });
-    loader.load("/samples/sample-02.jpg", (t) => {
-      t.colorSpace = THREE.SRGBColorSpace;
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.repeat.set(3, 3);
-      floorTex = t;
-      texDisposables.push(t);
-    });
+
+    const applyRepeatTexture = (
+      mat: THREE.MeshStandardMaterial,
+      tex: THREE.Texture,
+      repeat: number,
+    ) => {
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(repeat, repeat);
+      mat.map = tex;
+      mat.color.set(0xffffff);
+      mat.needsUpdate = true;
+      texDisposables.push(tex);
+    };
 
     loadNightSky(loader, (skyTex) => {
       texDisposables.push(skyTex);
@@ -114,9 +115,15 @@ export function GalleryScene3D({
     const teardowns: Array<() => void> = [];
 
     if (useLayout) {
-      const built = buildLayoutScene(layout, { floor: floorTex, wall: wallTex });
+      const built = buildLayoutScene(layout, {});
       scene.add(built.root);
       teardowns.push(built.dispose);
+      loadColorTexture(loader, "/samples/sample-04.jpg", (t) =>
+        applyRepeatTexture(built.wallMat, t, 4),
+      );
+      loadColorTexture(loader, "/samples/sample-02.jpg", (t) =>
+        applyRepeatTexture(built.floorMat, t, 3),
+      );
       walkBounds = layoutWalkBounds(layout.rooms);
       const spawn = walkBounds
         ? layoutSpawnPoint(layout, walkBounds)
