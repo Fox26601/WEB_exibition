@@ -2,7 +2,11 @@ import * as THREE from "three";
 import type { Artwork, ArtworkPlacement, Catalog, GalleryLayout } from "@/lib/catalog-types";
 import { ENTRANCE_ROOM_ID } from "@/lib/catalog-types";
 import { slotPose } from "@/lib/room";
-import { applyTextureToMaterial, loadColorTexture } from "./texture-load";
+import {
+  applyTextureToMaterial,
+  loadColorTexture,
+  orientGalleryPosterTexture,
+} from "./texture-load";
 import { CANVAS_Z_OFFSET } from "./constants";
 import { paintingPoseFromPlacement, sculpturePoseFromPlacement } from "./painting-pose";
 
@@ -102,7 +106,6 @@ function buildPaintingGroup(
   disposables.push(canvasMat);
   const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
   canvas.position.z = CANVAS_Z_OFFSET;
-  canvas.scale.x = -1;
   canvas.userData.artworkId = art.id;
   canvas.userData.isCanvas = true;
   group.add(canvas);
@@ -175,19 +178,20 @@ export function addCorridorArtworks(
 
     const texUrl = art.urlWall || art.urlFull || art.urlPoster;
     if (texUrl) {
-      void loadColorTexture(texUrl).then((tex) => {
-        if (!tex) return;
-        applyTextureToMaterial(canvasMat, tex);
-        disposables.push(tex);
-      });
-    }
+    void loadColorTexture(texUrl).then((tex) => {
+      if (!tex) return;
+      if (pose.flipCanvasU) orientGalleryPosterTexture(tex);
+      applyTextureToMaterial(canvasMat, tex);
+      disposables.push(tex);
+    });
+  }
 
-    if (art.type === "video") {
-      const hp = new THREE.Mesh(
-        new THREE.SphereGeometry(0.12, 12, 12),
-        new THREE.MeshStandardMaterial({ color: 0xc4893a }),
-      );
-      hp.position.set(0.7, -0.55, 0.1);
+  if (art.type === "video") {
+    const hp = new THREE.Mesh(
+      new THREE.SphereGeometry(0.12, 12, 12),
+      new THREE.MeshStandardMaterial({ color: 0xc4893a }),
+    );
+    hp.position.set(0.7, -0.55, 0.1);
       hp.userData.artworkId = art.id;
       hp.userData.isHeadphones = true;
       group.add(hp);

@@ -119,7 +119,7 @@ await page.waitForFunction(
   },
   { timeout: 60000 },
 );
-await page.waitForTimeout(1500);
+await page.waitForTimeout(2800);
 
 for (const step of SHOTS) {
   await page.evaluate((cam) => {
@@ -130,7 +130,7 @@ for (const step of SHOTS) {
     await page.waitForTimeout(220);
     await page.keyboard.up(code);
   }
-  await page.waitForTimeout(700);
+  await page.waitForTimeout(900);
   await page.screenshot({
     path: join(STORE_MEDIA, step.name),
     fullPage: false,

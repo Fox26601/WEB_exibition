@@ -102,9 +102,6 @@ export function GalleryScene3D({
       const built = buildLayoutScene(layout, {});
       scene.add(built.root);
       teardowns.push(built.dispose);
-      if (!previewLite) {
-        scene.fog = new THREE.Fog(0x8a8580, 10, 48);
-      }
       walkBounds = layoutWalkBounds(layout.rooms);
       const spawn = walkBounds
         ? layoutSpawnPoint(layout, walkBounds)

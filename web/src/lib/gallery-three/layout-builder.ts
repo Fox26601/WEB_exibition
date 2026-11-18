@@ -2,7 +2,9 @@ import * as THREE from "three";
 import type { GalleryLayout } from "@/lib/catalog-types";
 import { layoutIsEmpty, normalizeLayout } from "@/lib/catalog-types";
 import {
+  distPointToSegment,
   edgePoints,
+  pointInPolygon,
   roomWorldVertices,
   type Vec2,
 } from "@/lib/layout-geometry";
@@ -10,6 +12,8 @@ import {
   layoutOverlapRooms,
   shouldKeepFloorTriangle,
   wallSpansForEdge,
+  wallSpansForEdgeWithPlacements,
+  type WallSpan,
 } from "@/lib/room-overlap-clip";
 import {
   computeAabbXZ,
@@ -20,10 +24,40 @@ import {
   FLOOR_COLOR,
   FLOOR_THICKNESS,
   FLOOR_Y,
+  GALLERY_HEIGHT,
   WALL_COLOR,
+  WALL_THICKNESS,
 } from "./constants";
 import { lerpVec2, roomCentroid } from "./room-geometry";
 import { addCornerPosts, buildWallAlongEdge } from "./wall-mesh";
+
+/** If overlap clip removed all spans, still build when part of the edge faces open layout. */
+function shouldBuildFullEdgeWhenSpansEmpty(
+  roomId: string,
+  a: Vec2,
+  b: Vec2,
+  overlapRooms: ReturnType<typeof layoutOverlapRooms>,
+): boolean {
+  for (const t of [0.12, 0.5, 0.88]) {
+    const p = lerpVec2(a, b, t);
+    let inOtherInterior = false;
+    for (const other of overlapRooms) {
+      if (other.id === roomId) continue;
+      if (!pointInPolygon(p, other.verts)) continue;
+      const nearBoundary = other.verts.some((_, j) => {
+        const c = other.verts[j];
+        const d = other.verts[(j + 1) % other.verts.length];
+        return distPointToSegment(p, c, d).dist < 0.06;
+      });
+      if (!nearBoundary) {
+        inOtherInterior = true;
+        break;
+      }
+    }
+    if (!inOtherInterior) return true;
+  }
+  return false;
+}
 
 function findDoorwayWidth(
   layout: GalleryLayout,
@@ -149,7 +183,8 @@ export function buildLayoutScene(
           : null;
 
       if (spans && spans.length > 0) {
-        for (const span of spans) {
+        const buildSpans = wallSpansForEdgeWithPlacements(layout, room.id, i);
+        for (const span of buildSpans) {
           const aSpan = lerpVec2(a, b, span.t0);
           const bSpan = lerpVec2(a, b, span.t1);
           let spanDoor = 0;
@@ -162,6 +197,17 @@ export function buildLayoutScene(
           buildWallAlongEdge(roomRoot, aSpan, bSpan, spanDoor, wallMat, verts);
         }
       } else if (spans && spans.length === 0) {
+        if (
+          shouldBuildFullEdgeWhenSpansEmpty(room.id, a, b, overlapRooms)
+        ) {
+          const door =
+            doorway > 0.01
+              ? doorway
+              : isEntranceEdgeFallback(a, b, verts)
+                ? DEFAULT_DOOR_WIDTH
+                : 0;
+          buildWallAlongEdge(roomRoot, a, b, door, wallMat, verts);
+        }
         continue;
       } else {
         const door =
@@ -174,6 +220,8 @@ export function buildLayoutScene(
 
     root.add(roomRoot);
   }
+
+  addLayoutJunctionPosts(root, layout, wallMat);
 
   return {
     root,
@@ -188,6 +236,33 @@ export function buildLayoutScene(
       wallMat.dispose();
     },
   };
+}
+
+/** Shared vertices across rooms — extra mass closes overlap dihedral gaps. */
+function addLayoutJunctionPosts(
+  parent: THREE.Object3D,
+  layout: GalleryLayout,
+  wallMat: THREE.Material,
+): void {
+  const pts: Vec2[] = [];
+  const merge = 0.1;
+  for (const room of layout.rooms) {
+    for (const v of roomWorldVertices(room)) {
+      if (pts.some((p) => Math.hypot(p.x - v.x, p.z - v.z) < merge)) continue;
+      pts.push(v);
+    }
+  }
+  const postH = GALLERY_HEIGHT - FLOOR_Y;
+  const postY = FLOOR_Y + postH * 0.5;
+  const size = WALL_THICKNESS * 2.85;
+  for (const p of pts) {
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(size, postH, size),
+      wallMat,
+    );
+    post.position.set(p.x, postY, p.z);
+    parent.add(post);
+  }
 }
 
 function isEntranceEdgeFallback(a: Vec2, b: Vec2, verts: Vec2[]): boolean {

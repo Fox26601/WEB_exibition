@@ -40,9 +40,6 @@ export function addWallSlab(
   if (localXx * inward.x + localXz * inward.z < 0) {
     yaw += Math.PI;
   }
-  const interiorSign =
-    Math.cos(yaw) * inward.x + -Math.sin(yaw) * inward.z >= 0 ? 1 : -1;
-
   /** Center slab on the layout edge (half thickness inside/outside), Unity-like. */
   const group = new THREE.Group();
   group.position.set(
@@ -51,20 +48,11 @@ export function addWallSlab(
     midZ + inward.z * WALL_PLANE_BIAS,
   );
   group.rotation.y = yaw;
-  const halfT = WALL_THICKNESS * 0.5;
-  const shellDepth = Math.max(halfT - 0.001, 0.04);
-  const shellOffset = (shellDepth + 0.001) * 0.5;
-  const interior = new THREE.Mesh(
-    new THREE.BoxGeometry(shellDepth, height, slabLen),
+  const slab = new THREE.Mesh(
+    new THREE.BoxGeometry(WALL_THICKNESS, height, slabLen),
     material,
   );
-  interior.position.x = interiorSign * shellOffset;
-  const exterior = new THREE.Mesh(
-    new THREE.BoxGeometry(shellDepth, height, slabLen),
-    material,
-  );
-  exterior.position.x = -interiorSign * shellOffset;
-  group.add(interior, exterior);
+  group.add(slab);
   parent.add(group);
 }
 
@@ -92,14 +80,10 @@ export function addCornerPosts(
     bx /= blen;
     bz /= blen;
     const post = new THREE.Mesh(
-      new THREE.BoxGeometry(WALL_THICKNESS * 1.6, postH, WALL_THICKNESS * 1.6),
+      new THREE.BoxGeometry(WALL_THICKNESS * 2.4, postH, WALL_THICKNESS * 2.4),
       material,
     );
-    post.position.set(
-      cur.x + bx * WALL_PLANE_BIAS,
-      postY,
-      cur.z + bz * WALL_PLANE_BIAS,
-    );
+    post.position.set(cur.x, postY, cur.z);
     post.rotation.y = Math.atan2(bx, bz);
     parent.add(post);
   }
@@ -153,4 +137,17 @@ export function buildWallAlongEdge(
     GALLERY_HEIGHT - 2.2,
     2.2,
   );
+  const jambH = 2.25;
+  const jambY = FLOOR_Y + jambH * 0.5;
+  const jambT = Math.max(WALL_THICKNESS, 0.14);
+  const left = lerpVec2(a, b, t1L);
+  const right = lerpVec2(a, b, t0R);
+  for (const p of [left, right]) {
+    const jamb = new THREE.Mesh(
+      new THREE.BoxGeometry(jambT, jambH, jambT),
+      wallMat,
+    );
+    jamb.position.set(p.x, jambY, p.z);
+    parent.add(jamb);
+  }
 }
