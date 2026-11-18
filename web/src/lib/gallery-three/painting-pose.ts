@@ -70,8 +70,8 @@ export function paintingPoseFromPlacement(
   const inward = inwardNormal(a, b, centroid);
   const hangY = GALLERY_HEIGHT * resolvedWallHeightT(placement);
   const yawRad = Math.atan2(inward.x, inward.z);
-  // Sample JPEG title bars match Unity on hex walls; other room windings need unflipped UVs.
-  const flipCanvasU = room.shape === "hexagon";
+  // Hex stays unflipped; other room shapes flip U on odd edge indices (winding parity).
+  const flipCanvasU = room.shape !== "hexagon" && edgeIdx % 2 === 1;
   return {
     position: {
       x: along.x + inward.x * WALL_INSET,

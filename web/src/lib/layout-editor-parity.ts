@@ -97,7 +97,8 @@ export function evaluateLayoutEditorParity(
     const edge =
       ((p.wallEdgeIndex ?? 0) % verts.length + verts.length) % verts.length;
     const [a, b] = edgePoints(verts, edge);
-    const inward = inwardNormal(a, b, roomCentroid(verts));
+    const centroid = roomCentroid(verts) ?? edgeMidpoint(a, b);
+    const inward = inwardNormal(a, b, centroid);
     const expected = {
       x: editorPt.x + inward.x * WALL_INSET,
       z: editorPt.z + inward.z * WALL_INSET,

@@ -114,6 +114,7 @@ function buildPaintingGroup(
   if (texUrl) {
     void loadColorTexture(texUrl).then((tex) => {
       if (!tex) return;
+      if (pose.flipCanvasU) orientGalleryPosterTexture(tex);
       applyTextureToMaterial(canvasMat, tex);
       disposables.push(tex);
     });
@@ -180,7 +181,6 @@ export function addCorridorArtworks(
     if (texUrl) {
     void loadColorTexture(texUrl).then((tex) => {
       if (!tex) return;
-      if (pose.flipCanvasU) orientGalleryPosterTexture(tex);
       applyTextureToMaterial(canvasMat, tex);
       disposables.push(tex);
     });
