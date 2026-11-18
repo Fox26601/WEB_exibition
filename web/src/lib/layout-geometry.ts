@@ -244,6 +244,20 @@ function normDeg(deg: number): number {
   return ((deg % 360) + 360) % 360;
 }
 
+/** Plan-mode rotate step: square +45°, other shapes +90°. */
+export function nextRoomRotation(
+  shape: RoomShape,
+  currentRotation: number,
+): number {
+  const step = shape === "square" ? 45 : 90;
+  return ((currentRotation || 0) + step) % 360;
+}
+
+/** Plan-mode entrance rotate step: always +90°. */
+export function nextEntranceRotation(currentRotation: number): number {
+  return ((currentRotation || 0) + 90) % 360;
+}
+
 /** Pick square rotation so one edge is parallel to target edge azimuth. */
 export function squareRotationParallelToEdge(
   currentR: number,

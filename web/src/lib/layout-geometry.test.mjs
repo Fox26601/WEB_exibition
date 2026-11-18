@@ -4,10 +4,21 @@ import { ENTRANCE_ROOM_ID } from "./catalog-types.ts";
 import {
   defaultRoomTransform,
   entranceAsRoom,
+  nextEntranceRotation,
+  nextRoomRotation,
   softSnapRoom,
   softSnapRoomTranslate,
   squareRotationParallelToEdge,
 } from "./layout-geometry.ts";
+
+test("nextRoomRotation steps by shape", () => {
+  assert.equal(nextRoomRotation("square", 0), 45);
+  assert.equal(nextRoomRotation("square", 315), 0);
+  assert.equal(nextRoomRotation("triangle", 0), 90);
+  assert.equal(nextRoomRotation("hexagon", 270), 0);
+  assert.equal(nextEntranceRotation(0), 90);
+  assert.equal(nextEntranceRotation(270), 0);
+});
 
 test("square axis-aligned edge snaps to triangle flat edge", () => {
   const triangle = {
