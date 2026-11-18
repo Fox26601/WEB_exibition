@@ -437,13 +437,14 @@ export function GalleryScene3D({
         return;
       }
 
-      const top = resolveIntersection(hits[0], ARTWORK_INTERACT_DISTANCE);
+      const camPos = camera.position;
+      const top = resolveIntersection(hits[0], ARTWORK_INTERACT_DISTANCE, camPos);
       if (top.kind === "pedestal") {
         fireBooklet(bookletOwnedRef.current ? "toggle" : "pickup");
         return;
       }
 
-      const artHit = firstArtworkHit(hits, ARTWORK_INTERACT_DISTANCE);
+      const artHit = firstArtworkHit(hits, ARTWORK_INTERACT_DISTANCE, camPos);
       if (artHit.kind !== "artwork" || !artHit.artworkId) {
         lookFocusedId = null;
         callbacks.current.onSelect(null);
@@ -454,7 +455,7 @@ export function GalleryScene3D({
       if (!art) return;
 
       const hitObj = hits.find((h) => {
-        const r = resolveIntersection(h, ARTWORK_INTERACT_DISTANCE);
+        const r = resolveIntersection(h, ARTWORK_INTERACT_DISTANCE, camPos);
         return r.artworkId === art.id;
       })?.object;
 
@@ -478,7 +479,8 @@ export function GalleryScene3D({
       pointer.set(0, 0);
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(pickRoots, true);
-      const artHit = firstArtworkHit(hits, ARTWORK_LOOK_DISTANCE);
+      // Pass camera so reach uses full 3D (includes raised hang Y), not XZ-only.
+      const artHit = firstArtworkHit(hits, ARTWORK_LOOK_DISTANCE, camera.position);
       const nextId = artHit.kind === "artwork" ? artHit.artworkId : null;
       if (nextId === lookFocusedId) return;
       lookFocusedId = nextId;
@@ -583,7 +585,11 @@ export function GalleryScene3D({
       const t = e.changedTouches[0];
       if (!t) return;
       const hits = pickHits(t.clientX, t.clientY);
-      const artHit = firstArtworkHit(hits, ARTWORK_INTERACT_DISTANCE);
+      const artHit = firstArtworkHit(
+        hits,
+        ARTWORK_INTERACT_DISTANCE,
+        camera.position,
+      );
       const id = artHit.artworkId;
       const now = Date.now();
       const isDouble = !!id && id === lastTapId && now - lastTap < 350;
@@ -596,7 +602,11 @@ export function GalleryScene3D({
       const t = e.changedTouches[0];
       if (joyEl?.contains(t.target as Node)) return;
       const hits = pickHits(t.clientX, t.clientY);
-      const artHit = firstArtworkHit(hits, ARTWORK_INTERACT_DISTANCE);
+      const artHit = firstArtworkHit(
+        hits,
+        ARTWORK_INTERACT_DISTANCE,
+        camera.position,
+      );
       const id = artHit.artworkId;
       const now = Date.now();
       const isDouble = !!id && id === lastTapId && now - lastTap < 350;
