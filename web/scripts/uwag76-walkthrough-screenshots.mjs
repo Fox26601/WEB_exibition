@@ -37,7 +37,7 @@ const paintingCameras = layout.placements
     if (!pose) return null;
     const inwardX = Math.sin(pose.yawRad);
     const inwardZ = Math.cos(pose.yawRad);
-    const dist = 2.2;
+    const dist = 1.65;
     return {
       id: p.artworkId,
       x: pose.position.x + inwardX * dist,
@@ -85,8 +85,8 @@ const SHOTS = [
   },
   {
     name: "uwag76-walkthrough-overlap-floor.png",
-    cam: { x: 2.8, y: 1.6, z: 5.5, yawDeg: 120, pitchDeg: -8 },
-    wasd: ["KeyD", "KeyS"],
+    cam: { x: 1.2, y: 1.55, z: 5.8, yawDeg: -30, pitchDeg: -20 },
+    wasd: ["KeyW", "KeyD", "KeyW"],
   },
   {
     name: "uwag76-walkthrough-room-square-art.png",

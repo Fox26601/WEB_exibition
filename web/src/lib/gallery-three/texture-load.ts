@@ -75,3 +75,11 @@ export function applyTextureToMaterial(
   mat.color.set(0xffffff);
   mat.needsUpdate = true;
 }
+
+/** Poster JPEGs face +Z; keep title bars readable on inward-facing canvases. */
+export function orientGalleryPosterTexture(tex: THREE.Texture): void {
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.repeat.x = -1;
+  tex.offset.x = 1;
+  tex.needsUpdate = true;
+}

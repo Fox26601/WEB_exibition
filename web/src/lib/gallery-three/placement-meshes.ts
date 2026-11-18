@@ -2,7 +2,11 @@ import * as THREE from "three";
 import type { Artwork, ArtworkPlacement, Catalog, GalleryLayout } from "@/lib/catalog-types";
 import { ENTRANCE_ROOM_ID } from "@/lib/catalog-types";
 import { slotPose } from "@/lib/room";
-import { applyTextureToMaterial, loadColorTexture } from "./texture-load";
+import {
+  applyTextureToMaterial,
+  loadColorTexture,
+  orientGalleryPosterTexture,
+} from "./texture-load";
 import { CANVAS_Z_OFFSET } from "./constants";
 import { paintingPoseFromPlacement, sculpturePoseFromPlacement } from "./painting-pose";
 
@@ -102,7 +106,6 @@ function buildPaintingGroup(
   disposables.push(canvasMat);
   const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
   canvas.position.z = CANVAS_Z_OFFSET;
-  canvas.scale.x = -1;
   canvas.userData.artworkId = art.id;
   canvas.userData.isCanvas = true;
   group.add(canvas);
@@ -111,6 +114,7 @@ function buildPaintingGroup(
   if (texUrl) {
     void loadColorTexture(texUrl).then((tex) => {
       if (!tex) return;
+      orientGalleryPosterTexture(tex);
       applyTextureToMaterial(canvasMat, tex);
       disposables.push(tex);
     });
@@ -169,7 +173,6 @@ export function addCorridorArtworks(
     disposables.push(canvasMat);
     const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
     canvas.position.z = CANVAS_Z_OFFSET;
-    canvas.scale.x = -1;
     canvas.userData.artworkId = art.id;
     canvas.userData.isCanvas = true;
     group.add(canvas);
@@ -178,6 +181,7 @@ export function addCorridorArtworks(
     if (texUrl) {
       void loadColorTexture(texUrl).then((tex) => {
         if (!tex) return;
+        orientGalleryPosterTexture(tex);
         applyTextureToMaterial(canvasMat, tex);
         disposables.push(tex);
       });
