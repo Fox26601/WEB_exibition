@@ -125,10 +125,30 @@ export function buildRoomFloor(
   geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geom.setIndex(indices);
   geom.computeVertexNormals();
+  // FrontSide mats must face +Y or the camera above never sees room floor tints.
+  ensureFloorNormalsPointUp(geom);
   const mesh = new THREE.Mesh(geom, floorMat);
   mesh.name = `Floor_${roomId}`;
   parent.add(mesh);
   return mesh;
+}
+
+/** Flip index winding when triangulation produced downward face normals. */
+export function ensureFloorNormalsPointUp(geom: THREE.BufferGeometry): void {
+  const normals = geom.getAttribute("normal");
+  if (!normals || normals.count < 1) return;
+  if (normals.getY(0) >= 0) return;
+  const index = geom.getIndex();
+  if (index) {
+    const arr = Array.from(index.array);
+    for (let i = 0; i + 2 < arr.length; i += 3) {
+      const tmp = arr[i + 1];
+      arr[i + 1] = arr[i + 2];
+      arr[i + 2] = tmp;
+    }
+    geom.setIndex(arr);
+  }
+  geom.computeVertexNormals();
 }
 
 export type LayoutSurfaceMaterials = {
