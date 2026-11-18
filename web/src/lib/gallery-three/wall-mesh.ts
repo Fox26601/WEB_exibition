@@ -19,7 +19,7 @@ export function addWallSlab(
   b: Vec2,
   material: THREE.Material,
   centroid: Vec2,
-  height: number = GALLERY_HEIGHT - FLOOR_Y + 0.05,
+  height: number = GALLERY_HEIGHT - FLOOR_Y,
   bottomY = FLOOR_Y,
 ): void {
   const dx = b.x - a.x;
@@ -53,12 +53,6 @@ export function addWallSlab(
     material,
   );
   group.add(slab);
-  const cap = new THREE.Mesh(
-    new THREE.BoxGeometry(WALL_THICKNESS * 1.15, 0.12, slabLen + miter * 0.4),
-    material,
-  );
-  cap.position.y = height * 0.5;
-  group.add(cap);
   parent.add(group);
 }
 
@@ -72,7 +66,7 @@ export function addCornerPosts(
   if (!centroid || verts.length < 3) return;
   const n = verts.length;
   const postY = FLOOR_Y + GALLERY_HEIGHT * 0.5;
-  const postH = GALLERY_HEIGHT - FLOOR_Y + 0.05;
+  const postH = GALLERY_HEIGHT - FLOOR_Y;
   for (let i = 0; i < n; i++) {
     const prev = verts[(i - 1 + n) % n];
     const cur = verts[i];
@@ -86,7 +80,7 @@ export function addCornerPosts(
     bx /= blen;
     bz /= blen;
     const post = new THREE.Mesh(
-      new THREE.BoxGeometry(WALL_THICKNESS * 3.2, postH + 0.1, WALL_THICKNESS * 3.2),
+      new THREE.BoxGeometry(WALL_THICKNESS * 2.4, postH, WALL_THICKNESS * 2.4),
       material,
     );
     post.position.set(cur.x, postY, cur.z);
@@ -134,15 +128,14 @@ export function buildWallAlongEdge(
   const t0R = 1 - t1L;
   addWallSlab(parent, lerpVec2(a, b, 0), lerpVec2(a, b, t1L), wallMat, centroid);
   addWallSlab(parent, lerpVec2(a, b, t0R), lerpVec2(a, b, 1), wallMat, centroid);
-  const doorHeadH = GALLERY_HEIGHT - FLOOR_Y + 0.08 - 2.2;
   addWallSlab(
     parent,
     lerpVec2(a, b, t1L),
     lerpVec2(a, b, t0R),
     wallMat,
     centroid,
-    doorHeadH,
-    FLOOR_Y + 2.2,
+    GALLERY_HEIGHT - 2.2,
+    2.2,
   );
   const jambH = 2.25;
   const jambY = FLOOR_Y + jambH * 0.5;
