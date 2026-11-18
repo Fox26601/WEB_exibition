@@ -24,6 +24,7 @@ import {
   layoutWalkBounds,
 } from "@/lib/gallery-three/painting-pose";
 import {
+  applyTextureToMaterial,
   createGalleryTextureLoader,
   loadColorTexture,
 } from "@/lib/gallery-three/texture-load";
@@ -93,9 +94,7 @@ export function GalleryScene3D({
     ) => {
       tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
       tex.repeat.set(repeat, repeat);
-      mat.map = tex;
-      mat.color.set(0xffffff);
-      mat.needsUpdate = true;
+      applyTextureToMaterial(mat, tex);
       texDisposables.push(tex);
     };
 
@@ -118,12 +117,12 @@ export function GalleryScene3D({
       const built = buildLayoutScene(layout, {});
       scene.add(built.root);
       teardowns.push(built.dispose);
-      loadColorTexture(loader, "/samples/sample-04.jpg", (t) =>
-        applyRepeatTexture(built.wallMat, t, 4),
-      );
-      loadColorTexture(loader, "/samples/sample-02.jpg", (t) =>
-        applyRepeatTexture(built.floorMat, t, 3),
-      );
+      void loadColorTexture("/samples/sample-04.jpg").then((t) => {
+        if (t) applyRepeatTexture(built.wallMat, t, 4);
+      });
+      void loadColorTexture("/samples/sample-02.jpg").then((t) => {
+        if (t) applyRepeatTexture(built.floorMat, t, 3);
+      });
       walkBounds = layoutWalkBounds(layout.rooms);
       const spawn = walkBounds
         ? layoutSpawnPoint(layout, walkBounds)
