@@ -11,7 +11,7 @@ export function roomCentroid(verts: Vec2[]): Vec2 | null {
   return { x: x / verts.length, z: z / verts.length };
 }
 
-/** Inward normal for edge AB toward room centroid (Unity WallSnapUtility.InwardNormal). */
+/** Inward normal for edge AB toward room centroid. */
 export function inwardNormal(a: Vec2, b: Vec2, centroid: Vec2): Vec2 {
   const dx = b.x - a.x;
   const dz = b.z - a.z;

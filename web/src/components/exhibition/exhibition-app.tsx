@@ -1,21 +1,12 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type RefObject,
-} from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type { Artwork, Catalog } from "@/lib/catalog-types";
 import { normalizeSettings } from "@/lib/catalog-types";
 import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
-import { UNITY_ASSET_CACHE_TAG } from "@/lib/unity-cache";
-import { resolveGalleryRenderer } from "@/lib/gallery-renderer";
 import { GalleryScene3D } from "./gallery-scene-3d";
 import { BookletOverlay } from "./booklet-overlay";
 
@@ -25,15 +16,8 @@ type ReviewStatus = "idle" | "sending" | "success" | "error";
 
 const SITE_BY_URL = "https://webgalerey.app";
 
-export function ExhibitionApp({
-  unityAvailable = false,
-}: {
-  unityAvailable?: boolean;
-}) {
+export function ExhibitionApp() {
   const { locale, setLocale, dir } = useGalleryLocale();
-  const [rendererMode, setRendererMode] = useState<"unity" | "three">(() =>
-    resolveGalleryRenderer(unityAvailable, ""),
-  );
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Artwork | null>(null);
@@ -43,9 +27,6 @@ export function ExhibitionApp({
     url: string;
     poster?: string;
   } | null>(null);
-  const [catalogKind, setCatalogKind] = useState<"live" | "draft">("live");
-  const [token, setToken] = useState<string | null>(null);
-  const [adminBuild, setAdminBuild] = useState(false);
   const [previewLite, setPreviewLite] = useState(false);
   const [infoModal, setInfoModal] = useState<InfoModal>(null);
   const [bookletOpen, setBookletOpen] = useState(false);
@@ -56,22 +37,12 @@ export function ExhibitionApp({
   const [reviewEmail, setReviewEmail] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("idle");
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  useEffect(() => {
-    setRendererMode(
-      resolveGalleryRenderer(unityAvailable, window.location.search),
-    );
-  }, [unityAvailable]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const kind = params.get("catalog") === "draft" ? "draft" : "live";
     const tok = params.get("token");
     const mode = params.get("mode");
-    setCatalogKind(kind);
-    setToken(tok);
-    setAdminBuild(mode === "admin-build");
     setPreviewLite(mode === "preview-lite");
 
     let cancelled = false;
@@ -168,28 +139,10 @@ export function ExhibitionApp({
   const settings = catalog ? normalizeSettings(catalog.settings) : null;
 
   function postToggleBooklet() {
-    if (rendererMode === "three") {
-      if (!bookletOwned) {
-        setBookletOwned(true);
-      }
-      setBookletOpen((open) => !open);
-      return;
+    if (!bookletOwned) {
+      setBookletOwned(true);
     }
-    const win = iframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage({ type: "gallery-toggle-booklet" }, window.location.origin);
-    try {
-      const unity = (
-        win as Window & {
-          unityInstance?: {
-            SendMessage: (a: string, b: string, c: string) => void;
-          };
-        }
-      ).unityInstance;
-      unity?.SendMessage("BookletController", "OnJsToggleBooklet", "");
-    } catch {
-      /* unity not ready */
-    }
+    setBookletOpen((open) => !open);
   }
 
   function onPedestalPickup() {
@@ -200,38 +153,6 @@ export function ExhibitionApp({
     });
   }
 
-  useEffect(() => {
-    if (!adminBuild) return;
-    const onMessage = (ev: MessageEvent) => {
-      if (ev.origin !== window.location.origin) return;
-      const data = ev.data as { type?: string } | undefined;
-      if (!data?.type?.startsWith("gallery-admin-")) return;
-      const win = iframeRef.current?.contentWindow;
-      if (!win) return;
-      win.postMessage(data, window.location.origin);
-      try {
-        const unity = (
-          win as Window & {
-            unityInstance?: {
-              SendMessage: (a: string, b: string, c: string) => void;
-            };
-          }
-        ).unityInstance;
-        if (data.type.startsWith("gallery-admin-")) {
-          unity?.SendMessage(
-            "WebAdminBridge",
-            "OnJsAdminMessage",
-            JSON.stringify(data),
-          );
-        }
-      } catch {
-        /* unity not ready */
-      }
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [adminBuild]);
-
   if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black px-6 text-center">
@@ -241,30 +162,6 @@ export function ExhibitionApp({
             Home
           </Link>
         </div>
-      </div>
-    );
-  }
-
-  const useThree = rendererMode === "three";
-  const useUnity = rendererMode === "unity" && unityAvailable;
-
-  if (adminBuild) {
-    if (unityAvailable) {
-      return (
-        <div className="relative h-[100dvh] w-full overflow-hidden bg-black">
-          <UnityEmbed
-            catalogKind={catalogKind}
-            token={token}
-            lang={locale}
-            adminBuild
-            iframeRef={iframeRef}
-          />
-        </div>
-      );
-    }
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-black px-6 text-center text-[var(--paper-dim)]">
-        <p>Admin 3D build requires the Unity WebGL build in this environment.</p>
       </div>
     );
   }
@@ -317,7 +214,6 @@ export function ExhibitionApp({
         <div className="pointer-events-auto justify-self-end" />
       </div>
 
-      {/* Right chrome: language + about / donate / links */}
       <div className="pointer-events-none absolute end-3 top-16 z-20 flex flex-col items-end gap-2 sm:end-4 sm:top-20">
         <div className="pointer-events-auto rounded bg-black/40 px-2 py-1 backdrop-blur-sm">
           <LangSwitcher value={locale} onChange={setLocale} />
@@ -341,7 +237,7 @@ export function ExhibitionApp({
         ))}
       </div>
 
-      {bookletOwned || useUnity ? (
+      {bookletOwned ? (
         <div className="pointer-events-none absolute bottom-14 start-1/2 z-20 -translate-x-1/2">
           <button
             type="button"
@@ -353,7 +249,6 @@ export function ExhibitionApp({
         </div>
       ) : null}
 
-      {/* Compact exhibition footer: Review / Contact + Site by */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-end justify-between gap-3 p-3 sm:p-4">
         <div className="pointer-events-auto flex flex-wrap items-center gap-2">
           <button
@@ -381,32 +276,21 @@ export function ExhibitionApp({
         </a>
       </div>
 
-      {useUnity ? (
-        <UnityEmbed
-          catalogKind={catalogKind}
-          token={token}
-          lang={locale}
-          adminBuild={false}
-          previewLite={previewLite}
-          iframeRef={iframeRef}
-        />
-      ) : (
-        <GalleryScene3D
-          key={`three-${catalog.version}-${catalog.updatedAt}`}
-          catalog={catalog}
-          artworks={artworks}
-          locale={locale}
-          emptyLabel={copy.emptyRoom}
-          previewLite={previewLite}
-          onSelect={setSelected}
-          onOpenImage={(url) => setImageOverlay(url)}
-          onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
-          onOpenInfo={() => setInfoOpen(true)}
-          onPedestalPickup={onPedestalPickup}
-        />
-      )}
+      <GalleryScene3D
+        key={`three-${catalog.version}-${catalog.updatedAt}`}
+        catalog={catalog}
+        artworks={artworks}
+        locale={locale}
+        emptyLabel={copy.emptyRoom}
+        previewLite={previewLite}
+        onSelect={setSelected}
+        onOpenImage={(url) => setImageOverlay(url)}
+        onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
+        onOpenInfo={() => setInfoOpen(true)}
+        onPedestalPickup={onPedestalPickup}
+      />
 
-      {useThree && bookletOpen && bookletOwned ? (
+      {bookletOpen && bookletOwned ? (
         <BookletOverlay
           pages={settings.entrance.booklet}
           pageIndex={bookletPage}
@@ -417,7 +301,7 @@ export function ExhibitionApp({
         />
       ) : null}
 
-      {useThree && selected && !infoOpen && !imageOverlay && !videoOverlay ? (
+      {selected && !infoOpen && !imageOverlay && !videoOverlay ? (
         <div className="absolute bottom-24 start-1/2 z-20 flex -translate-x-1/2 gap-2 sm:bottom-8">
           <button
             type="button"
@@ -443,7 +327,7 @@ export function ExhibitionApp({
         </div>
       ) : null}
 
-      {useThree && infoOpen && selected ? (
+      {infoOpen && selected ? (
         <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">
           <div className="max-h-[70vh] w-full max-w-lg overflow-y-auto border border-[var(--line)] bg-[#12100e] p-6">
             <h2 className="mb-3 font-[family-name:var(--font-display)] text-2xl font-bold">
@@ -689,82 +573,6 @@ export function ExhibitionApp({
           </button>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-function UnityEmbed({
-  catalogKind,
-  token,
-  lang,
-  adminBuild,
-  previewLite,
-  iframeRef,
-}: {
-  catalogKind: string;
-  token: string | null;
-  lang: string;
-  adminBuild?: boolean;
-  previewLite?: boolean;
-  iframeRef: RefObject<HTMLIFrameElement | null>;
-}) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    el.dataset.catalog = catalogKind;
-    el.dataset.token = token || "";
-    el.dataset.lang = lang;
-  }, [catalogKind, token, lang]);
-
-  useEffect(() => {
-    const win = iframeRef.current?.contentWindow;
-    if (!win) return;
-    win.postMessage({ type: "gallery-set-lang", lang }, window.location.origin);
-    try {
-      const unity = (
-        win as Window & {
-          unityInstance?: {
-            SendMessage: (a: string, b: string, c: string) => void;
-          };
-        }
-      ).unityInstance;
-      unity?.SendMessage("LocaleUI", "OnJsSetLanguage", lang);
-    } catch {
-      /* unity not ready yet */
-    }
-  }, [lang, iframeRef]);
-
-  const qs = new URLSearchParams({ catalog: catalogKind, lang });
-  if (token) qs.set("token", token);
-  if (adminBuild) qs.set("mode", "admin-build");
-  else if (previewLite) qs.set("mode", "preview-lite");
-
-  useEffect(() => {
-    if (!adminBuild) return;
-    const onMessage = (ev: MessageEvent) => {
-      if (ev.origin !== window.location.origin) return;
-      const data = ev.data as { type?: string } | undefined;
-      if (!data?.type) return;
-      if (data.type === "gallery-admin-ready" || data.type === "gallery-admin-placements") {
-        window.parent.postMessage(data, window.location.origin);
-      }
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [adminBuild]);
-
-  return (
-    <div ref={wrapRef} id="unity-canvas-wrap" className="h-full w-full">
-      <iframe
-        ref={iframeRef}
-        title="Unity gallery"
-        key={`unity-${UNITY_ASSET_CACHE_TAG}-${catalogKind}-${token || "live"}-${adminBuild ? "admin" : previewLite ? "lite" : "visit"}`}
-        src={`/unity/index.html?${qs.toString()}`}
-        className="h-full w-full border-0"
-        allow="autoplay; fullscreen"
-      />
     </div>
   );
 }

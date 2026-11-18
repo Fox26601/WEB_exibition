@@ -18,7 +18,7 @@ export type WallSlabJoins = {
 };
 
 /**
- * Oriented wall slab along edge AB (Unity RoomBuilder parity): thickness on
+ * Oriented wall slab along edge AB: thickness on
  * local X, length on local Z. Vertex ends get a half-thickness join pad so
  * adjacent outer faces meet; mid/door ends stay flush (join = 0).
  */
@@ -54,7 +54,7 @@ export function addWallSlab(
   if (localXx * inward.x + localXz * inward.z < 0) {
     yaw += Math.PI;
   }
-  /** Center slab on the layout edge (half thickness inside/outside), Unity-like. */
+  /** Center slab on the layout edge (half thickness inside/outside). */
   const group = new THREE.Group();
   group.position.set(
     midX + inward.x * WALL_PLANE_BIAS,

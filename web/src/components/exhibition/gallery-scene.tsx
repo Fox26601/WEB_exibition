@@ -5,8 +5,6 @@ import * as THREE from "three";
 import type { Artwork } from "@/lib/catalog-types";
 import type { Locale } from "@/lib/i18n";
 import { ROOM, roomLength, slotPose } from "@/lib/room";
-import { UNITY_ASSET_CACHE_TAG } from "@/lib/unity-cache";
-
 type Props = {
   artworks: Artwork[];
   locale: Locale;
@@ -495,7 +493,6 @@ export function GalleryScene({
   return (
     <div
       className="relative h-full w-full"
-      data-unity-cache={UNITY_ASSET_CACHE_TAG}
     >
       <div ref={mountRef} className="h-full w-full" />
       <div

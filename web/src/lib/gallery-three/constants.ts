@@ -2,9 +2,9 @@ import { ROOM } from "@/lib/room";
 
 export const GALLERY_HEIGHT = ROOM.height;
 export const WALL_THICKNESS = 0.18;
-/** Painting offset from wall edge (Unity WallSnapUtility.WallInset). */
+/** Painting offset from wall edge. */
 export const WALL_INSET = 0.08;
-/** Interior wall plane offset from edge (Unity RoomBuilder.WallPlaneBias). */
+/** Interior wall plane offset from edge. */
 export const WALL_PLANE_BIAS = 0.002;
 /**
  * Vertex join pad along the edge. 0 = butt joint (exact span length).

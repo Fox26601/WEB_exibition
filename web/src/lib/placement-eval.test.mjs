@@ -180,7 +180,7 @@ test("placementWorldPoint resolves sculpture floor and painting wall", () => {
   assert.ok(Math.abs(paintingPt.x) < 0.01 || Math.abs(paintingPt.z - 4) < 0.5);
 });
 
-test("painting yaw uses centroid-based inward normal (Unity parity)", () => {
+test("painting yaw uses centroid-based inward normal", () => {
   const layout = normalizeLayout({
     rooms: [squareRoom("r1", 0, 4)],
     connections: [],
@@ -196,7 +196,7 @@ test("painting yaw uses centroid-based inward normal (Unity parity)", () => {
   assert.ok(
     Math.abs(Math.abs(correct - naive) - 180) < 0.01 ||
       Math.abs(correct - naive) < 0.01,
-    "centroid yaw should match Unity or differ by 180 from naive flip",
+    "centroid yaw should match inward normal or differ by 180 from naive flip",
   );
 
   const withWrongYaw = {
