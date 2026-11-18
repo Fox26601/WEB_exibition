@@ -70,18 +70,41 @@ export function ExhibitionApp({
     setAdminBuild(mode === "admin-build");
     setPreviewLite(mode === "preview-lite");
 
-    const qs = new URLSearchParams({ catalog: kind });
-    if (tok) qs.set("token", tok);
+    let cancelled = false;
 
-    fetch(`/api/catalog?${qs}`)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(r.status === 403 ? "Forbidden" : "Failed");
-        return r.json();
-      })
-      .then((data: Catalog) =>
-        setCatalog({ ...data, settings: normalizeSettings(data.settings) }),
-      )
-      .catch((e) => setError(e instanceof Error ? e.message : "Error"));
+    function loadCatalog(bust = false) {
+      const qs = new URLSearchParams({ catalog: kind });
+      if (tok) qs.set("token", tok);
+      if (bust) qs.set("_", String(Date.now()));
+      fetch(`/api/catalog?${qs}`, { cache: "no-store" })
+        .then(async (r) => {
+          if (!r.ok) throw new Error(r.status === 403 ? "Forbidden" : "Failed");
+          return r.json();
+        })
+        .then((data: Catalog) => {
+          if (cancelled) return;
+          setCatalog({ ...data, settings: normalizeSettings(data.settings) });
+          setError("");
+        })
+        .catch((e) => {
+          if (cancelled) return;
+          setError(e instanceof Error ? e.message : "Error");
+        });
+    }
+
+    loadCatalog(false);
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") loadCatalog(true);
+    };
+    const onFocus = () => loadCatalog(true);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
 
   useEffect(() => {
@@ -350,6 +373,7 @@ export function ExhibitionApp({
         />
       ) : (
         <GalleryScene3D
+          key={`three-${catalog.version}-${catalog.updatedAt}`}
           catalog={catalog}
           artworks={artworks}
           locale={locale}

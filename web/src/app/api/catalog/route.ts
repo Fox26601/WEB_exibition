@@ -36,9 +36,10 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json(payload, {
     headers: {
+      // Live layout must refresh soon after Publish; long SWR left visitors on stale rooms.
       "Cache-Control":
         kind === "live"
-          ? "public, s-maxage=30, stale-while-revalidate=60"
+          ? "public, max-age=0, s-maxage=5, stale-while-revalidate=15"
           : "private, no-store",
     },
   });
