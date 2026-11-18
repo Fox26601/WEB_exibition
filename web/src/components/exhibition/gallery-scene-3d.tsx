@@ -9,6 +9,8 @@ import { MAX_PIXEL_RATIO } from "@/lib/gallery-three/constants";
 import {
   buildLayoutScene,
   layoutHasRooms,
+  makeFloorMaterial,
+  makeWallMaterial,
 } from "@/lib/gallery-three/layout-builder";
 import {
   addCorridorArtworks,
@@ -135,16 +137,25 @@ export function GalleryScene3D({
     const pedestalWorld = new THREE.Vector3();
 
     if (useLayout) {
-      const built = buildLayoutScene(layout, {});
+      // One floor/wall material for foyer + every layout room (same shade/UV rules).
+      const floorMat = makeFloorMaterial();
+      const wallMat = makeWallMaterial();
+      const built = buildLayoutScene(layout, {}, { floorMat, wallMat });
       scene.add(built.root);
       teardowns.push(built.dispose);
       walkBounds = layoutWalkBounds(layout.rooms);
 
       const entrance = buildEntranceModule(layout, catalogRef.current, {
         previewLite,
+        floorMat,
+        wallMat,
       });
       scene.add(entrance.root);
       teardowns.push(entrance.dispose);
+      teardowns.push(() => {
+        floorMat.dispose();
+        wallMat.dispose();
+      });
       pedestalPick = entrance.pedestalRoot;
       bookletMesh = entrance.bookletMesh;
       walkBounds = unionWalkBounds(walkBounds, entrance.walkBounds);
@@ -164,6 +175,7 @@ export function GalleryScene3D({
       teardowns.push(corridor.dispose);
 
       // Portal at gallery door (z=0); corridor extends +Z, foyer toward −Z.
+      // Corridor already uses makeFloorMaterial; foyer gets its own matching instance.
       const entrance = buildEntranceModule(null, catalogRef.current, {
         previewLite,
         entrancePose: { x: 0, z: -ENTRANCE_SCHEMATIC_DEPTH * 0.5, rotation: 0 },
