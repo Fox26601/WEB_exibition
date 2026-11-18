@@ -85,7 +85,7 @@ function isEar(
   return true;
 }
 
-/** Ear-clipping triangulation in XZ (matches Unity PolygonTriangulation). */
+/** Ear-clipping triangulation in XZ. */
 export function triangulatePolygonXZ(verts: Vec2[]): number[] | null {
   if (!verts || verts.length < 3) return null;
 

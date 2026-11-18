@@ -15,7 +15,7 @@ import { DEFAULT_DOOR_WIDTH } from "./gallery-three/constants";
 
 export type Vec2 = { x: number; z: number };
 
-/** Schematic entrance footprint (Unity corridor depth stays 6 in world build). */
+/** Schematic entrance footprint (world corridor depth stays 6). */
 export const ENTRANCE_WIDTH = 2.4;
 export const ENTRANCE_DEPTH = 3.0;
 /** Portal edge index for entranceWorldVertices (+local Z side). */
@@ -91,7 +91,7 @@ export function edgeNormal(a: Vec2, b: Vec2): Vec2 {
   return { x: -dz / len, z: dx / len };
 }
 
-/** Matches Unity `WallSnapUtility.InwardNormal` (centroid picks the into-room side). */
+/** Inward wall normal (centroid picks the into-room side). */
 export function roomCentroid(verts: Vec2[]): Vec2 {
   let x = 0;
   let z = 0;

@@ -16,7 +16,7 @@ import {
   loadColorTexture,
 } from "./texture-load";
 
-/** World corridor depth (Unity EntranceBuilder.Depth). */
+/** World corridor depth. */
 export const ENTRANCE_WORLD_DEPTH = 6;
 export const ENTRANCE_ARCH_WIDTH = 2.4;
 export const ENTRANCE_ARCH_HEIGHT = 2.6;
@@ -37,7 +37,7 @@ export type EntrancePoseComputed = {
   yawRad: number;
 };
 
-/** Portal / spawn parity with Unity EntranceBuilder.ComputePortalAndSpawn. */
+/** Portal / spawn placement for the foyer corridor. */
 export function computeEntrancePose(
   pose: GalleryEntrancePose | null | undefined,
 ): EntrancePoseComputed {
@@ -216,7 +216,7 @@ export function buildEntranceModule(
     });
   }
 
-  // Pedestal nearer arch, left of doorway (Unity BuildPedestalLocal)
+  // Pedestal nearer arch, left of doorway
   const pedX = -halfGap - 0.75;
   const pedZ = -1.05;
   const pedestalRoot = new THREE.Group();

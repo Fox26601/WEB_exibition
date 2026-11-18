@@ -1,14 +1,13 @@
-# Unity WebGL Art Gallery + Exhibition Site
+# Web Art Gallery + Exhibition Site
 
-Landing site, Google-allowlist admin CMS, catalog API (Vercel Blob), and a WebGL exhibition (`/exhibition`). Until a Unity WebGL build is copied into `web/public/unity/`, the exhibition runs a **Three.js** room that uses the same catalog and room-growth formula as Unity.
+Landing site, Google-allowlist admin CMS, catalog API (Vercel Blob), and a Three.js WebGL exhibition (`/exhibition`).
 
 ## Repo layout
 
 | Path | Purpose |
 |------|---------|
 | `web/` | Next.js App Router (landing, admin, API, exhibition) |
-| `unity/` | Unity 6 project (owned separately) |
-| `scripts/copy-webgl.sh` | Copy a Unity WebGL export into `web/public/unity/` |
+| `Exibition/` | Optional Unity Editor project (not used by the web product) |
 
 ## Local development
 
@@ -31,6 +30,8 @@ Without `BLOB_READ_WRITE_TOKEN`, catalog and media are stored under `web/.data/`
 | `AUTH_SECRET` | yes | Auth.js session secret |
 | `AUTH_GOOGLE_ID` | yes (admin) | Google OAuth client ID |
 | `AUTH_GOOGLE_SECRET` | yes (admin) | Google OAuth client secret |
+| `GOOGLE_OAUTH_CLIENT_ID` | optional | Preferred Google OAuth client ID (overrides `AUTH_GOOGLE_ID`) |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | optional | Preferred Google OAuth secret (overrides `AUTH_GOOGLE_SECRET`) |
 | `ADMIN_EMAILS` | yes (admin) | Comma-separated allowlist, case-insensitive |
 | `BLOB_READ_WRITE_TOKEN` | prod | Vercel Blob read/write token |
 | `CATALOG_SIGNING_SECRET` | recommended | Signs draft preview tokens (falls back to `AUTH_SECRET`) |
@@ -42,7 +43,7 @@ Without `BLOB_READ_WRITE_TOKEN`, catalog and media are stored under `web/.data/`
 |-------|-------------|
 | `/` | Landing poster + Enter exhibition |
 | `/bio` | Bio / CV from settings |
-| `/exhibition` | WebGL gallery (Unity if present, else Three.js) |
+| `/exhibition` | Three.js WebGL gallery |
 | `/admin/login` | Google OAuth |
 | `/admin` | Dashboard |
 | `/admin/artworks` | Artwork CRUD, reorder, publish, **Publish catalog** |
@@ -68,20 +69,7 @@ marginEnds = 2.0m
 L = marginEnds*2 + ceil(N/2)*slotPitch   # N=0 → L0 = 4m
 ```
 
-Works alternate left/right long walls. Admin schematic, Three.js stub, and Unity must match.
-
-## Unity WebGL handoff
-
-1. Export WebGL from Unity 6 (WebGL2, compression as configured in the Unity project).
-2. Copy into the Next app:
-
-```bash
-./scripts/copy-webgl.sh /path/to/UnityWebGLBuild
-```
-
-This populates `web/public/unity/` (expects `Build/` among other export files).
-
-3. Redeploy. `/exhibition` prefers Unity when `public/unity/Build` is available; otherwise the Three.js stub serves the same catalog.
+Works alternate left/right long walls. Admin schematic and Three.js gallery use the same formula.
 
 ## Deploy (Vercel)
 

@@ -150,7 +150,7 @@ export function evaluateArtworkDrop(
   return { ok: true, placement, world: along };
 }
 
-/** Recompute painting yaw from wall geometry (Unity / WallSnapUtility parity). */
+/** Recompute painting yaw from wall geometry (inward normal / wall snap). */
 export function syncPaintingYaws(layout: GalleryLayout): GalleryLayout {
   if (!layout?.placements?.length || !layout.rooms?.length) return layout;
   const placements = layout.placements.map((p) => {

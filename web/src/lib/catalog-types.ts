@@ -146,7 +146,7 @@ export interface Catalog {
   updatedAt: string;
   settings: CatalogSettings;
   artworks: Artwork[];
-  /** Empty / missing → Unity keeps rect L/R fallback. */
+  /** Empty / missing → rect L/R fallback for wall placement. */
   layout?: GalleryLayout;
 }
 
@@ -270,7 +270,7 @@ export function layoutIsEmpty(layout?: GalleryLayout | null): boolean {
   return n.rooms.length === 0;
 }
 
-/** Seed sample wall textures under public/samples (also used by Unity StreamingAssets). */
+/** Seed sample wall textures under public/samples. */
 const SAMPLE = {
   "01": "/samples/sample-01.jpg",
   "02": "/samples/sample-02.jpg",

@@ -5,7 +5,6 @@ import * as THREE from "three";
 import type { Artwork, Catalog } from "@/lib/catalog-types";
 import { normalizeLayout } from "@/lib/catalog-types";
 import type { Locale } from "@/lib/i18n";
-import { UNITY_ASSET_CACHE_TAG } from "@/lib/unity-cache";
 import { MAX_PIXEL_RATIO } from "@/lib/gallery-three/constants";
 import {
   buildLayoutScene,
@@ -510,7 +509,6 @@ export function GalleryScene3D({
   return (
     <div
       className="relative h-full w-full"
-      data-unity-cache={UNITY_ASSET_CACHE_TAG}
       data-gallery-renderer="three"
     >
       <div ref={mountRef} className="h-full w-full" />

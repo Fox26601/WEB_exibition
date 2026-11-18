@@ -1,4 +1,4 @@
-/** Shared room growth formula — admin schematic + Three.js + Unity must match. */
+/** Shared room growth formula — admin schematic + Three.js gallery must match. */
 export const ROOM = {
   width: 8,
   height: 3.2,
