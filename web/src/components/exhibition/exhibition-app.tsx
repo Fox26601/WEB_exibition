@@ -17,6 +17,7 @@ import { LangSwitcher } from "@/components/lang-switcher";
 import { UNITY_ASSET_CACHE_TAG } from "@/lib/unity-cache";
 import { resolveGalleryRenderer } from "@/lib/gallery-renderer";
 import { GalleryScene3D } from "./gallery-scene-3d";
+import { BookletOverlay } from "./booklet-overlay";
 
 type InfoModal = "artist" | "curator" | "donate" | "links" | null;
 type FooterModal = "review" | "contact" | null;
@@ -47,6 +48,9 @@ export function ExhibitionApp({
   const [adminBuild, setAdminBuild] = useState(false);
   const [previewLite, setPreviewLite] = useState(false);
   const [infoModal, setInfoModal] = useState<InfoModal>(null);
+  const [bookletOpen, setBookletOpen] = useState(false);
+  const [bookletPage, setBookletPage] = useState(0);
+  const [bookletOwned, setBookletOwned] = useState(false);
   const [footerModal, setFooterModal] = useState<FooterModal>(null);
   const [reviewName, setReviewName] = useState("");
   const [reviewEmail, setReviewEmail] = useState("");
@@ -164,6 +168,13 @@ export function ExhibitionApp({
   const settings = catalog ? normalizeSettings(catalog.settings) : null;
 
   function postToggleBooklet() {
+    if (rendererMode === "three") {
+      if (!bookletOwned) {
+        setBookletOwned(true);
+      }
+      setBookletOpen((open) => !open);
+      return;
+    }
     const win = iframeRef.current?.contentWindow;
     if (!win) return;
     win.postMessage({ type: "gallery-toggle-booklet" }, window.location.origin);
@@ -179,6 +190,14 @@ export function ExhibitionApp({
     } catch {
       /* unity not ready */
     }
+  }
+
+  function onPedestalPickup() {
+    setBookletOwned((owned) => {
+      if (!owned) setBookletPage(0);
+      setBookletOpen((open) => (owned ? !open : true));
+      return true;
+    });
   }
 
   useEffect(() => {
@@ -322,8 +341,8 @@ export function ExhibitionApp({
         ))}
       </div>
 
-      {useUnity ? (
-        <div className="pointer-events-none absolute bottom-14 start-1/2 z-20 -translate-x-1/2 sm:hidden">
+      {bookletOwned || useUnity ? (
+        <div className="pointer-events-none absolute bottom-14 start-1/2 z-20 -translate-x-1/2">
           <button
             type="button"
             className="pointer-events-auto btn btn-solid !py-2 !px-5"
@@ -383,8 +402,20 @@ export function ExhibitionApp({
           onOpenImage={(url) => setImageOverlay(url)}
           onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
           onOpenInfo={() => setInfoOpen(true)}
+          onPedestalPickup={onPedestalPickup}
         />
       )}
+
+      {useThree && bookletOpen && bookletOwned ? (
+        <BookletOverlay
+          pages={settings.entrance.booklet}
+          pageIndex={bookletPage}
+          locale={locale}
+          closeLabel={copy.close}
+          onClose={() => setBookletOpen(false)}
+          onPage={setBookletPage}
+        />
+      ) : null}
 
       {useThree && selected && !infoOpen && !imageOverlay && !videoOverlay ? (
         <div className="absolute bottom-24 start-1/2 z-20 flex -translate-x-1/2 gap-2 sm:bottom-8">

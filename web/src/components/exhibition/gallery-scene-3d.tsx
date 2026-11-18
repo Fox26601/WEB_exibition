@@ -20,9 +20,12 @@ import {
   corridorWalkClamp,
 } from "@/lib/gallery-three/legacy-corridor";
 import {
-  layoutSpawnPoint,
-  layoutWalkBounds,
-} from "@/lib/gallery-three/painting-pose";
+  buildEntranceModule,
+  ENTRANCE_SCHEMATIC_DEPTH,
+  unionWalkBounds,
+} from "@/lib/gallery-three/entrance-builder";
+import { layoutWalkBounds } from "@/lib/gallery-three/painting-pose";
+import { ROOM } from "@/lib/room";
 import { createGalleryTextureLoader } from "@/lib/gallery-three/texture-load";
 import { applySkyToScene, loadNightSky } from "@/lib/gallery-three/sky";
 import { roomLength } from "@/lib/room";
@@ -37,6 +40,7 @@ type Props = {
   onOpenImage: (url: string) => void;
   onOpenVideo: (url: string, poster?: string) => void;
   onOpenInfo: () => void;
+  onPedestalPickup?: () => void;
 };
 
 export function GalleryScene3D({
@@ -48,6 +52,7 @@ export function GalleryScene3D({
   onOpenImage,
   onOpenVideo,
   onOpenInfo,
+  onPedestalPickup,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const joyRef = useRef<HTMLDivElement>(null);
@@ -57,8 +62,20 @@ export function GalleryScene3D({
   const catalogRef = useRef(catalog);
   catalogRef.current = catalog;
 
-  const callbacks = useRef({ onSelect, onOpenImage, onOpenVideo, onOpenInfo });
-  callbacks.current = { onSelect, onOpenImage, onOpenVideo, onOpenInfo };
+  const callbacks = useRef({
+    onSelect,
+    onOpenImage,
+    onOpenVideo,
+    onOpenInfo,
+    onPedestalPickup,
+  });
+  callbacks.current = {
+    onSelect,
+    onOpenImage,
+    onOpenVideo,
+    onOpenInfo,
+    onPedestalPickup,
+  };
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -97,24 +114,55 @@ export function GalleryScene3D({
     let corridorLength = roomLength(artworks.length);
     let walkBounds: ReturnType<typeof layoutWalkBounds> = null;
     const teardowns: Array<() => void> = [];
+    let pedestalPick: THREE.Object3D | null = null;
 
     if (useLayout) {
       const built = buildLayoutScene(layout, {});
       scene.add(built.root);
       teardowns.push(built.dispose);
       walkBounds = layoutWalkBounds(layout.rooms);
-      const spawn = walkBounds
-        ? layoutSpawnPoint(layout, walkBounds)
-        : { x: 0, z: 0 };
-      camera.position.set(spawn.x, 1.6, spawn.z);
-      camera.lookAt(spawn.x, 1.6, spawn.z + 2);
+
+      const entrance = buildEntranceModule(layout, catalogRef.current, {
+        previewLite,
+      });
+      scene.add(entrance.root);
+      teardowns.push(entrance.dispose);
+      pedestalPick = entrance.pedestalRoot;
+      walkBounds = unionWalkBounds(walkBounds, entrance.walkBounds);
+
+      camera.position.set(entrance.spawn.x, 1.6, entrance.spawn.z);
+      const yawRad = (entrance.spawn.yawDeg * Math.PI) / 180;
+      // Face into the gallery (+local Z from portal).
+      camera.lookAt(
+        entrance.spawn.x + Math.sin(yawRad) * 2,
+        1.6,
+        entrance.spawn.z + Math.cos(yawRad) * 2,
+      );
     } else {
       const corridor = buildLegacyCorridor(artworks.length);
       corridorLength = corridor.length;
       scene.add(corridor.root);
       teardowns.push(corridor.dispose);
-      camera.position.set(0, 1.6, 1.5);
-      camera.lookAt(0, 1.6, corridorLength / 2);
+
+      // Portal at gallery door (z=0); corridor extends +Z, foyer toward −Z.
+      const entrance = buildEntranceModule(null, catalogRef.current, {
+        previewLite,
+        entrancePose: { x: 0, z: -ENTRANCE_SCHEMATIC_DEPTH * 0.5, rotation: 0 },
+      });
+      scene.add(entrance.root);
+      teardowns.push(entrance.dispose);
+      pedestalPick = entrance.pedestalRoot;
+      walkBounds = unionWalkBounds(
+        {
+          minX: -ROOM.width / 2 + 0.5,
+          maxX: ROOM.width / 2 - 0.5,
+          minZ: 0.5,
+          maxZ: corridorLength - 0.5,
+        },
+        entrance.walkBounds,
+      );
+      camera.position.set(entrance.spawn.x, 1.6, entrance.spawn.z);
+      camera.lookAt(0, 1.6, Math.min(4, corridorLength / 2));
       if (!previewLite) {
         scene.fog = new THREE.Fog(0x05070f, corridorLength * 0.75, corridorLength * 1.55);
       }
@@ -131,6 +179,7 @@ export function GalleryScene3D({
       pickRoots = placed.pickRoots;
       teardowns.push(placed.dispose);
     }
+    if (pedestalPick) pickRoots.push(pedestalPick);
 
     if (artworks.length === 0) {
       const canvas = document.createElement("canvas");
@@ -160,6 +209,7 @@ export function GalleryScene3D({
     const keys = new Set<string>();
     const velocity = new THREE.Vector3();
     const euler = new THREE.Euler(0, 0, 0, "YXZ");
+    euler.setFromQuaternion(camera.quaternion);
     let pointerLocked = false;
     const isTouch =
       typeof window !== "undefined" &&
@@ -175,6 +225,7 @@ export function GalleryScene3D({
     const onKeyDown = (e: KeyboardEvent) => {
       keys.add(e.code);
       if (e.code === "KeyE") callbacks.current.onOpenInfo();
+      if (e.code === "KeyQ") callbacks.current.onPedestalPickup?.();
       if (e.code === "Escape") {
         document.exitPointerLock?.();
         callbacks.current.onSelect(null);
@@ -215,6 +266,14 @@ export function GalleryScene3D({
 
     function handleSelect(hit: THREE.Intersection, isDouble: boolean) {
       const obj = hit.object;
+      let probe: THREE.Object3D | null = obj;
+      while (probe) {
+        if (probe.userData.isPedestal) {
+          callbacks.current.onPedestalPickup?.();
+          return;
+        }
+        probe = probe.parent;
+      }
       const id = (obj.userData.artworkId ||
         obj.parent?.userData.artworkId) as string | undefined;
       if (!id) return;
@@ -468,7 +527,7 @@ export function GalleryScene3D({
         <div className="absolute start-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/35" />
       </div>
       <p className="pointer-events-none absolute bottom-3 end-3 z-20 hidden font-[family-name:var(--font-ui)] text-[0.65rem] text-white/40 md:block">
-        WASD · mouse look · double-click image · E info
+        WASD · mouse look · pedestal / Q booklet · double-click image · E info
       </p>
     </div>
   );

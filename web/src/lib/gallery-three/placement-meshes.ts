@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Artwork, ArtworkPlacement, Catalog, GalleryLayout } from "@/lib/catalog-types";
 import { ENTRANCE_ROOM_ID } from "@/lib/catalog-types";
 import { slotPose } from "@/lib/room";
@@ -65,9 +66,9 @@ export function addPlacementsToScene(
     } else if (placement.kind === "sculpture") {
       const pose = sculpturePoseFromPlacement(placement);
       if (!pose) continue;
-      const mesh = buildSculpturePlaceholder(art, pose);
-      scene.add(mesh);
-      pickRoots.push(mesh);
+      const group = buildSculptureGroup(art, pose, disposables);
+      scene.add(group);
+      pickRoots.push(group);
     }
   }
 
@@ -150,16 +151,65 @@ function buildPaintingGroup(
   return group;
 }
 
-function buildSculpturePlaceholder(
+function buildSculptureGroup(
   art: Artwork,
   pose: NonNullable<ReturnType<typeof sculpturePoseFromPlacement>>,
-): THREE.Mesh {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x6a6258, roughness: 0.85 });
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.9, 0.5), mat);
-  mesh.position.set(pose.position.x, 0.45, pose.position.z);
-  mesh.rotation.y = (pose.yawDeg * Math.PI) / 180;
-  mesh.userData.artworkId = art.id;
-  return mesh;
+  disposables: Array<THREE.Material | THREE.Texture>,
+): THREE.Group {
+  const group = new THREE.Group();
+  group.position.set(pose.position.x, 0, pose.position.z);
+  group.rotation.y = (pose.yawDeg * Math.PI) / 180;
+  group.userData.artworkId = art.id;
+
+  const placeholderMat = new THREE.MeshStandardMaterial({
+    color: 0x6a6258,
+    roughness: 0.85,
+  });
+  disposables.push(placeholderMat);
+  const placeholder = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.9, 0.5),
+    placeholderMat,
+  );
+  placeholder.position.y = 0.45;
+  placeholder.userData.artworkId = art.id;
+  group.add(placeholder);
+
+  const modelUrl = art.modelUrl?.trim();
+  if (!modelUrl) return group;
+
+  const loader = new GLTFLoader();
+  loader.load(
+    modelUrl,
+    (gltf) => {
+      const model = gltf.scene;
+      // Fit model into ~1m tall footprint on the floor.
+      const box = new THREE.Box3().setFromObject(model);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+      const scale = 1.1 / maxDim;
+      model.scale.setScalar(scale);
+      box.setFromObject(model);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      model.position.x -= center.x;
+      model.position.z -= center.z;
+      model.position.y -= box.min.y;
+      model.traverse((obj) => {
+        obj.userData.artworkId = art.id;
+      });
+      group.remove(placeholder);
+      placeholder.geometry.dispose();
+      placeholderMat.dispose();
+      group.add(model);
+    },
+    undefined,
+    () => {
+      /* keep placeholder */
+    },
+  );
+
+  return group;
 }
 
 /** Slot-based corridor paintings when layout has no placements. */
