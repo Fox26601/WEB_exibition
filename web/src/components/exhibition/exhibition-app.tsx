@@ -90,6 +90,7 @@ export function ExhibitionApp() {
         setInfoOpen(false);
         setInfoModal(null);
         setFooterModal(null);
+        setBookletOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -139,18 +140,18 @@ export function ExhibitionApp() {
   const settings = catalog ? normalizeSettings(catalog.settings) : null;
 
   function postToggleBooklet() {
-    if (!bookletOwned) {
-      setBookletOwned(true);
-    }
+    if (!bookletOwned) return;
     setBookletOpen((open) => !open);
   }
 
-  function onPedestalPickup() {
-    setBookletOwned((owned) => {
-      if (!owned) setBookletPage(0);
-      setBookletOpen((open) => (owned ? !open : true));
-      return true;
-    });
+  function onBookletInteract(action: "pickup" | "toggle") {
+    if (action === "pickup") {
+      setBookletOwned(true);
+      setBookletPage(0);
+      setBookletOpen(true);
+      return;
+    }
+    setBookletOpen((open) => !open);
   }
 
   if (error) {
@@ -283,11 +284,12 @@ export function ExhibitionApp() {
         locale={locale}
         emptyLabel={copy.emptyRoom}
         previewLite={previewLite}
+        bookletOwned={bookletOwned}
         onSelect={setSelected}
         onOpenImage={(url) => setImageOverlay(url)}
         onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
         onOpenInfo={() => setInfoOpen(true)}
-        onPedestalPickup={onPedestalPickup}
+        onBookletInteract={onBookletInteract}
       />
 
       {bookletOpen && bookletOwned ? (
