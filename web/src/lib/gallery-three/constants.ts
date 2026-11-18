@@ -6,8 +6,12 @@ export const WALL_THICKNESS = 0.18;
 export const WALL_INSET = 0.08;
 /** Interior wall plane offset from edge (Unity RoomBuilder.WallPlaneBias). */
 export const WALL_PLANE_BIAS = 0.002;
-/** Extend each wall span along its edge so slabs overlap cleanly at corners. */
-export const WALL_CORNER_MITER = 0.52;
+/**
+ * Vertex join pad along the edge. 0 = butt joint (exact span length).
+ * Positive values reintroduce end overshoot past the adjacent wall face —
+ * keep at 0 so corners stay flush without fat overlapping boxes.
+ */
+export const WALL_CORNER_JOIN = 0;
 export const CANVAS_Z_OFFSET = 0.045;
 export const FLOOR_Y = -0.05;
 export const FLOOR_THICKNESS = 0.1;

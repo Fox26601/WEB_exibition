@@ -19,7 +19,10 @@ import {
   type OverlapRoom,
   type WallSpan,
 } from "./room-overlap-clip";
-import { DEFAULT_DOOR_WIDTH } from "./gallery-three/constants";
+import {
+  DEFAULT_DOOR_WIDTH,
+  WALL_CORNER_JOIN,
+} from "./gallery-three/constants";
 
 export type WallSegmentKind = "exterior" | "snap_surface";
 
@@ -30,6 +33,13 @@ export type WallSegmentPlan = {
   t1: number;
   doorwayWidth: number;
   kind: WallSegmentKind;
+  /**
+   * Half-thickness join pad at t0 when that end is a polygon vertex.
+   * Mid-span / doorway-open ends stay 0 (flush).
+   */
+  join0: number;
+  /** Join pad at t1 (see join0). */
+  join1: number;
 };
 
 export type LayoutWallPlan = {
@@ -287,6 +297,9 @@ export function buildLayoutWallPlan(layoutInput: GalleryLayout): LayoutWallPlan 
         if (spanDoor > 0.01) {
           spanDoor = Math.min(spanDoor, Math.max(0, spanLen - 0.2));
         }
+        // Only polygon vertices get a T/2 join pad — mid-clip ends stay flush.
+        const join0 = span.t0 <= EPS ? WALL_CORNER_JOIN : 0;
+        const join1 = span.t1 >= 1 - EPS ? WALL_CORNER_JOIN : 0;
         segments.push({
           roomId: room.id,
           edgeIndex,
@@ -294,6 +307,8 @@ export function buildLayoutWallPlan(layoutInput: GalleryLayout): LayoutWallPlan 
           t1: span.t1,
           doorwayWidth: spanDoor,
           kind,
+          join0,
+          join1,
         });
       }
     }
