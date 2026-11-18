@@ -65,8 +65,8 @@ const SHOTS = [
   },
   {
     name: "uwag76-walkthrough-room-hex-corner.png",
-    cam: { x: -2, y: 1.6, z: 3, yawDeg: 35, pitchDeg: 0 },
-    wasd: ["KeyW", "KeyD"],
+    cam: { x: -2.4, y: 1.55, z: 2.8, yawDeg: 55, pitchDeg: -2 },
+    wasd: ["KeyW", "KeyD", "KeyA"],
   },
   {
     name: "uwag76-walkthrough-room-hex-art.png",
@@ -85,8 +85,13 @@ const SHOTS = [
   },
   {
     name: "uwag76-walkthrough-overlap-floor.png",
-    cam: { x: 1.2, y: 1.55, z: 5.8, yawDeg: -30, pitchDeg: -20 },
-    wasd: ["KeyW", "KeyD", "KeyW"],
+    cam: { x: 0.4, y: 1.55, z: 6.2, yawDeg: -40, pitchDeg: -5 },
+    wasd: ["KeyW", "KeyW", "KeyD"],
+  },
+  {
+    name: "uwag76-walkthrough-overlap-corner-joint.png",
+    cam: { x: -1.8, y: 1.5, z: 6.5, yawDeg: 70, pitchDeg: 2 },
+    wasd: ["KeyA", "KeyW"],
   },
   {
     name: "uwag76-walkthrough-room-square-art.png",
