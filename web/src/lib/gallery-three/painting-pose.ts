@@ -1,5 +1,5 @@
 import type { ArtworkPlacement, GalleryLayout, GalleryRoom } from "@/lib/catalog-types";
-import { GALLERY_HEIGHT, WALL_INSET } from "./constants";
+import { GALLERY_FLOOR_RAISE, GALLERY_HEIGHT, WALL_INSET } from "./constants";
 import {
   edgePoints,
   roomWorldVertices,
@@ -66,7 +66,9 @@ export function paintingPoseFromPlacement(
   const along = placementWorldPoint(placement, layout);
   if (!along) return null;
   const inward = inwardNormal(a, b, centroid);
-  const hangY = GALLERY_HEIGHT * resolvedWallHeightT(placement);
+  // Hang height stays relative to the raised gallery floor.
+  const hangY =
+    GALLERY_FLOOR_RAISE + GALLERY_HEIGHT * resolvedWallHeightT(placement);
   const yawRad = Math.atan2(inward.x, inward.z);
   return {
     position: {
@@ -84,7 +86,11 @@ export function sculpturePoseFromPlacement(
   if (placement.kind !== "sculpture") return null;
   if (placement.floorX == null || placement.floorZ == null) return null;
   return {
-    position: { x: placement.floorX, y: 0, z: placement.floorZ },
+    position: {
+      x: placement.floorX,
+      y: GALLERY_FLOOR_RAISE,
+      z: placement.floorZ,
+    },
     yawDeg: placement.yaw ?? 0,
   };
 }

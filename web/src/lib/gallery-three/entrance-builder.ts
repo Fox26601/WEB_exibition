@@ -5,7 +5,12 @@ import { ROOM } from "@/lib/room";
 import {
   FLOOR_THICKNESS,
   FLOOR_Y,
+  GALLERY_FLOOR_RAISE,
   GALLERY_HEIGHT,
+  PORTAL_LANDING_DEPTH,
+  STEP_COUNT,
+  STEP_DEPTH,
+  STEP_RISE,
   WALL_THICKNESS,
 } from "./constants";
 import {
@@ -17,6 +22,7 @@ import {
   applyTextureToMaterial,
   loadColorTexture,
 } from "./texture-load";
+import type { ClimbBand } from "./walk-surface";
 
 /** World corridor depth. */
 export const ENTRANCE_WORLD_DEPTH = 6;
@@ -30,6 +36,7 @@ const TRIM_COLOR = 0x59524f;
 const TOP_COLOR = 0x736b61;
 const BOOKLET_COLOR = 0x8c6b47;
 const POSTER_COLOR = 0xbfb8ad;
+const STEP_COLOR = 0x7a7e84;
 
 export type EntrancePoseComputed = {
   portal: { x: number; z: number };
@@ -65,11 +72,45 @@ export type EntranceBuildResult = {
   root: THREE.Group;
   spawn: { x: number; z: number; yawDeg: number };
   walkBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  /** World AABBs for foyer stairs + portal landing (surfaceY synced to meshes). */
+  climbBands: ClimbBand[];
   pedestalRoot: THREE.Object3D;
   /** Booklet mesh on the pedestal; hide when the visitor is holding it. */
   bookletMesh: THREE.Object3D;
   dispose: () => void;
 };
+
+/** World AABB of a local-XZ rect under entrance yaw about the portal. */
+export function localRectToWorldAabb(
+  portal: { x: number; z: number },
+  yawRad: number,
+  minLX: number,
+  maxLX: number,
+  minLZ: number,
+  maxLZ: number,
+): { minX: number; maxX: number; minZ: number; maxZ: number } {
+  const c = Math.cos(yawRad);
+  const s = Math.sin(yawRad);
+  const corners: Array<[number, number]> = [
+    [minLX, minLZ],
+    [maxLX, minLZ],
+    [minLX, maxLZ],
+    [maxLX, maxLZ],
+  ];
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const [lx, lz] of corners) {
+    const wx = portal.x + lx * c + lz * s;
+    const wz = portal.z - lx * s + lz * c;
+    minX = Math.min(minX, wx);
+    maxX = Math.max(maxX, wx);
+    minZ = Math.min(minZ, wz);
+    maxZ = Math.max(maxZ, wz);
+  }
+  return { minX, maxX, minZ, maxZ };
+}
 
 function boxMesh(
   name: string,
@@ -228,6 +269,58 @@ export function buildEntranceModule(
     });
   }
 
+  // Always-on foyer stairs (local −Z → portal) + gallery-side landing.
+  const stepMat = makeSurfaceMaterial(STEP_COLOR);
+  mats.push(stepMat);
+  const climbBands: ClimbBand[] = [];
+  const stepHalfW = ENTRANCE_ARCH_WIDTH * 0.5;
+  for (let i = 0; i < STEP_COUNT; i++) {
+    const surfaceY = (i + 1) * STEP_RISE;
+    const minLZ = -(STEP_COUNT - i) * STEP_DEPTH;
+    const maxLZ = -(STEP_COUNT - i - 1) * STEP_DEPTH;
+    const midZ = (minLZ + maxLZ) * 0.5;
+    root.add(
+      boxMesh(
+        `EntranceStep${i + 1}`,
+        [ENTRANCE_ARCH_WIDTH, surfaceY, STEP_DEPTH],
+        [0, surfaceY * 0.5, midZ],
+        stepMat,
+      ),
+    );
+    climbBands.push({
+      ...localRectToWorldAabb(
+        pose.portal,
+        pose.yawRad,
+        -stepHalfW,
+        stepHalfW,
+        minLZ,
+        maxLZ,
+      ),
+      surfaceY,
+    });
+  }
+
+  // Landing flush with gallery floor on the gallery side of the portal (local +Z).
+  root.add(
+    boxMesh(
+      "EntranceLanding",
+      [ENTRANCE_ARCH_WIDTH, FLOOR_THICKNESS, PORTAL_LANDING_DEPTH],
+      [0, FLOOR_Y + GALLERY_FLOOR_RAISE, PORTAL_LANDING_DEPTH * 0.5],
+      floorMat,
+    ),
+  );
+  climbBands.push({
+    ...localRectToWorldAabb(
+      pose.portal,
+      pose.yawRad,
+      -stepHalfW,
+      stepHalfW,
+      0,
+      PORTAL_LANDING_DEPTH,
+    ),
+    surfaceY: GALLERY_FLOOR_RAISE,
+  });
+
   // Pedestal nearer arch, left of doorway
   const pedX = -halfGap - 0.75;
   const pedZ = -1.05;
@@ -263,32 +356,29 @@ export function buildEntranceModule(
   pedestalRoot.add(trigger);
   root.add(pedestalRoot);
 
-  // Walk AABB in world space covering the corridor box
-  const corners: Array<[number, number]> = [
-    [-w * 0.5 + 0.35, 0],
-    [w * 0.5 - 0.35, 0],
-    [-w * 0.5 + 0.35, -ENTRANCE_WORLD_DEPTH + 0.35],
-    [w * 0.5 - 0.35, -ENTRANCE_WORLD_DEPTH + 0.35],
-  ];
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  const c = Math.cos(pose.yawRad);
-  const s = Math.sin(pose.yawRad);
-  for (const [lx, lz] of corners) {
-    const wx = pose.portal.x + lx * c + lz * s;
-    const wz = pose.portal.z - lx * s + lz * c;
-    minX = Math.min(minX, wx);
-    maxX = Math.max(maxX, wx);
-    minZ = Math.min(minZ, wz);
-    maxZ = Math.max(maxZ, wz);
+  // Walk AABB in world space: corridor + stair/landing footprints.
+  let walkBounds = localRectToWorldAabb(
+    pose.portal,
+    pose.yawRad,
+    -w * 0.5 + 0.35,
+    w * 0.5 - 0.35,
+    -ENTRANCE_WORLD_DEPTH + 0.35,
+    0,
+  );
+  for (const band of climbBands) {
+    walkBounds = {
+      minX: Math.min(walkBounds.minX, band.minX),
+      maxX: Math.max(walkBounds.maxX, band.maxX),
+      minZ: Math.min(walkBounds.minZ, band.minZ),
+      maxZ: Math.max(walkBounds.maxZ, band.maxZ),
+    };
   }
 
   return {
     root,
     spawn: { x: pose.spawn.x, z: pose.spawn.z, yawDeg: pose.yawDeg },
-    walkBounds: { minX, maxX, minZ, maxZ },
+    walkBounds,
+    climbBands,
     pedestalRoot,
     bookletMesh: booklet,
     dispose: () => {

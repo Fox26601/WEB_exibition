@@ -13,6 +13,7 @@ import { placementWorldPoint } from "../placement-eval.ts";
 import { paintingPoseFromPlacement } from "./painting-pose.ts";
 import { roomWorldVertices } from "../layout-geometry.ts";
 import { inwardNormal, roomCentroid } from "./room-geometry.ts";
+import { GALLERY_FLOOR_RAISE } from "./constants.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = JSON.parse(
@@ -50,7 +51,9 @@ test("painting pose Y follows placement wallHeightT", () => {
   );
   assert.ok(low && high);
   assert.ok(high.position.y > low.position.y);
-  assert.ok(Math.abs(high.position.y / low.position.y - 4) < 0.05);
+  const lowRel = low.position.y - GALLERY_FLOOR_RAISE;
+  const highRel = high.position.y - GALLERY_FLOOR_RAISE;
+  assert.ok(Math.abs(highRel / lowRel - 4) < 0.05);
 });
 
 test("painting pose sits slightly inward from wall edge", () => {

@@ -31,6 +31,11 @@ import {
   resolveBookletKeyAction,
 } from "@/lib/gallery-three/booklet-interact";
 import { layoutWalkBounds } from "@/lib/gallery-three/painting-pose";
+import {
+  sampleEyeY,
+  type ClimbBand,
+  type WalkAabb,
+} from "@/lib/gallery-three/walk-surface";
 import { ROOM } from "@/lib/room";
 import { createGalleryTextureLoader } from "@/lib/gallery-three/texture-load";
 import { applySkyToScene, loadNightSky } from "@/lib/gallery-three/sky";
@@ -131,10 +136,15 @@ export function GalleryScene3D({
 
     let corridorLength = roomLength(artworks.length);
     let walkBounds: ReturnType<typeof layoutWalkBounds> = null;
+    let galleryBounds: WalkAabb | null = null;
+    let climbBands: ClimbBand[] = [];
     const teardowns: Array<() => void> = [];
     let pedestalPick: THREE.Object3D | null = null;
     let bookletMesh: THREE.Object3D | null = null;
     const pedestalWorld = new THREE.Vector3();
+
+    const eyeAt = (x: number, z: number) =>
+      sampleEyeY(x, z, { climbBands, galleryBounds });
 
     if (useLayout) {
       // One floor/wall material for foyer + every layout room (same shade/UV rules).
@@ -143,7 +153,8 @@ export function GalleryScene3D({
       const built = buildLayoutScene(layout, {}, { floorMat, wallMat });
       scene.add(built.root);
       teardowns.push(built.dispose);
-      walkBounds = layoutWalkBounds(layout.rooms);
+      galleryBounds = layoutWalkBounds(layout.rooms);
+      walkBounds = galleryBounds;
 
       const entrance = buildEntranceModule(layout, catalogRef.current, {
         previewLite,
@@ -158,14 +169,16 @@ export function GalleryScene3D({
       });
       pedestalPick = entrance.pedestalRoot;
       bookletMesh = entrance.bookletMesh;
+      climbBands = entrance.climbBands;
       walkBounds = unionWalkBounds(walkBounds, entrance.walkBounds);
 
-      camera.position.set(entrance.spawn.x, 1.6, entrance.spawn.z);
+      const spawnEye = eyeAt(entrance.spawn.x, entrance.spawn.z);
+      camera.position.set(entrance.spawn.x, spawnEye, entrance.spawn.z);
       const yawRad = (entrance.spawn.yawDeg * Math.PI) / 180;
       // Face into the gallery (+local Z from portal).
       camera.lookAt(
         entrance.spawn.x + Math.sin(yawRad) * 2,
-        1.6,
+        spawnEye,
         entrance.spawn.z + Math.cos(yawRad) * 2,
       );
     } else {
@@ -184,17 +197,17 @@ export function GalleryScene3D({
       teardowns.push(entrance.dispose);
       pedestalPick = entrance.pedestalRoot;
       bookletMesh = entrance.bookletMesh;
-      walkBounds = unionWalkBounds(
-        {
-          minX: -ROOM.width / 2 + 0.5,
-          maxX: ROOM.width / 2 - 0.5,
-          minZ: 0.5,
-          maxZ: corridorLength - 0.5,
-        },
-        entrance.walkBounds,
-      );
-      camera.position.set(entrance.spawn.x, 1.6, entrance.spawn.z);
-      camera.lookAt(0, 1.6, Math.min(4, corridorLength / 2));
+      climbBands = entrance.climbBands;
+      galleryBounds = {
+        minX: -ROOM.width / 2 + 0.5,
+        maxX: ROOM.width / 2 - 0.5,
+        minZ: 0.5,
+        maxZ: corridorLength - 0.5,
+      };
+      walkBounds = unionWalkBounds(galleryBounds, entrance.walkBounds);
+      const spawnEye = eyeAt(entrance.spawn.x, entrance.spawn.z);
+      camera.position.set(entrance.spawn.x, spawnEye, entrance.spawn.z);
+      camera.lookAt(0, spawnEye, Math.min(4, corridorLength / 2));
       if (!previewLite) {
         scene.fog = new THREE.Fog(0x05070f, corridorLength * 0.75, corridorLength * 1.55);
       }
@@ -580,7 +593,11 @@ export function GalleryScene3D({
         };
       };
       (window as Win).__setGalleryCamera = (p) => {
-        camera.position.set(p.x, p.y ?? 1.6, p.z);
+        camera.position.set(
+          p.x,
+          p.y ?? eyeAt(p.x, p.z),
+          p.z,
+        );
         euler.set(
           ((p.pitchDeg ?? 0) * Math.PI) / 180,
           (p.yawDeg * Math.PI) / 180,
@@ -644,7 +661,7 @@ export function GalleryScene3D({
           walkBounds.minZ,
           walkBounds.maxZ,
         );
-        camera.position.y = 1.6;
+        camera.position.y = eyeAt(camera.position.x, camera.position.z);
       } else {
         corridorWalkClamp(camera.position, corridorLength);
       }

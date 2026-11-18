@@ -4,7 +4,11 @@ import * as THREE from "three";
 import fixture from "./prod-catalog.fixture.json" with { type: "json" };
 import { normalizeLayout } from "../catalog-types.ts";
 import { roomWorldVertices } from "../layout-geometry.ts";
-import { FLOOR_COLOR, FLOOR_SURFACE_Y, WALL_COLOR } from "./constants.ts";
+import {
+  FLOOR_COLOR,
+  WALL_COLOR,
+  gallerySurfaceY,
+} from "./constants.ts";
 import {
   buildLayoutScene,
   buildRoomFloor,
@@ -61,10 +65,11 @@ describe("buildLayoutScene floors", () => {
     wallMat.dispose();
   });
 
-  it("room floors cover the full polygon at foyer surface height with UVs", () => {
+  it("room floors cover the full polygon at raised gallery surface with UVs", () => {
     const layout = normalizeLayout(fixture.layout);
     const overlap = layoutOverlapRooms(layout);
     const floorMat = makeFloorMaterial();
+    const surfaceY = gallerySurfaceY();
 
     for (const room of layout.rooms) {
       const parent = new THREE.Group();
@@ -80,7 +85,7 @@ describe("buildLayoutScene floors", () => {
 
       for (let i = 0; i < verts.length; i++) {
         assert.ok(Math.abs(pos.getX(i) - verts[i].x) < 1e-6);
-        assert.ok(Math.abs(pos.getY(i) - FLOOR_SURFACE_Y) < 1e-6);
+        assert.ok(Math.abs(pos.getY(i) - surfaceY) < 1e-6);
         assert.ok(Math.abs(pos.getZ(i) - verts[i].z) < 1e-6);
       }
 
