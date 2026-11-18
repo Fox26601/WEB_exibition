@@ -3,12 +3,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Artwork,
+  BookletPage,
   Catalog,
   GalleryLayout,
+  Locale,
   LocalizedString,
 } from "@/lib/catalog-types";
-import { emptyLocalized, LOCALES, emptyLayout } from "@/lib/catalog-types";
+import {
+  emptyBookletPage,
+  emptyLocalized,
+  LOCALES,
+  emptyLayout,
+  normalizeArtwork,
+  normalizeArtworkBooklet,
+} from "@/lib/catalog-types";
 import { LangSwitcher } from "@/components/lang-switcher";
+import { BookletOverlay } from "@/components/exhibition/booklet-overlay";
 import { adminEditorStrings } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { GalleryRoomEditor, ensureLayout } from "./gallery-room-editor";
@@ -189,10 +199,13 @@ export function PreviewPanel() {
     setBusy(true);
     setMessage("");
     try {
+      const payload = normalizeArtwork(artwork, {
+        syncTitleTextFromBooklet: true,
+      });
       const res = await fetch("/api/admin/artworks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(artwork),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(JSON.stringify(data.error) || "Save failed");
@@ -238,20 +251,23 @@ export function PreviewPanel() {
   }
 
   function startNew(type: Artwork["type"]) {
-    setEditing({
-      id: crypto.randomUUID(),
-      type,
-      sort: catalog?.artworks.length ?? 0,
-      published: true,
-      title: emptyLocalized(),
-      text: emptyLocalized(),
-      urlWall: "",
-      urlFull: "",
-      urlVideo: "",
-      urlPoster: "",
-      modelUrl: "",
-      frameId: type === "model" ? "none" : "wood",
-    });
+    setEditing(
+      normalizeArtwork({
+        id: crypto.randomUUID(),
+        type,
+        sort: catalog?.artworks.length ?? 0,
+        published: true,
+        title: emptyLocalized(),
+        text: emptyLocalized(),
+        booklet: [emptyBookletPage("main")],
+        urlWall: "",
+        urlFull: "",
+        urlVideo: "",
+        urlPoster: "",
+        modelUrl: "",
+        frameId: type === "model" ? "none" : "wood",
+      }),
+    );
   }
 
   if (error) {
@@ -442,7 +458,7 @@ export function PreviewPanel() {
                     className="btn !py-1 !px-2 !text-[0.65rem]"
                     onClick={(e) => {
                       e.stopPropagation();
-                      setEditing(art);
+                      setEditing(normalizeArtwork(art));
                     }}
                   >
                     Edit
@@ -499,7 +515,10 @@ function PreviewArtworkEditor({
   onBusy: (v: boolean) => void;
   onMessage: (m: string) => void;
 }) {
-  const [draft, setDraft] = useState<Artwork>(artwork);
+  const [draft, setDraft] = useState<Artwork>(() => normalizeArtwork(artwork));
+  const [previewLocale, setPreviewLocale] = useState<Locale>("en");
+  const [previewPage, setPreviewPage] = useState(0);
+  const bookletPages = normalizeArtworkBooklet(draft);
 
   function setLocalized(
     field: "title" | "text",
@@ -510,6 +529,27 @@ function PreviewArtworkEditor({
       ...d,
       [field]: { ...d[field], [locale]: value },
     }));
+  }
+
+  function setBooklet(pages: BookletPage[]) {
+    setDraft((d) => ({ ...d, booklet: pages }));
+    setPreviewPage((p) => Math.min(p, Math.max(0, pages.length - 1)));
+  }
+
+  function updateBookletPage(index: number, page: BookletPage) {
+    const next = bookletPages.slice();
+    next[index] = page;
+    setBooklet(next);
+  }
+
+  function addBookletPage() {
+    const n = bookletPages.length;
+    setBooklet([...bookletPages, emptyBookletPage(`page-${n + 1}`)]);
+  }
+
+  function removeBookletPage(index: number) {
+    const next = bookletPages.filter((_, i) => i !== index);
+    setBooklet(next.length ? next : [emptyBookletPage("main")]);
   }
 
   async function onImageFile(file: File | null) {
@@ -653,7 +693,7 @@ function PreviewArtworkEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
-      <div className="my-8 w-full max-w-2xl border border-[var(--line)] bg-[#161310] p-6">
+      <div className="my-8 w-full max-w-5xl border border-[var(--line)] bg-[#161310] p-6">
         <h2 className="mb-4 font-[family-name:var(--font-display)] text-xl font-bold">
           Edit {draft.type}
         </h2>
@@ -664,18 +704,6 @@ function PreviewArtworkEditor({
               <input
                 value={draft.title[locale]}
                 onChange={(e) => setLocalized("title", locale, e.target.value)}
-              />
-            </div>
-          ))}
-        </div>
-        <div className="mb-4 grid gap-3 sm:grid-cols-2">
-          {LOCALES.map((locale) => (
-            <div key={`text-${locale}`}>
-              <label>Text ({locale})</label>
-              <textarea
-                rows={3}
-                value={draft.text[locale]}
-                onChange={(e) => setLocalized("text", locale, e.target.value)}
               />
             </div>
           ))}
@@ -740,12 +768,129 @@ function PreviewArtworkEditor({
             ) : null}
           </div>
         )}
+
+        <section className="mb-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
+              Artwork booklet
+            </h3>
+            <button
+              type="button"
+              className="btn !py-1.5 !text-xs"
+              onClick={addBookletPage}
+            >
+              Add page
+            </button>
+          </div>
+          <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start">
+            <div className="order-1 sticky top-0 z-10 bg-[#161310] pb-3 lg:order-2 lg:top-4 lg:self-start">
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="text-xs uppercase tracking-[0.12em] text-[var(--paper-dim)]">
+                  Live preview
+                </span>
+                <select
+                  className="!w-auto !py-1 !text-xs"
+                  value={previewLocale}
+                  onChange={(e) => setPreviewLocale(e.target.value as Locale)}
+                >
+                  {LOCALES.map((locale) => (
+                    <option key={locale} value={locale}>
+                      {locale}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <BookletOverlay
+                pages={bookletPages}
+                pageIndex={previewPage}
+                locale={previewLocale}
+                closeLabel="Close"
+                onClose={() => undefined}
+                onPage={setPreviewPage}
+                embedded
+                titleLabel="Booklet"
+              />
+            </div>
+            <div className="order-2 space-y-6 lg:order-1">
+              {bookletPages.map((page, index) => (
+                <div
+                  key={`booklet-${index}-${page.key}`}
+                  className="border border-[var(--line)] p-4"
+                >
+                  <div className="mb-3 flex flex-wrap items-end gap-3">
+                    <div className="min-w-[10rem] flex-1">
+                      <label>Page key</label>
+                      <input
+                        value={page.key}
+                        onChange={(e) =>
+                          updateBookletPage(index, {
+                            ...page,
+                            key: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    {bookletPages.length > 1 ? (
+                      <button
+                        type="button"
+                        className="btn !py-1.5 !text-xs"
+                        onClick={() => removeBookletPage(index)}
+                      >
+                        Remove
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                    {LOCALES.map((locale) => (
+                      <div key={`pbt-${index}-${locale}`}>
+                        <label>Title ({locale})</label>
+                        <input
+                          value={page.title[locale]}
+                          onChange={(e) =>
+                            updateBookletPage(index, {
+                              ...page,
+                              title: {
+                                ...page.title,
+                                [locale]: e.target.value,
+                              },
+                            })
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {LOCALES.map((locale) => (
+                      <div key={`pbb-${index}-${locale}`}>
+                        <label>Body ({locale})</label>
+                        <textarea
+                          rows={4}
+                          value={page.body[locale]}
+                          onChange={(e) =>
+                            updateBookletPage(index, {
+                              ...page,
+                              body: {
+                                ...page.body,
+                                [locale]: e.target.value,
+                              },
+                            })
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <div className="mt-6 flex gap-3">
           <button
             type="button"
             className="btn btn-solid"
             disabled={busy}
-            onClick={() => onSave(draft)}
+            onClick={() => onSave({ ...draft, booklet: bookletPages })}
           >
             Save
           </button>

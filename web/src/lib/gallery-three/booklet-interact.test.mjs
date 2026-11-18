@@ -7,6 +7,7 @@ import {
   isWithinPedestalReach,
   PEDESTAL_INTERACT_RADIUS,
   resolveBookletKeyAction,
+  resolveExhibitionQAction,
 } from "./booklet-interact.ts";
 
 describe("isWithinPedestalReach", () => {
@@ -39,6 +40,54 @@ describe("resolveBookletKeyAction", () => {
     );
     assert.equal(
       resolveBookletKeyAction({ owned: false, nearPedestal: false }),
+      null,
+    );
+  });
+});
+
+describe("resolveExhibitionQAction", () => {
+  it("prefers focused art booklet over pedestal", () => {
+    assert.deepEqual(
+      resolveExhibitionQAction({
+        focusedArtworkId: "sample-01",
+        owned: false,
+        nearPedestal: true,
+      }),
+      { kind: "art-booklet", artworkId: "sample-01" },
+    );
+    assert.deepEqual(
+      resolveExhibitionQAction({
+        focusedArtworkId: "sample-01",
+        owned: true,
+        nearPedestal: false,
+      }),
+      { kind: "art-booklet", artworkId: "sample-01" },
+    );
+  });
+
+  it("falls back to foyer pedestal when no art is focused", () => {
+    assert.deepEqual(
+      resolveExhibitionQAction({
+        focusedArtworkId: null,
+        owned: false,
+        nearPedestal: true,
+      }),
+      { kind: "entrance", action: "pickup" },
+    );
+    assert.deepEqual(
+      resolveExhibitionQAction({
+        focusedArtworkId: null,
+        owned: true,
+        nearPedestal: false,
+      }),
+      { kind: "entrance", action: "toggle" },
+    );
+    assert.equal(
+      resolveExhibitionQAction({
+        focusedArtworkId: null,
+        owned: false,
+        nearPedestal: false,
+      }),
       null,
     );
   });

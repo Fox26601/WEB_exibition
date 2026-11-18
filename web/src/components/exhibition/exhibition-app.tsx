@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type { Artwork, Catalog } from "@/lib/catalog-types";
-import { normalizeSettings } from "@/lib/catalog-types";
+import {
+  normalizeArtwork,
+  normalizeArtworkBooklet,
+  normalizeSettings,
+} from "@/lib/catalog-types";
 import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
@@ -16,12 +20,25 @@ type ReviewStatus = "idle" | "sending" | "success" | "error";
 
 const SITE_BY_URL = "https://webgalerey.app";
 
+function openArtworkFullscreen(
+  art: Artwork,
+  setImage: (url: string | null) => void,
+  setVideo: (v: { url: string; poster?: string } | null) => void,
+) {
+  if (art.type === "video" && art.urlVideo) {
+    setVideo({ url: art.urlVideo, poster: art.urlPoster || undefined });
+    return;
+  }
+  const src =
+    art.urlFull || art.urlWall || art.urlPoster || art.modelUrl || "";
+  if (src) setImage(src);
+}
+
 export function ExhibitionApp() {
   const { locale, setLocale, dir } = useGalleryLocale();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Artwork | null>(null);
-  const [infoOpen, setInfoOpen] = useState(false);
   const [imageOverlay, setImageOverlay] = useState<string | null>(null);
   const [videoOverlay, setVideoOverlay] = useState<{
     url: string;
@@ -32,6 +49,9 @@ export function ExhibitionApp() {
   const [bookletOpen, setBookletOpen] = useState(false);
   const [bookletPage, setBookletPage] = useState(0);
   const [bookletOwned, setBookletOwned] = useState(false);
+  const [artBookletOpen, setArtBookletOpen] = useState(false);
+  const [artBookletPage, setArtBookletPage] = useState(0);
+  const [artBookletId, setArtBookletId] = useState<string | null>(null);
   const [footerModal, setFooterModal] = useState<FooterModal>(null);
   const [reviewName, setReviewName] = useState("");
   const [reviewEmail, setReviewEmail] = useState("");
@@ -58,7 +78,11 @@ export function ExhibitionApp() {
         })
         .then((data: Catalog) => {
           if (cancelled) return;
-          setCatalog({ ...data, settings: normalizeSettings(data.settings) });
+          setCatalog({
+            ...data,
+            settings: normalizeSettings(data.settings),
+            artworks: (data.artworks || []).map((a) => normalizeArtwork(a)),
+          });
           setError("");
         })
         .catch((e) => {
@@ -87,10 +111,10 @@ export function ExhibitionApp() {
       if (e.key === "Escape") {
         setImageOverlay(null);
         setVideoOverlay(null);
-        setInfoOpen(false);
         setInfoModal(null);
         setFooterModal(null);
         setBookletOpen(false);
+        setArtBookletOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -140,11 +164,18 @@ export function ExhibitionApp() {
   const settings = catalog ? normalizeSettings(catalog.settings) : null;
 
   function postToggleBooklet() {
+    if (artBookletId && selected?.id === artBookletId) {
+      setArtBookletOpen((open) => !open);
+      return;
+    }
     if (!bookletOwned) return;
+    setArtBookletOpen(false);
     setBookletOpen((open) => !open);
   }
 
   function onBookletInteract(action: "pickup" | "toggle") {
+    setArtBookletOpen(false);
+    setArtBookletId(null);
     if (action === "pickup") {
       setBookletOwned(true);
       setBookletPage(0);
@@ -153,6 +184,36 @@ export function ExhibitionApp() {
     }
     setBookletOpen((open) => !open);
   }
+
+  function onOpenArtBooklet(artworkId: string) {
+    const art =
+      artworks.find((a) => a.id === artworkId) ||
+      catalog?.artworks.find((a) => a.id === artworkId);
+    if (!art) return;
+    setSelected(art);
+    setBookletOpen(false);
+    if (artBookletOpen && artBookletId === artworkId) {
+      setArtBookletOpen(false);
+      return;
+    }
+    setArtBookletId(artworkId);
+    setArtBookletPage(0);
+    setArtBookletOpen(true);
+  }
+
+  function onOpenFullscreen(art: Artwork) {
+    setArtBookletOpen(false);
+    openArtworkFullscreen(art, setImageOverlay, setVideoOverlay);
+  }
+
+  const artBookletPages = useMemo(() => {
+    if (!artBookletId) return [];
+    const art =
+      artworks.find((a) => a.id === artBookletId) ||
+      catalog?.artworks.find((a) => a.id === artBookletId);
+    if (!art) return [];
+    return normalizeArtworkBooklet(art);
+  }, [artBookletId, artworks, catalog]);
 
   if (error) {
     return (
@@ -238,14 +299,14 @@ export function ExhibitionApp() {
         ))}
       </div>
 
-      {bookletOwned ? (
+      {bookletOwned || artBookletOpen ? (
         <div className="pointer-events-none absolute bottom-14 start-1/2 z-20 -translate-x-1/2">
           <button
             type="button"
             className="pointer-events-auto btn btn-solid !py-2 !px-5"
             onClick={postToggleBooklet}
           >
-            {copy.map}
+            {artBookletOpen ? copy.booklet : copy.map}
           </button>
         </div>
       ) : null}
@@ -286,15 +347,18 @@ export function ExhibitionApp() {
         previewLite={previewLite}
         bookletOwned={bookletOwned}
         bookletRaised={bookletOpen}
-        freezeLookSelection={infoOpen || !!imageOverlay || !!videoOverlay}
+        freezeLookSelection={
+          artBookletOpen || !!imageOverlay || !!videoOverlay
+        }
         onSelect={setSelected}
         onOpenImage={(url) => setImageOverlay(url)}
         onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
-        onOpenInfo={() => setInfoOpen(true)}
+        onOpenFullscreen={onOpenFullscreen}
+        onOpenArtBooklet={onOpenArtBooklet}
         onBookletInteract={onBookletInteract}
       />
 
-      {bookletOpen && bookletOwned ? (
+      {bookletOpen && bookletOwned && !artBookletOpen ? (
         <BookletOverlay
           pages={settings.entrance.booklet}
           pageIndex={bookletPage}
@@ -305,7 +369,23 @@ export function ExhibitionApp() {
         />
       ) : null}
 
-      {selected && !infoOpen && !imageOverlay && !videoOverlay ? (
+      {artBookletOpen && artBookletPages.length > 0 ? (
+        <BookletOverlay
+          pages={artBookletPages}
+          pageIndex={artBookletPage}
+          locale={locale}
+          closeLabel={copy.close}
+          anchor="below-art"
+          titleLabel={copy.booklet}
+          onClose={() => setArtBookletOpen(false)}
+          onPage={setArtBookletPage}
+        />
+      ) : null}
+
+      {selected &&
+      !artBookletOpen &&
+      !imageOverlay &&
+      !videoOverlay ? (
         <div className="pointer-events-none absolute bottom-24 start-1/2 z-20 flex w-[min(92vw,28rem)] -translate-x-1/2 flex-col items-center gap-2 sm:bottom-8">
           <p className="rounded bg-black/55 px-3 py-1.5 text-center font-[family-name:var(--font-display)] text-sm font-semibold tracking-wide text-white/90">
             {pickLocalized(selected.title, locale)}
@@ -314,43 +394,16 @@ export function ExhibitionApp() {
             <button
               type="button"
               className="btn btn-solid !py-2"
-              onClick={() => setInfoOpen(true)}
+              onClick={() => onOpenFullscreen(selected)}
             >
-              {copy.info}
+              {copy.view}
             </button>
-            {selected.type === "video" && selected.urlVideo ? (
-              <button
-                type="button"
-                className="btn !py-2"
-                onClick={() =>
-                  setVideoOverlay({
-                    url: selected.urlVideo,
-                    poster: selected.urlPoster,
-                  })
-                }
-              >
-                ▶
-              </button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {infoOpen && selected ? (
-        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">
-          <div className="max-h-[70vh] w-full max-w-lg overflow-y-auto border border-[var(--line)] bg-[#12100e] p-6">
-            <h2 className="mb-3 font-[family-name:var(--font-display)] text-2xl font-bold">
-              {pickLocalized(selected.title, locale)}
-            </h2>
-            <p className="whitespace-pre-wrap leading-relaxed text-[var(--paper-dim)]">
-              {pickLocalized(selected.text, locale)}
-            </p>
             <button
               type="button"
-              className="btn mt-6"
-              onClick={() => setInfoOpen(false)}
+              className="btn !py-2"
+              onClick={() => onOpenArtBooklet(selected.id)}
             >
-              {copy.close}
+              {copy.booklet}
             </button>
           </div>
         </div>

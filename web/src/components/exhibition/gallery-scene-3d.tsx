@@ -29,6 +29,7 @@ import {
   heldBookletLocalPose,
   isWithinPedestalReach,
   resolveBookletKeyAction,
+  resolveExhibitionQAction,
 } from "@/lib/gallery-three/booklet-interact";
 import {
   ARTWORK_INTERACT_DISTANCE,
@@ -63,7 +64,10 @@ type Props = {
   onSelect: (art: Artwork | null) => void;
   onOpenImage: (url: string) => void;
   onOpenVideo: (url: string, poster?: string) => void;
-  onOpenInfo: () => void;
+  /** E / mobile tap: fullscreen art modal (image or video). */
+  onOpenFullscreen: (art: Artwork) => void;
+  /** Q while focused on art: raise that artwork's booklet. */
+  onOpenArtBooklet: (artworkId: string) => void;
   onBookletInteract?: (action: BookletAction) => void;
 };
 
@@ -78,7 +82,8 @@ export function GalleryScene3D({
   onSelect,
   onOpenImage,
   onOpenVideo,
-  onOpenInfo,
+  onOpenFullscreen,
+  onOpenArtBooklet,
   onBookletInteract,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -100,14 +105,16 @@ export function GalleryScene3D({
     onSelect,
     onOpenImage,
     onOpenVideo,
-    onOpenInfo,
+    onOpenFullscreen,
+    onOpenArtBooklet,
     onBookletInteract,
   });
   callbacks.current = {
     onSelect,
     onOpenImage,
     onOpenVideo,
-    onOpenInfo,
+    onOpenFullscreen,
+    onOpenArtBooklet,
     onBookletInteract,
   };
 
@@ -343,22 +350,37 @@ export function GalleryScene3D({
       callbacks.current.onBookletInteract?.(action);
     }
 
+    const raycaster = new THREE.Raycaster();
+    raycaster.far = ARTWORK_INTERACT_DISTANCE;
+    const pointer = new THREE.Vector2();
+    let lookFocusedId: string | null = null;
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
       keys.add(e.code);
-      if (e.code === "KeyE") callbacks.current.onOpenInfo();
+      if (e.code === "KeyE") {
+        const id = lookFocusedId;
+        if (!id) return;
+        const art = artworkById.get(id);
+        if (art) callbacks.current.onOpenFullscreen(art);
+      }
       if (e.code === "KeyQ") {
-        const action = resolveBookletKeyAction({
+        const q = resolveExhibitionQAction({
+          focusedArtworkId: lookFocusedId,
           owned: bookletOwnedRef.current,
           nearPedestal: nearPedestal(),
         });
-        if (action) {
-          e.preventDefault();
-          fireBooklet(action);
+        if (!q) return;
+        e.preventDefault();
+        if (q.kind === "art-booklet") {
+          callbacks.current.onOpenArtBooklet(q.artworkId);
+          return;
         }
+        fireBooklet(q.action);
       }
       if (e.code === "Escape") {
         document.exitPointerLock?.();
+        lookFocusedId = null;
         callbacks.current.onSelect(null);
       }
     };
@@ -382,11 +404,6 @@ export function GalleryScene3D({
       euler.x = Math.max(-1.2, Math.min(1.2, euler.x));
       camera.quaternion.setFromEuler(euler);
     };
-
-    const raycaster = new THREE.Raycaster();
-    raycaster.far = ARTWORK_INTERACT_DISTANCE;
-    const pointer = new THREE.Vector2();
-    let lookFocusedId: string | null = null;
 
     function setPointerFromEvent(clientX?: number, clientY?: number) {
       if (
@@ -441,21 +458,17 @@ export function GalleryScene3D({
         return r.artworkId === art.id;
       })?.object;
 
-      if (
-        hitObj?.userData.isHeadphones ||
-        (art.type === "video" && !isDouble)
-      ) {
-        if (art.urlVideo) {
-          callbacks.current.onOpenVideo(art.urlVideo, art.urlPoster);
-          return;
-        }
-      }
-
       lookFocusedId = art.id;
       callbacks.current.onSelect(art);
 
-      if (isDouble && art.type === "image") {
-        callbacks.current.onOpenImage(art.urlFull || art.urlWall);
+      // Mobile tap / double-click / headphones → fullscreen art modal (same as E).
+      if (
+        isTouch ||
+        isDouble ||
+        hitObj?.userData.isHeadphones ||
+        (art.type === "video" && !isDouble)
+      ) {
+        callbacks.current.onOpenFullscreen(art);
       }
     }
 
@@ -785,7 +798,7 @@ export function GalleryScene3D({
         Click pedestal or press Q to take booklet
       </p>
       <p className="pointer-events-none absolute bottom-3 end-3 z-20 hidden font-[family-name:var(--font-ui)] text-[0.65rem] text-white/40 md:block">
-        WASD · mouse look · Q raise/lower booklet · click pedestal · E info
+        WASD · mouse look · E fullscreen · Q art/entrance booklet · click pedestal
       </p>
     </div>
   );

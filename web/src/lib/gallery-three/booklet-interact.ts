@@ -26,6 +26,30 @@ export function resolveBookletKeyAction(opts: {
   return null;
 }
 
+export type ExhibitionQAction =
+  | { kind: "art-booklet"; artworkId: string }
+  | { kind: "entrance"; action: "pickup" | "toggle" };
+
+/**
+ * Q routing: focused/near art opens that piece's booklet;
+ * otherwise foyer pedestal pickup/toggle.
+ */
+export function resolveExhibitionQAction(opts: {
+  focusedArtworkId: string | null;
+  owned: boolean;
+  nearPedestal: boolean;
+}): ExhibitionQAction | null {
+  if (opts.focusedArtworkId) {
+    return { kind: "art-booklet", artworkId: opts.focusedArtworkId };
+  }
+  const action = resolveBookletKeyAction({
+    owned: opts.owned,
+    nearPedestal: opts.nearPedestal,
+  });
+  if (!action) return null;
+  return { kind: "entrance", action };
+}
+
 /** Camera-local offset for the held map quad (meters). */
 export type HeldBookletLocalPose = {
   position: { x: number; y: number; z: number };
