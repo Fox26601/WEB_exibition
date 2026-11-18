@@ -61,7 +61,8 @@ function tryFanConvex(verts: Vec2[]): number[] | null {
   for (let i = 1; i < verts.length - 1; i++) {
     tris.push(0, i, i + 1);
   }
-  if (area < 0) flipWinding(tris);
+  // Fan order follows polygon winding; force +Y face normals for Three Y-up.
+  ensureNormalsFaceUp(verts, tris);
   return tris;
 }
 
@@ -122,10 +123,15 @@ export function triangulatePolygonXZ(verts: Vec2[]): number[] | null {
   return tris;
 }
 
+/**
+ * Force triangle winding so Mesh normals point +Y (camera above the floor).
+ * In Y-up Three.js, ab×ac has ny = −((bx−ax)(cz−az) − (bz−az)(cx−ax)), so a
+ * positive XZ cross means the face points down — flip those tris.
+ */
 export function ensureNormalsFaceUp(verts: Vec2[], tris: number[]): void {
   if (tris.length < 3) return;
   const cross = crossXZ(verts[tris[0]], verts[tris[1]], verts[tris[2]]);
-  if (cross < 0) flipWinding(tris);
+  if (cross > 0) flipWinding(tris);
 }
 
 export function computeAabbXZ(

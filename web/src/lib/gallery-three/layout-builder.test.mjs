@@ -155,4 +155,64 @@ describe("buildLayoutScene floors", () => {
     floorMat.dispose();
     wallMat.dispose();
   });
+
+  it("multi-room floor colors face +Y so FrontSide shows each tint", () => {
+    const layout = normalizeLayout({
+      rooms: [
+        {
+          id: "hex",
+          shape: "hexagon",
+          transform: { x: 0, z: 4, rotation: 0, scaleX: 3, scaleZ: 3 },
+          floorColor: "#0433ff",
+          wallColor: "#5a6868",
+        },
+        {
+          id: "tri",
+          shape: "triangle",
+          transform: { x: 6, z: 4, rotation: 0, scaleX: 3, scaleZ: 3 },
+          floorColor: "#c4bc00",
+          wallColor: "#0433ff",
+        },
+        {
+          id: "sq",
+          shape: "square",
+          transform: { x: -6, z: 4, rotation: 0, scaleX: 3, scaleZ: 3 },
+          floorColor: "#adb0b8",
+          wallColor: "#5a6068",
+        },
+      ],
+      connections: [],
+      placements: [],
+    });
+    const floorMat = makeFloorMaterial();
+    const wallMat = makeWallMaterial();
+    const built = buildLayoutScene(layout, {}, { floorMat, wallMat });
+
+    const expected = {
+      Floor_hex: 0x0433ff,
+      Floor_tri: 0xc4bc00,
+      Floor_sq: 0xadb0b8,
+    };
+    for (const [name, hex] of Object.entries(expected)) {
+      const mesh = built.root.getObjectByName(name);
+      assert.ok(mesh?.isMesh, name);
+      assert.equal(mesh.material.color.getHex(), hex, name);
+      assert.notEqual(mesh.material, floorMat, `${name} not foyer default`);
+      const n = mesh.geometry.getAttribute("normal");
+      assert.ok(n && n.getY(0) > 0.5, `${name} normal.y=${n?.getY(0)}`);
+    }
+
+    // Triangle walls (incl. doorway lintels) keep wallColor — not floor tint.
+    const triRoot = built.root.getObjectByName("Room_tri");
+    assert.ok(triRoot);
+    triRoot.traverse((obj) => {
+      const mesh = /** @type {THREE.Mesh} */ (obj);
+      if (!mesh.isMesh || mesh.name.startsWith("Floor_")) return;
+      assert.equal(mesh.material.color.getHex(), 0x0433ff);
+    });
+
+    built.dispose();
+    floorMat.dispose();
+    wallMat.dispose();
+  });
 });
