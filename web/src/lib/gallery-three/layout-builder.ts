@@ -99,7 +99,7 @@ export type LayoutBuildResult = {
 
 /**
  * Floors + wall-plan slabs only. Open sky: no ceiling lid/skirt.
- * Corner joints come from slab miter overlap (no junction posts).
+ * Corner joints: butt spans (WALL_CORNER_JOIN=0) — exact lengths, no posts/fat miters.
  */
 export function buildLayoutScene(
   layoutInput: GalleryLayout,

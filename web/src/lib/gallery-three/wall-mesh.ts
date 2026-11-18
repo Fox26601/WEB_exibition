@@ -4,22 +4,23 @@ import {
   DOOR_CLEAR_HEIGHT,
   FLOOR_Y,
   GALLERY_HEIGHT,
-  WALL_CORNER_MITER,
+  WALL_CORNER_JOIN,
   WALL_PLANE_BIAS,
   WALL_THICKNESS,
 } from "./constants";
 import { inwardNormal, lerpVec2, roomCentroid } from "./room-geometry";
 
-export type WallSlabMiter = {
-  /** Extend past endpoint A along the edge. Default true. */
-  miterA?: boolean;
-  /** Extend past endpoint B along the edge. Default true. */
-  miterB?: boolean;
+export type WallSlabJoins = {
+  /** Meters to extend past endpoint A (vertex join). */
+  joinA?: number;
+  /** Meters to extend past endpoint B (vertex join). */
+  joinB?: number;
 };
 
 /**
  * Oriented wall slab along edge AB (Unity RoomBuilder parity): thickness on
- * local X, length on local Z, overlapped at corners via miter extension.
+ * local X, length on local Z. Vertex ends get a half-thickness join pad so
+ * adjacent outer faces meet; mid/door ends stay flush (join = 0).
  */
 export function addWallSlab(
   parent: THREE.Object3D,
@@ -29,7 +30,7 @@ export function addWallSlab(
   centroid: Vec2,
   height: number = GALLERY_HEIGHT - FLOOR_Y,
   bottomY = FLOOR_Y,
-  miter: WallSlabMiter = {},
+  joins: WallSlabJoins = {},
 ): void {
   const dx = b.x - a.x;
   const dz = b.z - a.z;
@@ -37,13 +38,14 @@ export function addWallSlab(
   if (len < 0.02) return;
   const ux = dx / len;
   const uz = dz / len;
-  const maxMiter = Math.min(WALL_CORNER_MITER, len * 0.45);
-  const miterA = miter.miterA === false ? 0 : maxMiter;
-  const miterB = miter.miterB === false ? 0 : maxMiter;
-  const slabLen = len + miterA + miterB;
-  const midShift = (miterB - miterA) * 0.5;
-  const midX = (a.x + b.x) * 0.5 + ux * midShift;
-  const midZ = (a.z + b.z) * 0.5 + uz * midShift;
+  const joinA = Math.max(0, joins.joinA ?? 0);
+  const joinB = Math.max(0, joins.joinB ?? 0);
+  const maxJoin = Math.min(WALL_CORNER_JOIN, len * 0.45);
+  const padA = Math.min(joinA, maxJoin);
+  const padB = Math.min(joinB, maxJoin);
+  const slabLen = len + padA + padB;
+  const midX = (a.x + b.x) * 0.5 + ux * ((padB - padA) * 0.5);
+  const midZ = (a.z + b.z) * 0.5 + uz * ((padB - padA) * 0.5);
   const inward = inwardNormal(a, b, centroid);
 
   let yaw = Math.atan2(dx, dz);
@@ -81,6 +83,22 @@ export function addWallQuad(
   addWallSlab(parent, a, b, material, centroid, height, bottomY);
 }
 
+export type WallEdgeJoins = {
+  cornerA?: boolean;
+  cornerB?: boolean;
+  /** Explicit join pads from LayoutWallPlan (meters). */
+  joinA?: number;
+  joinB?: number;
+};
+
+function resolveJoin(
+  corner: boolean | undefined,
+  explicit: number | undefined,
+): number {
+  if (explicit != null && explicit >= 0) return explicit;
+  return corner ? WALL_CORNER_JOIN : 0;
+}
+
 export function buildWallAlongEdge(
   parent: THREE.Object3D,
   a: Vec2,
@@ -88,11 +106,18 @@ export function buildWallAlongEdge(
   doorwayWidth: number,
   wallMat: THREE.Material,
   verts: Vec2[],
+  joins: WallEdgeJoins = {},
 ): void {
   const centroid = roomCentroid(verts) ?? lerpVec2(a, b, 0.5);
   const len = Math.hypot(b.x - a.x, b.z - a.z);
+  const joinA = resolveJoin(joins.cornerA, joins.joinA);
+  const joinB = resolveJoin(joins.cornerB, joins.joinB);
+
   if (doorwayWidth <= 0.01 || doorwayWidth >= len - 0.2) {
-    addWallSlab(parent, a, b, wallMat, centroid);
+    addWallSlab(parent, a, b, wallMat, centroid, GALLERY_HEIGHT - FLOOR_Y, FLOOR_Y, {
+      joinA,
+      joinB,
+    });
     return;
   }
 
@@ -108,14 +133,14 @@ export function buildWallAlongEdge(
       centroid,
       lintelH,
       lintelBottom,
-      { miterA: false, miterB: false },
+      { joinA: 0, joinB: 0 },
     );
     return;
   }
 
   const t1L = halfRemain / len;
   const t0R = 1 - t1L;
-  // Outer ends keep miter for corner joints; doorway ends stay flush (no jamb posts).
+  // Outer ends: half-thickness join; doorway ends stay flush (no jamb posts).
   addWallSlab(
     parent,
     lerpVec2(a, b, 0),
@@ -124,7 +149,7 @@ export function buildWallAlongEdge(
     centroid,
     GALLERY_HEIGHT - FLOOR_Y,
     FLOOR_Y,
-    { miterA: true, miterB: false },
+    { joinA, joinB: 0 },
   );
   addWallSlab(
     parent,
@@ -134,7 +159,7 @@ export function buildWallAlongEdge(
     centroid,
     GALLERY_HEIGHT - FLOOR_Y,
     FLOOR_Y,
-    { miterA: false, miterB: true },
+    { joinA: 0, joinB },
   );
   addWallSlab(
     parent,
@@ -144,6 +169,6 @@ export function buildWallAlongEdge(
     centroid,
     lintelH,
     lintelBottom,
-    { miterA: false, miterB: false },
+    { joinA: 0, joinB: 0 },
   );
 }

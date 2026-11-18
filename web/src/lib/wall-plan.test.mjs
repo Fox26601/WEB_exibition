@@ -30,6 +30,32 @@ test("single room: one full exterior span per edge", () => {
   assert.ok(spans[0].t0 <= 0.01 && spans[0].t1 >= 0.99);
 });
 
+test("full-edge segments use butt join pads (no overshoot)", async () => {
+  const { WALL_CORNER_JOIN } = await import("./gallery-three/constants.ts");
+  assert.equal(WALL_CORNER_JOIN, 0);
+  const layout = normalizeLayout({
+    rooms: [
+      {
+        id: "r1",
+        vertices: [
+          { x: 0, z: 0 },
+          { x: 4, z: 0 },
+          { x: 4, z: 4 },
+          { x: 0, z: 4 },
+        ],
+      },
+    ],
+    connections: [],
+    placements: [],
+    entrance: { x: 0, z: -1, rotation: 0 },
+  });
+  const plan = buildLayoutWallPlan(layout);
+  const full = plan.segments.find((s) => s.roomId === "r1" && s.edgeIndex === 0);
+  assert.ok(full);
+  assert.equal(full.join0, 0);
+  assert.equal(full.join1, 0);
+});
+
 test("painting on interior edge gets snap_surface coverage in plan", () => {
   const layout = normalizeLayout({
     rooms: [

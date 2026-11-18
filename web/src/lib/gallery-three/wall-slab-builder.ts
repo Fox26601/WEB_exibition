@@ -7,6 +7,7 @@ import { buildWallAlongEdge } from "./wall-mesh";
 
 /**
  * Instantiate Three.js wall meshes from a domain LayoutWallPlan.
+ * Segment join pads come from the plan (vertex T/2); doorway ends stay flush.
  */
 export function buildWallMeshesFromPlan(
   roomRoots: Map<string, THREE.Object3D>,
@@ -29,6 +30,10 @@ export function buildWallMeshesFromPlan(
       seg.doorwayWidth,
       wallMat,
       verts,
+      {
+        joinA: seg.join0,
+        joinB: seg.join1,
+      },
     );
   }
 }
