@@ -1,79 +1,23 @@
 import * as THREE from "three";
 import type { GalleryLayout } from "@/lib/catalog-types";
 import { layoutIsEmpty, normalizeLayout } from "@/lib/catalog-types";
-import {
-  distPointToSegment,
-  edgePoints,
-  pointInPolygon,
-  roomWorldVertices,
-  type Vec2,
-} from "@/lib/layout-geometry";
+import { roomWorldVertices, type Vec2 } from "@/lib/layout-geometry";
 import {
   layoutOverlapRooms,
   shouldKeepFloorTriangle,
-  wallSpansForEdge,
-  wallSpansForEdgeWithPlacements,
-  type WallSpan,
 } from "@/lib/room-overlap-clip";
 import {
   computeAabbXZ,
   triangulatePolygonXZ,
 } from "@/lib/polygon-floor";
+import { buildLayoutWallPlan } from "@/lib/wall-plan";
 import {
-  DEFAULT_DOOR_WIDTH,
   FLOOR_COLOR,
   FLOOR_THICKNESS,
   FLOOR_Y,
-  GALLERY_HEIGHT,
   WALL_COLOR,
-  WALL_THICKNESS,
 } from "./constants";
-import { lerpVec2, roomCentroid } from "./room-geometry";
-import { addCornerPosts, buildWallAlongEdge } from "./wall-mesh";
-
-/** If overlap clip removed all spans, still build when part of the edge faces open layout. */
-function shouldBuildFullEdgeWhenSpansEmpty(
-  roomId: string,
-  a: Vec2,
-  b: Vec2,
-  overlapRooms: ReturnType<typeof layoutOverlapRooms>,
-): boolean {
-  for (const t of [0.12, 0.5, 0.88]) {
-    const p = lerpVec2(a, b, t);
-    let inOtherInterior = false;
-    for (const other of overlapRooms) {
-      if (other.id === roomId) continue;
-      if (!pointInPolygon(p, other.verts)) continue;
-      const nearBoundary = other.verts.some((_, j) => {
-        const c = other.verts[j];
-        const d = other.verts[(j + 1) % other.verts.length];
-        return distPointToSegment(p, c, d).dist < 0.06;
-      });
-      if (!nearBoundary) {
-        inOtherInterior = true;
-        break;
-      }
-    }
-    if (!inOtherInterior) return true;
-  }
-  return false;
-}
-
-function findDoorwayWidth(
-  layout: GalleryLayout,
-  roomId: string,
-  edgeIndex: number,
-): number {
-  for (const c of layout.connections) {
-    if (c.roomA === roomId && c.edgeA === edgeIndex) {
-      return Math.max(0.9, c.doorwayWidth);
-    }
-    if (c.roomB === roomId && c.edgeB === edgeIndex) {
-      return Math.max(0.9, c.doorwayWidth);
-    }
-  }
-  return 0;
-}
+import { buildWallMeshesFromPlan } from "./wall-slab-builder";
 
 export function makeSurfaceMaterial(
   color: number,
@@ -158,12 +102,14 @@ export function buildLayoutScene(
   textures: { floor?: THREE.Texture; wall?: THREE.Texture },
 ): LayoutBuildResult {
   const layout = normalizeLayout(layoutInput);
+  const plan = buildLayoutWallPlan(layout);
   const root = new THREE.Group();
   root.name = "GalleryLayout";
 
   const floorMat = makeSurfaceMaterial(FLOOR_COLOR, textures.floor);
   const wallMat = makeSurfaceMaterial(WALL_COLOR, textures.wall);
   const overlapRooms = layoutOverlapRooms(layout);
+  const roomRoots = new Map<string, THREE.Object3D>();
 
   for (const room of layout.rooms) {
     if (!room?.id) continue;
@@ -173,55 +119,11 @@ export function buildLayoutScene(
     if (verts.length < 3) continue;
 
     buildRoomFloor(roomRoot, room.id, verts, overlapRooms, floorMat);
-
-    for (let i = 0; i < verts.length; i++) {
-      const [a, b] = edgePoints(verts, i);
-      const doorway = findDoorwayWidth(layout, room.id, i);
-      const spans =
-        overlapRooms.length > 1
-          ? wallSpansForEdge(overlapRooms, room.id, i)
-          : null;
-
-      if (spans && spans.length > 0) {
-        const buildSpans = wallSpansForEdgeWithPlacements(layout, room.id, i);
-        for (const span of buildSpans) {
-          const aSpan = lerpVec2(a, b, span.t0);
-          const bSpan = lerpVec2(a, b, span.t1);
-          let spanDoor = 0;
-          if (doorway > 0.01 && span.t0 <= 0.5 && span.t1 >= 0.5) {
-            spanDoor = Math.min(
-              doorway,
-              Math.hypot(bSpan.x - aSpan.x, bSpan.z - aSpan.z) - 0.2,
-            );
-          }
-          buildWallAlongEdge(roomRoot, aSpan, bSpan, spanDoor, wallMat, verts);
-        }
-      } else if (spans && spans.length === 0) {
-        if (
-          shouldBuildFullEdgeWhenSpansEmpty(room.id, a, b, overlapRooms)
-        ) {
-          const door =
-            doorway > 0.01
-              ? doorway
-              : isEntranceEdgeFallback(a, b, verts)
-                ? DEFAULT_DOOR_WIDTH
-                : 0;
-          buildWallAlongEdge(roomRoot, a, b, door, wallMat, verts);
-        }
-        continue;
-      } else {
-        const door =
-          doorway > 0.01 ? doorway : isEntranceEdgeFallback(a, b, verts) ? DEFAULT_DOOR_WIDTH : 0;
-        buildWallAlongEdge(roomRoot, a, b, door, wallMat, verts);
-      }
-    }
-
-    addCornerPosts(roomRoot, verts, wallMat);
-
+    roomRoots.set(room.id, roomRoot);
     root.add(roomRoot);
   }
 
-  addLayoutJunctionPosts(root, layout, wallMat);
+  buildWallMeshesFromPlan(roomRoots, plan, layout, wallMat);
 
   return {
     root,
@@ -236,43 +138,6 @@ export function buildLayoutScene(
       wallMat.dispose();
     },
   };
-}
-
-/** Shared vertices across rooms — extra mass closes overlap dihedral gaps. */
-function addLayoutJunctionPosts(
-  parent: THREE.Object3D,
-  layout: GalleryLayout,
-  wallMat: THREE.Material,
-): void {
-  const pts: Vec2[] = [];
-  const merge = 0.1;
-  for (const room of layout.rooms) {
-    for (const v of roomWorldVertices(room)) {
-      if (pts.some((p) => Math.hypot(p.x - v.x, p.z - v.z) < merge)) continue;
-      pts.push(v);
-    }
-  }
-  const postH = GALLERY_HEIGHT - FLOOR_Y;
-  const postY = FLOOR_Y + postH * 0.5;
-  const size = WALL_THICKNESS * 2.85;
-  for (const p of pts) {
-    const post = new THREE.Mesh(
-      new THREE.BoxGeometry(size, postH, size),
-      wallMat,
-    );
-    post.position.set(p.x, postY, p.z);
-    parent.add(post);
-  }
-}
-
-function isEntranceEdgeFallback(a: Vec2, b: Vec2, verts: Vec2[]): boolean {
-  let minZ = Infinity;
-  for (const v of verts) minZ = Math.min(minZ, v.z);
-  const midZ = (a.z + b.z) * 0.5;
-  if (midZ > minZ + 0.35) return false;
-  const dx = b.x - a.x;
-  const dz = b.z - a.z;
-  return Math.abs(dx) >= Math.abs(dz) * 0.6;
 }
 
 export function layoutHasRooms(layout?: GalleryLayout | null): boolean {

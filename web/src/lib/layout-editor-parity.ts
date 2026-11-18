@@ -13,10 +13,11 @@ import {
   editorSvgToWorld,
   worldToEditorSvg,
 } from "./layout-editor-projection";
+import type { WallSpan } from "./room-overlap-clip";
 import {
-  wallSpansForEdgeWithPlacements,
-  type WallSpan,
-} from "./room-overlap-clip";
+  buildLayoutWallPlan,
+  wallPlanSpansForEdge,
+} from "./wall-plan";
 import { paintingPoseFromPlacement } from "./gallery-three/painting-pose";
 import { WALL_INSET } from "./gallery-three/constants";
 import { inwardNormal, roomCentroid } from "./gallery-three/room-geometry";
@@ -40,8 +41,9 @@ function tOnVisibleWall(
 ): boolean {
   if (placement.kind !== "painting") return true;
   if (placement.wallEdgeIndex == null || placement.tAlongEdge == null) return false;
-  const spans = wallSpansForEdgeWithPlacements(
-    layout,
+  const plan = buildLayoutWallPlan(layout);
+  const spans = wallPlanSpansForEdge(
+    plan,
     placement.roomId,
     placement.wallEdgeIndex,
   );

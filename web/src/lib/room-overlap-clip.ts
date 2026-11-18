@@ -1,8 +1,4 @@
-import type {
-  ArtworkPlacement,
-  GalleryLayout,
-  GalleryRoom,
-} from "./catalog-types";
+import type { GalleryLayout, GalleryRoom } from "./catalog-types";
 import { normalizeLayout } from "./catalog-types";
 import {
   edgePoints,
@@ -144,55 +140,6 @@ function isDuplicateCoplanarWall(
 }
 
 /** Exterior wall intervals along one room edge (omit spans inside other rooms). */
-function mergePlacementPads(
-  layout: GalleryLayout,
-  roomId: string,
-  edgeIndex: number,
-  spans: WallSpan[],
-  edgeLen: number,
-): WallSpan[] {
-  const placements = layout.placements.filter(
-    (p): p is ArtworkPlacement & { tAlongEdge: number } =>
-      p.kind === "painting" &&
-      p.roomId === roomId &&
-      p.wallEdgeIndex === edgeIndex &&
-      p.tAlongEdge != null,
-  );
-  if (placements.length === 0) return spans;
-  const pad = Math.min(0.38, 1.1 / (edgeLen || 1));
-  const out: WallSpan[] = spans.map((s) => ({ ...s }));
-  for (const p of placements) {
-    const t = Math.max(0, Math.min(1, p.tAlongEdge));
-    if (out.some((s) => t >= s.t0 - 1e-6 && t <= s.t1 + 1e-6)) continue;
-    out.push({ t0: Math.max(0, t - pad), t1: Math.min(1, t + pad) });
-  }
-  out.sort((x, y) => x.t0 - y.t0);
-  const merged: WallSpan[] = [];
-  for (const s of out) {
-    const last = merged[merged.length - 1];
-    if (last && s.t0 <= last.t1 + 1e-6) {
-      last.t1 = Math.max(last.t1, s.t1);
-    } else {
-      merged.push({ ...s });
-    }
-  }
-  return merged.length ? merged : out;
-}
-
-export function wallSpansForEdgeWithPlacements(
-  layout: GalleryLayout,
-  roomId: string,
-  edgeIndex: number,
-): WallSpan[] {
-  const overlap = layoutOverlapRooms(layout);
-  const room = overlap.find((r) => r.id === roomId);
-  if (!room) return [];
-  const [a, b] = edgePoints(room.verts, edgeIndex);
-  const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
-  const spans = wallSpansForEdge(overlap, roomId, edgeIndex);
-  return mergePlacementPads(layout, roomId, edgeIndex, spans, len);
-}
-
 export function wallSpansForEdge(
   rooms: OverlapRoom[],
   roomId: string,
