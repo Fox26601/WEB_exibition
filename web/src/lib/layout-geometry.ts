@@ -11,6 +11,7 @@ import {
   DEFAULT_ENTRANCE_POSE,
   ENTRANCE_ROOM_ID,
 } from "./catalog-types";
+import { DEFAULT_DOOR_WIDTH } from "./gallery-three/constants";
 
 export type Vec2 = { x: number; z: number };
 
@@ -636,19 +637,20 @@ export function recomputeConnections(rooms: GalleryRoom[]): RoomConnection[] {
       seen.add(key);
       const toEntrance =
         a.roomId === ENTRANCE_ROOM_ID || b.roomId === ENTRANCE_ROOM_ID;
-      const width = toEntrance
-        ? ENTRANCE_WIDTH
-        : Math.min(
-            1.4,
-            edgeLength(a.a, a.b) * 0.35,
-            edgeLength(b.a, b.b) * 0.35,
-          );
+      const edgeALen = edgeLength(a.a, a.b);
+      const edgeBLen = edgeLength(b.a, b.b);
+      const shorter = Math.min(edgeALen, edgeBLen);
+      // Wide inter-room passages (~65% of shared edge, floored by DEFAULT_DOOR_WIDTH).
+      const roomDoor = Math.min(
+        Math.max(DEFAULT_DOOR_WIDTH, shorter * 0.65),
+        Math.max(0.6, shorter - 0.35),
+      );
       connections.push({
         roomA: a.roomId,
         roomB: b.roomId,
         edgeA: a.edgeIndex,
         edgeB: b.edgeIndex,
-        doorwayWidth: toEntrance ? ENTRANCE_WIDTH : Math.max(0.9, width),
+        doorwayWidth: toEntrance ? ENTRANCE_WIDTH : roomDoor,
       });
     }
   }

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { Vec2 } from "@/lib/layout-geometry";
 import {
+  DOOR_CLEAR_HEIGHT,
   FLOOR_Y,
   GALLERY_HEIGHT,
   WALL_CORNER_MITER,
@@ -8,6 +9,13 @@ import {
   WALL_THICKNESS,
 } from "./constants";
 import { inwardNormal, lerpVec2, roomCentroid } from "./room-geometry";
+
+export type WallSlabMiter = {
+  /** Extend past endpoint A along the edge. Default true. */
+  miterA?: boolean;
+  /** Extend past endpoint B along the edge. Default true. */
+  miterB?: boolean;
+};
 
 /**
  * Oriented wall slab along edge AB (Unity RoomBuilder parity): thickness on
@@ -21,6 +29,7 @@ export function addWallSlab(
   centroid: Vec2,
   height: number = GALLERY_HEIGHT - FLOOR_Y,
   bottomY = FLOOR_Y,
+  miter: WallSlabMiter = {},
 ): void {
   const dx = b.x - a.x;
   const dz = b.z - a.z;
@@ -28,10 +37,13 @@ export function addWallSlab(
   if (len < 0.02) return;
   const ux = dx / len;
   const uz = dz / len;
-  const miter = Math.min(WALL_CORNER_MITER, len * 0.45);
-  const slabLen = len + 2 * miter;
-  const midX = (a.x + b.x) * 0.5;
-  const midZ = (a.z + b.z) * 0.5;
+  const maxMiter = Math.min(WALL_CORNER_MITER, len * 0.45);
+  const miterA = miter.miterA === false ? 0 : maxMiter;
+  const miterB = miter.miterB === false ? 0 : maxMiter;
+  const slabLen = len + miterA + miterB;
+  const midShift = (miterB - miterA) * 0.5;
+  const midX = (a.x + b.x) * 0.5 + ux * midShift;
+  const midZ = (a.z + b.z) * 0.5 + uz * midShift;
   const inward = inwardNormal(a, b, centroid);
 
   let yaw = Math.atan2(dx, dz);
@@ -54,39 +66,6 @@ export function addWallSlab(
   );
   group.add(slab);
   parent.add(group);
-}
-
-/** Vertical column at polygon vertices so slab walls meet without sky slivers. */
-export function addCornerPosts(
-  parent: THREE.Object3D,
-  verts: Vec2[],
-  material: THREE.Material,
-): void {
-  const centroid = roomCentroid(verts);
-  if (!centroid || verts.length < 3) return;
-  const n = verts.length;
-  const postY = FLOOR_Y + GALLERY_HEIGHT * 0.5;
-  const postH = GALLERY_HEIGHT - FLOOR_Y;
-  for (let i = 0; i < n; i++) {
-    const prev = verts[(i - 1 + n) % n];
-    const cur = verts[i];
-    const next = verts[(i + 1) % n];
-    const inPrev = inwardNormal(prev, cur, centroid);
-    const inNext = inwardNormal(cur, next, centroid);
-    let bx = inPrev.x + inNext.x;
-    let bz = inPrev.z + inNext.z;
-    const blen = Math.hypot(bx, bz);
-    if (blen < 1e-6) continue;
-    bx /= blen;
-    bz /= blen;
-    const post = new THREE.Mesh(
-      new THREE.BoxGeometry(WALL_THICKNESS * 2.4, postH, WALL_THICKNESS * 2.4),
-      material,
-    );
-    post.position.set(cur.x, postY, cur.z);
-    post.rotation.y = Math.atan2(bx, bz);
-    parent.add(post);
-  }
 }
 
 /** @deprecated use addWallSlab — kept for tests comparing legacy quads */
@@ -117,37 +96,54 @@ export function buildWallAlongEdge(
     return;
   }
 
-  const halfDoor = doorwayWidth * 0.5;
   const halfRemain = (len - doorwayWidth) * 0.5;
+  const lintelBottom = FLOOR_Y + DOOR_CLEAR_HEIGHT;
+  const lintelH = Math.max(0.18, GALLERY_HEIGHT - lintelBottom);
   if (halfRemain < 0.05) {
-    addWallSlab(parent, a, b, wallMat, centroid, GALLERY_HEIGHT - 2.2 - FLOOR_Y, FLOOR_Y + 2.2);
+    addWallSlab(
+      parent,
+      a,
+      b,
+      wallMat,
+      centroid,
+      lintelH,
+      lintelBottom,
+      { miterA: false, miterB: false },
+    );
     return;
   }
 
   const t1L = halfRemain / len;
   const t0R = 1 - t1L;
-  addWallSlab(parent, lerpVec2(a, b, 0), lerpVec2(a, b, t1L), wallMat, centroid);
-  addWallSlab(parent, lerpVec2(a, b, t0R), lerpVec2(a, b, 1), wallMat, centroid);
+  // Outer ends keep miter for corner joints; doorway ends stay flush (no jamb posts).
+  addWallSlab(
+    parent,
+    lerpVec2(a, b, 0),
+    lerpVec2(a, b, t1L),
+    wallMat,
+    centroid,
+    GALLERY_HEIGHT - FLOOR_Y,
+    FLOOR_Y,
+    { miterA: true, miterB: false },
+  );
+  addWallSlab(
+    parent,
+    lerpVec2(a, b, t0R),
+    lerpVec2(a, b, 1),
+    wallMat,
+    centroid,
+    GALLERY_HEIGHT - FLOOR_Y,
+    FLOOR_Y,
+    { miterA: false, miterB: true },
+  );
   addWallSlab(
     parent,
     lerpVec2(a, b, t1L),
     lerpVec2(a, b, t0R),
     wallMat,
     centroid,
-    GALLERY_HEIGHT - 2.2,
-    2.2,
+    lintelH,
+    lintelBottom,
+    { miterA: false, miterB: false },
   );
-  const jambH = 2.25;
-  const jambY = FLOOR_Y + jambH * 0.5;
-  const jambT = Math.max(WALL_THICKNESS, 0.14);
-  const left = lerpVec2(a, b, t1L);
-  const right = lerpVec2(a, b, t0R);
-  for (const p of [left, right]) {
-    const jamb = new THREE.Mesh(
-      new THREE.BoxGeometry(jambT, jambH, jambT),
-      wallMat,
-    );
-    jamb.position.set(p.x, jambY, p.z);
-    parent.add(jamb);
-  }
 }

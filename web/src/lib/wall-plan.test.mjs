@@ -63,6 +63,44 @@ test("painting on interior edge gets snap_surface coverage in plan", () => {
   );
 });
 
+test("inter-room connection doorway floors to DEFAULT_DOOR_WIDTH", async () => {
+  const { DEFAULT_DOOR_WIDTH } = await import("./gallery-three/constants.ts");
+  const layout = normalizeLayout({
+    rooms: [
+      {
+        id: "r-a",
+        shape: "square",
+        transform: { x: 0, z: 2, rotation: 0, scaleX: 3, scaleZ: 3 },
+      },
+      {
+        id: "r-b",
+        shape: "square",
+        transform: { x: 0, z: 6, rotation: 0, scaleX: 3, scaleZ: 3 },
+      },
+    ],
+    connections: [
+      {
+        roomA: "r-a",
+        roomB: "r-b",
+        edgeA: 2,
+        edgeB: 0,
+        doorwayWidth: 1.4,
+      },
+    ],
+    placements: [],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+  const plan = buildLayoutWallPlan(layout);
+  const doorSeg = plan.segments.find(
+    (s) => s.roomId === "r-a" && s.doorwayWidth > 0.01,
+  );
+  assert.ok(doorSeg, "owner room keeps doorway segment");
+  assert.ok(
+    doorSeg.doorwayWidth >= DEFAULT_DOOR_WIDTH - 0.01,
+    `expected wide door >= ${DEFAULT_DOOR_WIDTH}, got ${doorSeg.doorwayWidth}`,
+  );
+});
+
 test("shared doorway edge: higher roomId does not get a restored full shell", () => {
   const layout = normalizeLayout({
     rooms: [
