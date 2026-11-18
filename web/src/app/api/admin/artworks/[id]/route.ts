@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { loadCatalog, upsertArtwork, deleteArtwork } from "@/lib/catalog";
-import { emptyLocalized, type Artwork } from "@/lib/catalog-types";
+import {
+  emptyLocalized,
+  normalizeArtwork,
+  type Artwork,
+} from "@/lib/catalog-types";
 
 const localizedSchema = z.object({
   en: z.string(),
@@ -11,12 +15,19 @@ const localizedSchema = z.object({
   he: z.string(),
 });
 
+const bookletPageSchema = z.object({
+  key: z.string(),
+  title: localizedSchema,
+  body: localizedSchema,
+});
+
 const patchSchema = z.object({
   type: z.enum(["image", "video"]).optional(),
   sort: z.number().optional(),
   published: z.boolean().optional(),
   title: localizedSchema.optional(),
   text: localizedSchema.optional(),
+  booklet: z.array(bookletPageSchema).optional(),
   urlWall: z.string().optional(),
   urlFull: z.string().optional(),
   urlVideo: z.string().optional(),
@@ -60,13 +71,17 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     );
   }
 
-  const artwork: Artwork = {
-    ...existing,
-    ...parsed.data,
-    id,
-    title: parsed.data.title || existing.title || emptyLocalized(),
-    text: parsed.data.text || existing.text || emptyLocalized(),
-  };
+  const artwork = normalizeArtwork(
+    {
+      ...existing,
+      ...parsed.data,
+      id,
+      title: parsed.data.title || existing.title || emptyLocalized(),
+      text: parsed.data.text || existing.text || emptyLocalized(),
+      booklet: parsed.data.booklet ?? existing.booklet,
+    },
+    { syncTitleTextFromBooklet: true },
+  );
 
   const catalog = await upsertArtwork(artwork);
   return NextResponse.json({ artwork, catalog });

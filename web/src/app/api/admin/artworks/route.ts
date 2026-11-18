@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { loadCatalog, upsertArtwork, deleteArtwork } from "@/lib/catalog";
-import { emptyLocalized, type Artwork } from "@/lib/catalog-types";
+import {
+  emptyLocalized,
+  normalizeArtwork,
+  type Artwork,
+} from "@/lib/catalog-types";
 import { randomUUID } from "crypto";
 
 const localizedSchema = z.object({
@@ -12,6 +16,12 @@ const localizedSchema = z.object({
   he: z.string(),
 });
 
+const bookletPageSchema = z.object({
+  key: z.string(),
+  title: localizedSchema,
+  body: localizedSchema,
+});
+
 const artworkSchema = z.object({
   id: z.string().optional(),
   type: z.enum(["image", "video", "model"]),
@@ -19,6 +29,7 @@ const artworkSchema = z.object({
   published: z.boolean().default(false),
   title: localizedSchema.optional(),
   text: localizedSchema.optional(),
+  booklet: z.array(bookletPageSchema).optional(),
   urlWall: z.string().default(""),
   urlFull: z.string().default(""),
   urlVideo: z.string().default(""),
@@ -52,20 +63,24 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
-  const artwork: Artwork = {
-    id: data.id || randomUUID(),
-    type: data.type,
-    sort: data.sort ?? 0,
-    published: data.published,
-    title: data.title || emptyLocalized(),
-    text: data.text || emptyLocalized(),
-    urlWall: data.urlWall,
-    urlFull: data.urlFull,
-    urlVideo: data.urlVideo,
-    urlPoster: data.urlPoster,
-    modelUrl: data.modelUrl || "",
-    frameId: data.frameId || (data.type === "model" ? "none" : "wood"),
-  };
+  const artwork = normalizeArtwork(
+    {
+      id: data.id || randomUUID(),
+      type: data.type,
+      sort: data.sort ?? 0,
+      published: data.published,
+      title: data.title || emptyLocalized(),
+      text: data.text || emptyLocalized(),
+      booklet: data.booklet,
+      urlWall: data.urlWall,
+      urlFull: data.urlFull,
+      urlVideo: data.urlVideo,
+      urlPoster: data.urlPoster,
+      modelUrl: data.modelUrl || "",
+      frameId: data.frameId || (data.type === "model" ? "none" : "wood"),
+    },
+    { syncTitleTextFromBooklet: true },
+  );
 
   const catalog = await upsertArtwork(artwork);
   return NextResponse.json({ artwork, catalog });

@@ -20,6 +20,8 @@ export const UI: Record<
     email: string;
     exit: string;
     info: string;
+    view: string;
+    booklet: string;
     close: string;
     lang: string;
     exhibition: string;
@@ -51,6 +53,8 @@ export const UI: Record<
     email: "Email",
     exit: "Exit",
     info: "Info",
+    view: "View",
+    booklet: "Booklet",
     close: "Close",
     lang: "Language",
     exhibition: "Exhibition",
@@ -81,6 +85,8 @@ export const UI: Record<
     email: "Email",
     exit: "Выход",
     info: "Инфо",
+    view: "Смотреть",
+    booklet: "Буклет",
     close: "Закрыть",
     lang: "Язык",
     exhibition: "Выставка",
@@ -111,6 +117,8 @@ export const UI: Record<
     email: "Email",
     exit: "Вихід",
     info: "Інфо",
+    view: "Дивитись",
+    booklet: "Буклет",
     close: "Закрити",
     lang: "Мова",
     exhibition: "Виставка",
@@ -141,6 +149,8 @@ export const UI: Record<
     email: "אימייל",
     exit: "יציאה",
     info: "מידע",
+    view: "צפייה",
+    booklet: "חוברת",
     close: "סגור",
     lang: "שפה",
     exhibition: "תערוכה",

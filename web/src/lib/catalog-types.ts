@@ -39,6 +39,8 @@ export interface Artwork {
   published: boolean;
   title: LocalizedString;
   text: LocalizedString;
+  /** Multi-page description; empty/missing normalizes from title+text. */
+  booklet?: BookletPage[];
   urlWall: string;
   urlFull: string;
   urlVideo: string;
@@ -170,6 +172,61 @@ export function emptyBookletPage(key: string): BookletPage {
     title: emptyLocalized(key === "intro" ? "Exhibition" : key),
     body: emptyLocalized(),
   };
+}
+
+/** Seed page-1 from legacy title/text when booklet is missing or empty. */
+export function normalizeArtworkBooklet(
+  artwork: Pick<Artwork, "title" | "text" | "booklet">,
+): BookletPage[] {
+  const raw = Array.isArray(artwork.booklet) ? artwork.booklet : [];
+  const booklet = raw
+    .filter((page) => page && typeof page === "object")
+    .map((page, i) => ({
+      key: page.key || (i === 0 ? "main" : `page-${i + 1}`),
+      title: normalizeLocalized(page.title),
+      body: normalizeLocalized(page.body),
+    }));
+  if (booklet.length === 0) {
+    booklet.push({
+      key: "main",
+      title: normalizeLocalized(artwork.title),
+      body: normalizeLocalized(artwork.text),
+    });
+  }
+  return booklet;
+}
+
+/**
+ * Ensure booklet exists; optionally sync page-1 title/body back to title/text
+ * (admin save) so wall labels stay aligned with the booklet editor.
+ */
+export function normalizeArtwork(
+  artwork: Artwork,
+  opts?: { syncTitleTextFromBooklet?: boolean },
+): Artwork {
+  const booklet = normalizeArtworkBooklet(artwork);
+  const title = opts?.syncTitleTextFromBooklet
+    ? normalizeLocalized(booklet[0]?.title ?? artwork.title)
+    : normalizeLocalized(artwork.title);
+  const text = opts?.syncTitleTextFromBooklet
+    ? normalizeLocalized(booklet[0]?.body ?? artwork.text)
+    : normalizeLocalized(artwork.text);
+  return {
+    ...artwork,
+    title,
+    text,
+    booklet,
+  };
+}
+
+/** Clamp booklet page index after ← / → (or keyboard) navigation. */
+export function advanceBookletPageIndex(
+  index: number,
+  delta: -1 | 1,
+  length: number,
+): number {
+  if (length <= 0) return 0;
+  return Math.max(0, Math.min(length - 1, index + delta));
 }
 
 export function emptyEntrance(): EntranceSettings {
