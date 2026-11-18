@@ -54,31 +54,52 @@ describe("unionWalkBounds", () => {
 });
 
 describe("buildEntranceModule stairs", () => {
-  it("always emits 3 steps, landing, and matching climbBands", () => {
+  it("always emits 3 steps and climbBands; landing only when layout empty", () => {
     const catalog = { settings: {}, artworks: [] };
-    const built = buildEntranceModule(null, catalog, {
+    const empty = buildEntranceModule(null, catalog, {
       entrancePose: { x: 0, z: -ENTRANCE_SCHEMATIC_DEPTH * 0.5, rotation: 0 },
     });
 
     const stepNames = [];
-    built.root.traverse((obj) => {
+    empty.root.traverse((obj) => {
       if (obj.name?.startsWith("EntranceStep")) stepNames.push(obj.name);
     });
     assert.equal(stepNames.length, STEP_COUNT);
-    assert.ok(built.root.getObjectByName("EntranceLanding"));
+    assert.ok(empty.root.getObjectByName("EntranceLanding"));
 
-    assert.equal(built.climbBands.length, STEP_COUNT + 1);
+    assert.equal(empty.climbBands.length, STEP_COUNT + 1);
     for (let i = 0; i < STEP_COUNT; i++) {
-      assert.equal(built.climbBands[i].surfaceY, (i + 1) * STEP_RISE);
+      assert.equal(empty.climbBands[i].surfaceY, (i + 1) * STEP_RISE);
     }
     assert.equal(
-      built.climbBands[STEP_COUNT].surfaceY,
+      empty.climbBands[STEP_COUNT].surfaceY,
       GALLERY_FLOOR_RAISE,
     );
+    // Top tread pulled short of the portal plane (local z=0 → world portal z).
+    assert.ok(empty.climbBands[STEP_COUNT - 1].maxZ < empty.climbBands[STEP_COUNT].minZ + 1e-9);
 
-    // Doorway width stays aligned with layout entrance opening.
     assert.equal(ENTRANCE_ARCH_WIDTH, ENTRANCE_WIDTH);
+    empty.dispose();
+  });
 
+  it("omits coplanar landing mesh when gallery rooms exist", () => {
+    const catalog = { settings: {}, artworks: [] };
+    const layout = {
+      version: 1,
+      rooms: [
+        {
+          id: "r1",
+          shape: "square",
+          transform: { x: 0, z: 4, rotation: 0, scaleX: 2, scaleZ: 2 },
+        },
+      ],
+      connections: [],
+      placements: [],
+      entrance: { x: 0, z: -ENTRANCE_SCHEMATIC_DEPTH * 0.5, rotation: 0 },
+    };
+    const built = buildEntranceModule(layout, catalog);
+    assert.equal(built.root.getObjectByName("EntranceLanding"), undefined);
+    assert.equal(built.climbBands.length, STEP_COUNT + 1);
     built.dispose();
   });
 

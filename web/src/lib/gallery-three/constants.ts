@@ -30,6 +30,16 @@ export const STEP_DEPTH = 0.35;
 export const GALLERY_FLOOR_RAISE = STEP_COUNT * STEP_RISE;
 /** Thin landing slab on the gallery side of the portal (local +Z). */
 export const PORTAL_LANDING_DEPTH = 0.3;
+/**
+ * Pull stair treads toward foyer so the top step stops short of the portal
+ * plane (avoids coplanar z-fight with room floor / landing at the doorway).
+ */
+export const STAIR_PORTAL_GAP = 0.04;
+/**
+ * Inset room floor along the entrance doorway (gallery-local +Z) so floor
+ * tris stop before the portal plane and do not skin through stair treads.
+ */
+export const PORTAL_FLOOR_INSET = 0.02;
 /** Eye height above the walk surface underfoot. */
 export const EYE_HEIGHT = 1.6;
 

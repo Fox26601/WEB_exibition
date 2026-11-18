@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Catalog, GalleryEntrancePose, GalleryLayout } from "@/lib/catalog-types";
-import { DEFAULT_ENTRANCE_POSE } from "@/lib/catalog-types";
+import { DEFAULT_ENTRANCE_POSE, layoutIsEmpty } from "@/lib/catalog-types";
 import { ROOM } from "@/lib/room";
 import {
   FLOOR_THICKNESS,
@@ -8,6 +8,7 @@ import {
   GALLERY_FLOOR_RAISE,
   GALLERY_HEIGHT,
   PORTAL_LANDING_DEPTH,
+  STAIR_PORTAL_GAP,
   STEP_COUNT,
   STEP_DEPTH,
   STEP_RISE,
@@ -269,15 +270,20 @@ export function buildEntranceModule(
     });
   }
 
-  // Always-on foyer stairs (local −Z → portal) + gallery-side landing.
+  // Always-on foyer stairs (local −Z → portal), pulled short of the portal plane.
+  // Negative polygonOffset so treads win any residual depth fight with room floors.
   const stepMat = makeSurfaceMaterial(STEP_COLOR);
+  stepMat.polygonOffset = true;
+  stepMat.polygonOffsetFactor = -1;
+  stepMat.polygonOffsetUnits = -1;
   mats.push(stepMat);
   const climbBands: ClimbBand[] = [];
   const stepHalfW = ENTRANCE_ARCH_WIDTH * 0.5;
+  const gap = STAIR_PORTAL_GAP;
   for (let i = 0; i < STEP_COUNT; i++) {
     const surfaceY = (i + 1) * STEP_RISE;
-    const minLZ = -(STEP_COUNT - i) * STEP_DEPTH;
-    const maxLZ = -(STEP_COUNT - i - 1) * STEP_DEPTH;
+    const minLZ = -(STEP_COUNT - i) * STEP_DEPTH - gap;
+    const maxLZ = -(STEP_COUNT - i - 1) * STEP_DEPTH - gap;
     const midZ = (minLZ + maxLZ) * 0.5;
     root.add(
       boxMesh(
@@ -300,15 +306,19 @@ export function buildEntranceModule(
     });
   }
 
-  // Landing flush with gallery floor on the gallery side of the portal (local +Z).
-  root.add(
-    boxMesh(
-      "EntranceLanding",
-      [ENTRANCE_ARCH_WIDTH, FLOOR_THICKNESS, PORTAL_LANDING_DEPTH],
-      [0, FLOOR_Y + GALLERY_FLOOR_RAISE, PORTAL_LANDING_DEPTH * 0.5],
-      floorMat,
-    ),
-  );
+  // Landing only when no gallery rooms: with rooms, the raised floor covers the
+  // gallery side — a coplanar landing slab z-fights (blue floor through treads).
+  const emitLandingMesh = layoutIsEmpty(layout);
+  if (emitLandingMesh) {
+    root.add(
+      boxMesh(
+        "EntranceLanding",
+        [ENTRANCE_ARCH_WIDTH, FLOOR_THICKNESS, PORTAL_LANDING_DEPTH],
+        [0, FLOOR_Y + GALLERY_FLOOR_RAISE, PORTAL_LANDING_DEPTH * 0.5],
+        floorMat,
+      ),
+    );
+  }
   climbBands.push({
     ...localRectToWorldAabb(
       pose.portal,
