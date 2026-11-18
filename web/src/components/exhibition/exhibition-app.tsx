@@ -15,7 +15,8 @@ import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
 import { UNITY_ASSET_CACHE_TAG } from "@/lib/unity-cache";
-import { GalleryScene } from "./gallery-scene";
+import { resolveGalleryRenderer } from "@/lib/gallery-renderer";
+import { GalleryScene3D } from "./gallery-scene-3d";
 
 type InfoModal = "artist" | "curator" | "donate" | "links" | null;
 type FooterModal = "review" | "contact" | null;
@@ -29,6 +30,9 @@ export function ExhibitionApp({
   unityAvailable?: boolean;
 }) {
   const { locale, setLocale, dir } = useGalleryLocale();
+  const [rendererMode, setRendererMode] = useState<"unity" | "three">(() =>
+    resolveGalleryRenderer(unityAvailable, ""),
+  );
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Artwork | null>(null);
@@ -49,6 +53,12 @@ export function ExhibitionApp({
   const [reviewMessage, setReviewMessage] = useState("");
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("idle");
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    setRendererMode(
+      resolveGalleryRenderer(unityAvailable, window.location.search),
+    );
+  }, [unityAvailable]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -193,7 +203,10 @@ export function ExhibitionApp({
     );
   }
 
-  if (adminBuild && unityAvailable) {
+  const useThree = rendererMode === "three";
+  const useUnity = rendererMode === "unity" && unityAvailable;
+
+  if (adminBuild && useUnity) {
     return (
       <div className="relative h-[100dvh] w-full overflow-hidden bg-black">
         <UnityEmbed
@@ -279,7 +292,7 @@ export function ExhibitionApp({
         ))}
       </div>
 
-      {unityAvailable ? (
+      {useUnity ? (
         <div className="pointer-events-none absolute bottom-14 start-1/2 z-20 -translate-x-1/2 sm:hidden">
           <button
             type="button"
@@ -319,7 +332,7 @@ export function ExhibitionApp({
         </a>
       </div>
 
-      {unityAvailable ? (
+      {useUnity ? (
         <UnityEmbed
           catalogKind={catalogKind}
           token={token}
@@ -329,10 +342,12 @@ export function ExhibitionApp({
           iframeRef={iframeRef}
         />
       ) : (
-        <GalleryScene
+        <GalleryScene3D
+          catalog={catalog}
           artworks={artworks}
           locale={locale}
           emptyLabel={copy.emptyRoom}
+          previewLite={previewLite}
           onSelect={setSelected}
           onOpenImage={(url) => setImageOverlay(url)}
           onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
@@ -340,7 +355,7 @@ export function ExhibitionApp({
         />
       )}
 
-      {!unityAvailable && selected && !infoOpen && !imageOverlay && !videoOverlay ? (
+      {useThree && selected && !infoOpen && !imageOverlay && !videoOverlay ? (
         <div className="absolute bottom-24 start-1/2 z-20 flex -translate-x-1/2 gap-2 sm:bottom-8">
           <button
             type="button"
@@ -366,7 +381,7 @@ export function ExhibitionApp({
         </div>
       ) : null}
 
-      {!unityAvailable && infoOpen && selected ? (
+      {useThree && infoOpen && selected ? (
         <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">
           <div className="max-h-[70vh] w-full max-w-lg overflow-y-auto border border-[var(--line)] bg-[#12100e] p-6">
             <h2 className="mb-3 font-[family-name:var(--font-display)] text-2xl font-bold">
