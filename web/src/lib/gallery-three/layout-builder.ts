@@ -19,11 +19,11 @@ import {
 import { buildLayoutWallPlan } from "@/lib/wall-plan";
 import {
   FLOOR_COLOR,
-  FLOOR_SURFACE_Y,
   FLOOR_THICKNESS,
   FLOOR_UV_METERS,
-  FLOOR_Y,
   WALL_COLOR,
+  galleryFloorCenterY,
+  gallerySurfaceY,
 } from "./constants";
 import { buildWallMeshesFromPlan } from "./wall-slab-builder";
 
@@ -60,13 +60,13 @@ function appendFloorVertex(
   x: number,
   z: number,
 ): void {
-  positions.push(x, FLOOR_SURFACE_Y, z);
+  positions.push(x, gallerySurfaceY(), z);
   uvs.push(x / FLOOR_UV_METERS, z / FLOOR_UV_METERS);
 }
 
 /**
  * Triangulated room floor covering the full polygon (wall centerlines).
- * World-space UVs match foyer tiling density; surface Y matches foyer slab top.
+ * World-space UVs match foyer tiling density; surface Y is raised gallery level.
  */
 export function buildRoomFloor(
   parent: THREE.Object3D,
@@ -88,8 +88,8 @@ export function buildRoomFloor(
       floorMat,
     );
     mesh.name = `Floor_${roomId}`;
-    // Box centered at FLOOR_Y so the top face lands on FLOOR_SURFACE_Y (foyer parity).
-    mesh.position.set(cx, FLOOR_Y, cz);
+    // Box centered so the top face lands on gallerySurfaceY().
+    mesh.position.set(cx, galleryFloorCenterY(), cz);
     parent.add(mesh);
     return mesh;
   }

@@ -2,13 +2,17 @@ import * as THREE from "three";
 import type { Vec2 } from "@/lib/layout-geometry";
 import {
   DOOR_CLEAR_HEIGHT,
-  FLOOR_Y,
   GALLERY_HEIGHT,
   WALL_CORNER_JOIN,
   WALL_PLANE_BIAS,
   WALL_THICKNESS,
+  galleryWallBottomY,
 } from "./constants";
 import { inwardNormal, lerpVec2, roomCentroid } from "./room-geometry";
+
+function galleryWallHeight(bottomY = galleryWallBottomY()): number {
+  return Math.max(0.18, GALLERY_HEIGHT - bottomY);
+}
 
 export type WallSlabJoins = {
   /** Meters to extend past endpoint A (vertex join). */
@@ -28,8 +32,8 @@ export function addWallSlab(
   b: Vec2,
   material: THREE.Material,
   centroid: Vec2,
-  height: number = GALLERY_HEIGHT - FLOOR_Y,
-  bottomY = FLOOR_Y,
+  height: number = galleryWallHeight(),
+  bottomY = galleryWallBottomY(),
   joins: WallSlabJoins = {},
 ): void {
   const dx = b.x - a.x;
@@ -113,8 +117,11 @@ export function buildWallAlongEdge(
   const joinA = resolveJoin(joins.cornerA, joins.joinA);
   const joinB = resolveJoin(joins.cornerB, joins.joinB);
 
+  const bottomY = galleryWallBottomY();
+  const fullH = galleryWallHeight(bottomY);
+
   if (doorwayWidth <= 0.01 || doorwayWidth >= len - 0.2) {
-    addWallSlab(parent, a, b, wallMat, centroid, GALLERY_HEIGHT - FLOOR_Y, FLOOR_Y, {
+    addWallSlab(parent, a, b, wallMat, centroid, fullH, bottomY, {
       joinA,
       joinB,
     });
@@ -122,7 +129,7 @@ export function buildWallAlongEdge(
   }
 
   const halfRemain = (len - doorwayWidth) * 0.5;
-  const lintelBottom = FLOOR_Y + DOOR_CLEAR_HEIGHT;
+  const lintelBottom = bottomY + DOOR_CLEAR_HEIGHT;
   const lintelH = Math.max(0.18, GALLERY_HEIGHT - lintelBottom);
   if (halfRemain < 0.05) {
     addWallSlab(
@@ -147,8 +154,8 @@ export function buildWallAlongEdge(
     lerpVec2(a, b, t1L),
     wallMat,
     centroid,
-    GALLERY_HEIGHT - FLOOR_Y,
-    FLOOR_Y,
+    fullH,
+    bottomY,
     { joinA, joinB: 0 },
   );
   addWallSlab(
@@ -157,8 +164,8 @@ export function buildWallAlongEdge(
     lerpVec2(a, b, 1),
     wallMat,
     centroid,
-    GALLERY_HEIGHT - FLOOR_Y,
-    FLOOR_Y,
+    fullH,
+    bottomY,
     { joinA: 0, joinB },
   );
   addWallSlab(
