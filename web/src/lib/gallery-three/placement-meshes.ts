@@ -10,6 +10,7 @@ import {
   flipGalleryPosterTextureV,
 } from "./texture-load";
 import { CANVAS_Z_OFFSET } from "./constants";
+import { ARTWORK_PICK_SIZE } from "./artwork-interact";
 import {
   posterCanvasOrientation,
   posterCanvasOrientationForPlacement,
@@ -109,12 +110,32 @@ function buildPaintingGroup(
       new THREE.BoxGeometry(1.4, 1.4, 0.08),
       frameMat,
     );
+    frame.userData.artworkId = art.id;
     group.add(frame);
   }
 
+  // Invisible volume so look-at / click stay reliable from stand-off distance.
+  const pickMat = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  disposables.push(pickMat);
+  const pickProxy = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      ARTWORK_PICK_SIZE.x,
+      ARTWORK_PICK_SIZE.y,
+      ARTWORK_PICK_SIZE.z,
+    ),
+    pickMat,
+  );
+  pickProxy.userData.artworkId = art.id;
+  pickProxy.userData.isPickProxy = true;
+  group.add(pickProxy);
+
   const canvasMat = new THREE.MeshBasicMaterial({
     color: 0x9a958e,
-    side: THREE.FrontSide,
+    side: THREE.DoubleSide,
     toneMapped: true,
   });
   disposables.push(canvasMat);
@@ -229,11 +250,31 @@ export function addCorridorArtworks(
 
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a140f, roughness: 0.7 });
     disposables.push(frameMat);
-    group.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.4, 0.08), frameMat));
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.4, 0.08), frameMat);
+    frame.userData.artworkId = art.id;
+    group.add(frame);
+
+    const pickMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    disposables.push(pickMat);
+    const pickProxy = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        ARTWORK_PICK_SIZE.x,
+        ARTWORK_PICK_SIZE.y,
+        ARTWORK_PICK_SIZE.z,
+      ),
+      pickMat,
+    );
+    pickProxy.userData.artworkId = art.id;
+    pickProxy.userData.isPickProxy = true;
+    group.add(pickProxy);
 
     const canvasMat = new THREE.MeshBasicMaterial({
       color: 0x9a958e,
-      side: THREE.FrontSide,
+      side: THREE.DoubleSide,
       toneMapped: true,
     });
     disposables.push(canvasMat);

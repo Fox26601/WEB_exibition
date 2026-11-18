@@ -286,6 +286,7 @@ export function ExhibitionApp() {
         previewLite={previewLite}
         bookletOwned={bookletOwned}
         bookletRaised={bookletOpen}
+        freezeLookSelection={infoOpen || !!imageOverlay || !!videoOverlay}
         onSelect={setSelected}
         onOpenImage={(url) => setImageOverlay(url)}
         onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
@@ -305,28 +306,33 @@ export function ExhibitionApp() {
       ) : null}
 
       {selected && !infoOpen && !imageOverlay && !videoOverlay ? (
-        <div className="absolute bottom-24 start-1/2 z-20 flex -translate-x-1/2 gap-2 sm:bottom-8">
-          <button
-            type="button"
-            className="btn btn-solid !py-2"
-            onClick={() => setInfoOpen(true)}
-          >
-            {copy.info}
-          </button>
-          {selected.type === "video" && selected.urlVideo ? (
+        <div className="pointer-events-none absolute bottom-24 start-1/2 z-20 flex w-[min(92vw,28rem)] -translate-x-1/2 flex-col items-center gap-2 sm:bottom-8">
+          <p className="rounded bg-black/55 px-3 py-1.5 text-center font-[family-name:var(--font-display)] text-sm font-semibold tracking-wide text-white/90">
+            {pickLocalized(selected.title, locale)}
+          </p>
+          <div className="pointer-events-auto flex gap-2">
             <button
               type="button"
-              className="btn !py-2"
-              onClick={() =>
-                setVideoOverlay({
-                  url: selected.urlVideo,
-                  poster: selected.urlPoster,
-                })
-              }
+              className="btn btn-solid !py-2"
+              onClick={() => setInfoOpen(true)}
             >
-              ▶
+              {copy.info}
             </button>
-          ) : null}
+            {selected.type === "video" && selected.urlVideo ? (
+              <button
+                type="button"
+                className="btn !py-2"
+                onClick={() =>
+                  setVideoOverlay({
+                    url: selected.urlVideo,
+                    poster: selected.urlPoster,
+                  })
+                }
+              >
+                ▶
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
