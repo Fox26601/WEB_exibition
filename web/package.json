@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node scripts/verify-unity-build.mjs && node --import tsx --test src/lib/unity-pointer-map.test.mjs src/lib/layout-entrance.test.mjs src/lib/layout-geometry.test.mjs src/lib/room-overlap-clip.test.mjs src/lib/placement-eval.test.mjs src/lib/polygon-floor.test.mjs src/lib/gallery-renderer.test.mjs src/lib/gallery-three/wall-mesh.test.mjs src/lib/gallery-three/texture-load.test.mjs src/lib/gallery-three/painting-pose.test.mjs src/lib/layout-editor-parity.test.mjs src/lib/wall-plan.test.mjs src/lib/gallery-three/poster-canvas-orientation.test.mjs"
+    "test": "node scripts/verify-unity-build.mjs && node --import tsx --test src/lib/unity-pointer-map.test.mjs src/lib/layout-entrance.test.mjs src/lib/layout-geometry.test.mjs src/lib/room-overlap-clip.test.mjs src/lib/placement-eval.test.mjs src/lib/polygon-floor.test.mjs src/lib/gallery-renderer.test.mjs src/lib/gallery-three/wall-mesh.test.mjs src/lib/gallery-three/texture-load.test.mjs src/lib/gallery-three/painting-pose.test.mjs src/lib/layout-editor-parity.test.mjs src/lib/wall-plan.test.mjs src/lib/gallery-three/poster-canvas-orientation.test.mjs src/lib/gallery-three/entrance-builder.test.mjs"
   },
   "dependencies": {
     "@auth/core": "^0.41.3",
