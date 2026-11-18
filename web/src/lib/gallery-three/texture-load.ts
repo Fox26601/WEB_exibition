@@ -83,3 +83,11 @@ export function orientGalleryPosterTexture(tex: THREE.Texture): void {
   tex.offset.x = 1;
   tex.needsUpdate = true;
 }
+
+/** Vertical flip for inward-facing canvases (keeps U, fixes inverted labels). */
+export function flipGalleryPosterTextureV(tex: THREE.Texture): void {
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.y = -1;
+  tex.offset.y = 1;
+  tex.needsUpdate = true;
+}

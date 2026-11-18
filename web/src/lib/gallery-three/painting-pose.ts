@@ -17,8 +17,6 @@ export type PaintingPose3D = {
   position: { x: number; y: number; z: number };
   /** Y-axis rotation in radians (faces into room). */
   yawRad: number;
-  /** Mirror canvas U so poster title bars match Unity / source JPEGs. */
-  flipCanvasU: boolean;
 };
 
 /** Snap hang point to a wall span that actually exists after overlap clip. */
@@ -70,8 +68,6 @@ export function paintingPoseFromPlacement(
   const inward = inwardNormal(a, b, centroid);
   const hangY = GALLERY_HEIGHT * resolvedWallHeightT(placement);
   const yawRad = Math.atan2(inward.x, inward.z);
-  // Sample JPEG title bars match Unity on hex walls; other room windings need unflipped UVs.
-  const flipCanvasU = room.shape === "hexagon";
   return {
     position: {
       x: along.x + inward.x * WALL_INSET,
@@ -79,7 +75,6 @@ export function paintingPoseFromPlacement(
       z: along.z + inward.z * WALL_INSET,
     },
     yawRad,
-    flipCanvasU,
   };
 }
 

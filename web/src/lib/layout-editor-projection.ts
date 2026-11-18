@@ -1,6 +1,6 @@
 import type { GalleryEntrancePose, GalleryRoom } from "./catalog-types";
+import { ENTRANCE_ROOM_ID } from "./catalog-types";
 import {
-  ENTRANCE_ROOM_ID,
   entranceAsRoom,
   entranceWorldVertices,
   roomWorldVertices,

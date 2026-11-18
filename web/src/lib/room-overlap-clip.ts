@@ -193,6 +193,46 @@ export function wallSpansForEdgeWithPlacements(
   return mergePlacementPads(layout, roomId, edgeIndex, spans, len);
 }
 
+/** True when the whole edge sits in another room's interior (admin still draws the outline). */
+export function edgeFullyInsideOverlap(
+  rooms: OverlapRoom[],
+  roomId: string,
+  a: Vec2,
+  b: Vec2,
+): boolean {
+  for (const t of [0.2, 0.5, 0.8]) {
+    const p = lerp2(a, b, t);
+    let covered = false;
+    for (const other of rooms) {
+      if (other.id === roomId) continue;
+      if (!pointInPolygon(p, other.verts)) continue;
+      if (pointOnPolygonBoundary(p, other.verts)) continue;
+      covered = true;
+      break;
+    }
+    if (!covered) return false;
+  }
+  return true;
+}
+
+/** Interior split points where room edges meet (overlap T-junctions). */
+export function splitPointsOnEdge(
+  rooms: OverlapRoom[],
+  roomId: string,
+  edgeIndex: number,
+): Vec2[] {
+  const room = rooms.find((r) => r.id === roomId);
+  if (!room) return [];
+  const [a, b] = edgePoints(room.verts, edgeIndex);
+  const splits = splitsOnEdge(rooms, roomId, edgeIndex);
+  const pts: Vec2[] = [];
+  for (const t of splits) {
+    if (t <= 1e-6 || t >= 1 - 1e-6) continue;
+    pts.push(lerp2(a, b, t));
+  }
+  return pts;
+}
+
 export function wallSpansForEdge(
   rooms: OverlapRoom[],
   roomId: string,

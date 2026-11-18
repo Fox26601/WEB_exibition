@@ -6,8 +6,13 @@ import {
   applyTextureToMaterial,
   loadColorTexture,
   orientGalleryPosterTexture,
+  flipGalleryPosterTextureV,
 } from "./texture-load";
 import { CANVAS_Z_OFFSET } from "./constants";
+import {
+  posterCanvasOrientation,
+  posterCanvasOrientationForPlacement,
+} from "./poster-canvas-orientation";
 import { paintingPoseFromPlacement, sculpturePoseFromPlacement } from "./painting-pose";
 
 const FRAME_COLORS: Record<string, number> = {
@@ -47,7 +52,14 @@ export function addPlacementsToScene(
     if (placement.kind === "painting") {
       const pose = paintingPoseFromPlacement(placement, layout);
       if (!pose) continue;
-      const group = buildPaintingGroup(art, placement, pose, loader, disposables);
+      const group = buildPaintingGroup(
+        art,
+        placement,
+        pose,
+        layout,
+        loader,
+        disposables,
+      );
       scene.add(group);
       pickRoots.push(group);
     } else if (placement.kind === "sculpture") {
@@ -73,6 +85,7 @@ function buildPaintingGroup(
   art: Artwork,
   placement: ArtworkPlacement,
   pose: NonNullable<ReturnType<typeof paintingPoseFromPlacement>>,
+  layout: GalleryLayout,
   _loader: THREE.TextureLoader,
   disposables: Array<THREE.Material | THREE.Texture>,
 ): THREE.Group {
@@ -104,8 +117,10 @@ function buildPaintingGroup(
     toneMapped: true,
   });
   disposables.push(canvasMat);
+  const orient = posterCanvasOrientationForPlacement(placement, layout);
   const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
   canvas.position.z = CANVAS_Z_OFFSET;
+  if (orient.rotate180) canvas.rotation.y = Math.PI;
   canvas.userData.artworkId = art.id;
   canvas.userData.isCanvas = true;
   group.add(canvas);
@@ -114,6 +129,8 @@ function buildPaintingGroup(
   if (texUrl) {
     void loadColorTexture(texUrl).then((tex) => {
       if (!tex) return;
+      if (orient.flipV) flipGalleryPosterTextureV(tex);
+      else if (orient.textureMirror) orientGalleryPosterTexture(tex);
       applyTextureToMaterial(canvasMat, tex);
       disposables.push(tex);
     });
@@ -178,20 +195,21 @@ export function addCorridorArtworks(
 
     const texUrl = art.urlWall || art.urlFull || art.urlPoster;
     if (texUrl) {
-    void loadColorTexture(texUrl).then((tex) => {
-      if (!tex) return;
-      if (pose.flipCanvasU) orientGalleryPosterTexture(tex);
-      applyTextureToMaterial(canvasMat, tex);
-      disposables.push(tex);
-    });
-  }
+      void loadColorTexture(texUrl).then((tex) => {
+        if (!tex) return;
+        const orient = posterCanvasOrientation(art.id);
+        if (orient.textureMirror) orientGalleryPosterTexture(tex);
+        applyTextureToMaterial(canvasMat, tex);
+        disposables.push(tex);
+      });
+    }
 
-  if (art.type === "video") {
-    const hp = new THREE.Mesh(
-      new THREE.SphereGeometry(0.12, 12, 12),
-      new THREE.MeshStandardMaterial({ color: 0xc4893a }),
-    );
-    hp.position.set(0.7, -0.55, 0.1);
+    if (art.type === "video") {
+      const hp = new THREE.Mesh(
+        new THREE.SphereGeometry(0.12, 12, 12),
+        new THREE.MeshStandardMaterial({ color: 0xc4893a }),
+      );
+      hp.position.set(0.7, -0.55, 0.1);
       hp.userData.artworkId = art.id;
       hp.userData.isHeadphones = true;
       group.add(hp);
