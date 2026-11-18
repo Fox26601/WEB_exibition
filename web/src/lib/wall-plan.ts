@@ -7,6 +7,7 @@ import { ENTRANCE_ROOM_ID, normalizeLayout } from "./catalog-types";
 import {
   distPointToSegment,
   edgePoints,
+  ENTRANCE_WIDTH,
   pointInPolygon,
   roomWorldVertices,
   type Vec2,
@@ -47,12 +48,14 @@ function findDoorwayWidth(
   edgeIndex: number,
 ): number {
   for (const c of layout.connections) {
-    if (c.roomA === roomId && c.edgeA === edgeIndex) {
-      return Math.max(0.9, c.doorwayWidth);
-    }
-    if (c.roomB === roomId && c.edgeB === edgeIndex) {
-      return Math.max(0.9, c.doorwayWidth);
-    }
+    let partner: string | null = null;
+    if (c.roomA === roomId && c.edgeA === edgeIndex) partner = c.roomB;
+    else if (c.roomB === roomId && c.edgeB === edgeIndex) partner = c.roomA;
+    if (!partner) continue;
+    const toEntrance =
+      partner === ENTRANCE_ROOM_ID || roomId === ENTRANCE_ROOM_ID;
+    const floor = toEntrance ? ENTRANCE_WIDTH : DEFAULT_DOOR_WIDTH;
+    return Math.max(floor, c.doorwayWidth ?? 0);
   }
   return 0;
 }

@@ -5,23 +5,18 @@ import { roomWorldVertices, type Vec2 } from "@/lib/layout-geometry";
 import {
   layoutOverlapRooms,
   shouldKeepFloorTriangle,
-  splitPointsOnEdge,
 } from "@/lib/room-overlap-clip";
 import {
   computeAabbXZ,
   triangulatePolygonXZ,
 } from "@/lib/polygon-floor";
 import { buildLayoutWallPlan } from "@/lib/wall-plan";
-import { layoutWalkBounds } from "./painting-pose";
 import {
   FLOOR_COLOR,
   FLOOR_THICKNESS,
   FLOOR_Y,
-  GALLERY_HEIGHT,
   WALL_COLOR,
-  WALL_THICKNESS,
 } from "./constants";
-import { addCornerPosts } from "./wall-mesh";
 import { buildWallMeshesFromPlan } from "./wall-slab-builder";
 
 export function makeSurfaceMaterial(
@@ -39,45 +34,6 @@ export function makeSurfaceMaterial(
     polygonOffsetUnits: 1,
   });
   return mat;
-}
-
-/** Blocks sky leaking through open-top corners along wall crest. */
-function addCornerCeilingBlocks(
-  parent: THREE.Object3D,
-  verts: Vec2[],
-  mat: THREE.Material,
-): void {
-  const y = FLOOR_Y + GALLERY_HEIGHT + 0.02;
-  const size = WALL_THICKNESS * 5.2;
-  for (const v of verts) {
-    const block = new THREE.Mesh(
-      new THREE.BoxGeometry(size, 0.48, size),
-      mat,
-    );
-    block.position.set(v.x, y, v.z);
-    parent.add(block);
-  }
-}
-
-function buildRoomCeilingCap(
-  parent: THREE.Object3D,
-  verts: Vec2[],
-  mat: THREE.Material,
-): void {
-  const tris = triangulatePolygonXZ(verts);
-  if (!tris || tris.length < 3) return;
-  const y = FLOOR_Y + GALLERY_HEIGHT - 0.04;
-  const positions: number[] = [];
-  for (const v of verts) {
-    positions.push(v.x, y, v.z);
-  }
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  geom.setIndex([...tris]);
-  geom.computeVertexNormals();
-  const mesh = new THREE.Mesh(geom, mat);
-  mesh.renderOrder = -1;
-  parent.add(mesh);
 }
 
 function buildRoomFloor(
@@ -134,78 +90,6 @@ function buildRoomFloor(
   parent.add(new THREE.Mesh(geom, floorMat));
 }
 
-/** Shared vertices across rooms — extra mass closes overlap dihedral gaps. */
-function addLayoutCeilingLid(
-  parent: THREE.Object3D,
-  layout: GalleryLayout,
-  mat: THREE.Material,
-): void {
-  const bounds = layoutWalkBounds(layout.rooms);
-  if (!bounds) return;
-  const pad = 3.2;
-  const w = Math.max(1, bounds.maxX - bounds.minX + pad);
-  const d = Math.max(1, bounds.maxZ - bounds.minZ + pad);
-  const y0 = FLOOR_Y + GALLERY_HEIGHT - 0.08;
-  const lid = new THREE.Mesh(new THREE.BoxGeometry(w, 0.55, d), mat);
-  lid.position.set(
-    (bounds.minX + bounds.maxX) * 0.5,
-    y0 + 0.275,
-    (bounds.minZ + bounds.maxZ) * 0.5,
-  );
-  parent.add(lid);
-  const skirt = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.52, d + 0.6), mat);
-  skirt.position.set(lid.position.x, FLOOR_Y + GALLERY_HEIGHT + 0.22, lid.position.z);
-  parent.add(skirt);
-}
-
-function addLayoutJunctionPosts(
-  parent: THREE.Object3D,
-  layout: GalleryLayout,
-  wallMat: THREE.Material,
-): void {
-  const pts: Vec2[] = [];
-  const merge = 0.1;
-  for (const room of layout.rooms) {
-    for (const v of roomWorldVertices(room)) {
-      if (pts.some((p) => Math.hypot(p.x - v.x, p.z - v.z) < merge)) continue;
-      pts.push(v);
-    }
-  }
-  const postH = GALLERY_HEIGHT - FLOOR_Y + 0.22;
-  const postY = FLOOR_Y + postH * 0.5;
-  const size = WALL_THICKNESS * 4.2;
-  for (const p of pts) {
-    const post = new THREE.Mesh(
-      new THREE.BoxGeometry(size, postH, size),
-      wallMat,
-    );
-    post.position.set(p.x, postY, p.z);
-    parent.add(post);
-  }
-}
-
-function addOverlapSplitPosts(
-  parent: THREE.Object3D,
-  roomId: string,
-  edgeIndex: number,
-  overlapRooms: ReturnType<typeof layoutOverlapRooms>,
-  wallMat: THREE.Material,
-): void {
-  for (const split of splitPointsOnEdge(overlapRooms, roomId, edgeIndex)) {
-    const postH = GALLERY_HEIGHT - FLOOR_Y + 0.2;
-    const post = new THREE.Mesh(
-      new THREE.BoxGeometry(
-        WALL_THICKNESS * 4.2,
-        postH,
-        WALL_THICKNESS * 4.2,
-      ),
-      wallMat,
-    );
-    post.position.set(split.x, FLOOR_Y + postH * 0.5, split.z);
-    parent.add(post);
-  }
-}
-
 export type LayoutBuildResult = {
   root: THREE.Group;
   floorMat: THREE.MeshStandardMaterial;
@@ -213,6 +97,10 @@ export type LayoutBuildResult = {
   dispose: () => void;
 };
 
+/**
+ * Floors + wall-plan slabs only. Open sky: no ceiling lid/skirt.
+ * Corner joints come from slab miter overlap (no junction posts).
+ */
 export function buildLayoutScene(
   layoutInput: GalleryLayout,
   textures: { floor?: THREE.Texture; wall?: THREE.Texture },
@@ -235,30 +123,11 @@ export function buildLayoutScene(
     if (verts.length < 3) continue;
 
     buildRoomFloor(roomRoot, room.id, verts, overlapRooms, floorMat);
-    buildRoomCeilingCap(roomRoot, verts, wallMat);
-    addCornerCeilingBlocks(roomRoot, verts, wallMat);
     roomRoots.set(room.id, roomRoot);
     root.add(roomRoot);
   }
 
   buildWallMeshesFromPlan(roomRoots, plan, layout, wallMat);
-
-  for (const room of layout.rooms) {
-    if (!room?.id) continue;
-    const roomRoot = roomRoots.get(room.id);
-    if (!roomRoot) continue;
-    const verts = roomWorldVertices(room);
-    if (verts.length < 3) continue;
-    if (overlapRooms.length > 1) {
-      for (let i = 0; i < verts.length; i++) {
-        addOverlapSplitPosts(roomRoot, room.id, i, overlapRooms, wallMat);
-      }
-    }
-    addCornerPosts(roomRoot, verts, wallMat);
-  }
-
-  addLayoutJunctionPosts(root, layout, wallMat);
-  addLayoutCeilingLid(root, layout, wallMat);
 
   return {
     root,
