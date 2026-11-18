@@ -164,8 +164,14 @@ export function ExhibitionApp() {
   const settings = catalog ? normalizeSettings(catalog.settings) : null;
 
   function postToggleBooklet() {
+    // Same control raises/lowers the active booklet (art if raised/focused, else foyer map).
+    if (artBookletOpen) {
+      setArtBookletOpen(false);
+      return;
+    }
     if (artBookletId && selected?.id === artBookletId) {
-      setArtBookletOpen((open) => !open);
+      setBookletOpen(false);
+      setArtBookletOpen(true);
       return;
     }
     if (!bookletOwned) return;
@@ -191,6 +197,7 @@ export function ExhibitionApp() {
       catalog?.artworks.find((a) => a.id === artworkId);
     if (!art) return;
     setSelected(art);
+    // One raised booklet at a time (Minecraft map): lower foyer when raising art.
     setBookletOpen(false);
     if (artBookletOpen && artBookletId === artworkId) {
       setArtBookletOpen(false);
@@ -199,10 +206,17 @@ export function ExhibitionApp() {
     setArtBookletId(artworkId);
     setArtBookletPage(0);
     setArtBookletOpen(true);
+    // Keep fullscreen under the booklet — Q / Booklet raise over View.
   }
 
-  function onOpenFullscreen(art: Artwork) {
-    setArtBookletOpen(false);
+  /** E / View: same control opens and closes fullscreen. */
+  function onToggleFullscreen(art: Artwork | null) {
+    if (imageOverlay || videoOverlay) {
+      setImageOverlay(null);
+      setVideoOverlay(null);
+      return;
+    }
+    if (!art) return;
     openArtworkFullscreen(art, setImageOverlay, setVideoOverlay);
   }
 
@@ -300,7 +314,7 @@ export function ExhibitionApp() {
       </div>
 
       {bookletOwned || artBookletOpen ? (
-        <div className="pointer-events-none absolute bottom-14 start-1/2 z-20 -translate-x-1/2">
+        <div className="pointer-events-none absolute bottom-14 start-1/2 z-50 -translate-x-1/2">
           <button
             type="button"
             className="pointer-events-auto btn btn-solid !py-2 !px-5"
@@ -353,7 +367,7 @@ export function ExhibitionApp() {
         onSelect={setSelected}
         onOpenImage={(url) => setImageOverlay(url)}
         onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
-        onOpenFullscreen={onOpenFullscreen}
+        onOpenFullscreen={onToggleFullscreen}
         onOpenArtBooklet={onOpenArtBooklet}
         onBookletInteract={onBookletInteract}
       />
@@ -382,11 +396,8 @@ export function ExhibitionApp() {
         />
       ) : null}
 
-      {selected &&
-      !artBookletOpen &&
-      !imageOverlay &&
-      !videoOverlay ? (
-        <div className="pointer-events-none absolute bottom-24 start-1/2 z-20 flex w-[min(92vw,28rem)] -translate-x-1/2 flex-col items-center gap-2 sm:bottom-8">
+      {selected ? (
+        <div className="pointer-events-none absolute bottom-24 start-1/2 z-50 flex w-[min(92vw,28rem)] -translate-x-1/2 flex-col items-center gap-2 sm:bottom-8">
           <p className="rounded bg-black/55 px-3 py-1.5 text-center font-[family-name:var(--font-display)] text-sm font-semibold tracking-wide text-white/90">
             {pickLocalized(selected.title, locale)}
           </p>
@@ -394,13 +405,13 @@ export function ExhibitionApp() {
             <button
               type="button"
               className="btn btn-solid !py-2"
-              onClick={() => onOpenFullscreen(selected)}
+              onClick={() => onToggleFullscreen(selected)}
             >
               {copy.view}
             </button>
             <button
               type="button"
-              className="btn !py-2"
+              className={`btn !py-2 ${artBookletOpen ? "btn-solid" : ""}`}
               onClick={() => onOpenArtBooklet(selected.id)}
             >
               {copy.booklet}

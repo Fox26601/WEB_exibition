@@ -116,10 +116,11 @@ export function BookletOverlay({
     return <div className="w-full">{sheet}</div>;
   }
 
+  // Above art fullscreen (z-40) so Q / Booklet can raise over View.
   const shellClass =
     anchor === "below-art"
-      ? "absolute inset-0 z-30 flex items-end justify-center bg-black/40 px-4 pb-6 pt-28 sm:pb-10 sm:pt-36"
-      : "absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center";
+      ? "absolute inset-0 z-[45] flex items-end justify-center bg-black/40 px-4 pb-6 pt-28 sm:pb-10 sm:pt-36"
+      : "absolute inset-0 z-[45] flex items-end justify-center bg-black/55 p-4 sm:items-center";
 
   return <div className={shellClass}>{sheet}</div>;
 }

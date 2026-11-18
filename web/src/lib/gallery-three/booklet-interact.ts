@@ -31,8 +31,8 @@ export type ExhibitionQAction =
   | { kind: "entrance"; action: "pickup" | "toggle" };
 
 /**
- * Q routing: focused/near art opens that piece's booklet;
- * otherwise foyer pedestal pickup/toggle.
+ * Q routing: focused art toggles that piece's booklet (raise/lower);
+ * otherwise foyer pedestal pickup/toggle. Works while fullscreen is open.
  */
 export function resolveExhibitionQAction(opts: {
   focusedArtworkId: string | null;

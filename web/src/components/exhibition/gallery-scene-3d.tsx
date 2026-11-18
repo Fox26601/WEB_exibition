@@ -64,9 +64,9 @@ type Props = {
   onSelect: (art: Artwork | null) => void;
   onOpenImage: (url: string) => void;
   onOpenVideo: (url: string, poster?: string) => void;
-  /** E / mobile tap: fullscreen art modal (image or video). */
-  onOpenFullscreen: (art: Artwork) => void;
-  /** Q while focused on art: raise that artwork's booklet. */
+  /** E / View / mobile tap: toggle fullscreen art modal (image or video). */
+  onOpenFullscreen: (art: Artwork | null) => void;
+  /** Q while focused on art: toggle that artwork's booklet (raise/lower). */
   onOpenArtBooklet: (artworkId: string) => void;
   onBookletInteract?: (action: BookletAction) => void;
 };
@@ -359,10 +359,10 @@ export function GalleryScene3D({
       if (e.repeat) return;
       keys.add(e.code);
       if (e.code === "KeyE") {
+        e.preventDefault();
         const id = lookFocusedId;
-        if (!id) return;
-        const art = artworkById.get(id);
-        if (art) callbacks.current.onOpenFullscreen(art);
+        const art = id ? artworkById.get(id) : undefined;
+        callbacks.current.onOpenFullscreen(art ?? null);
       }
       if (e.code === "KeyQ") {
         const q = resolveExhibitionQAction({
@@ -808,7 +808,7 @@ export function GalleryScene3D({
         Click pedestal or press Q to take booklet
       </p>
       <p className="pointer-events-none absolute bottom-3 end-3 z-20 hidden font-[family-name:var(--font-ui)] text-[0.65rem] text-white/40 md:block">
-        WASD · mouse look · E fullscreen · Q art/entrance booklet · click pedestal
+        WASD · mouse look · E toggle view · Q raise/lower booklet · click pedestal
       </p>
     </div>
   );
