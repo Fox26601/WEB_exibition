@@ -1,6 +1,6 @@
-# Three.js exhibition POC (Phase 0)
+# Three.js exhibition viewer
 
-Replace Unity WebGL on `/exhibition` with a lightweight Three.js viewer. Unity remains the default on `main` until cutover.
+`/exhibition` uses **Three.js by default**. Unity WebGL is legacy: visitors opt in with `?renderer=unity` or `NEXT_PUBLIC_GALLERY_RENDERER=unity`. Admin 3D build (`mode=admin-build`) still uses Unity when `public/unity/Build` is present.
 
 ## Try locally
 
@@ -12,17 +12,18 @@ npm run dev
 
 | URL | Renderer |
 | --- | --- |
-| http://localhost:3000/exhibition | Unity when `public/unity/Build` exists |
-| http://localhost:3000/exhibition?renderer=three | Three.js (forced) |
-| http://localhost:3000/exhibition?renderer=three&catalog=draft&token=… | Three + draft catalog |
+| http://localhost:3000/exhibition | **Three.js** (default) |
+| http://localhost:3000/exhibition?renderer=unity | Unity (when wasm present) |
+| http://localhost:3000/exhibition?catalog=draft&token=… | Three + draft catalog |
 
-### Environment (same as query flag)
+### Environment
 
 ```bash
+# Optional explicit default (app already defaults to three without this)
 NEXT_PUBLIC_GALLERY_RENDERER=three npm run dev
 ```
 
-Set `NEXT_PUBLIC_GALLERY_RENDERER=three` on Vercel when you are ready for production cutover (Phase 3). Until then, use the query flag on preview deployments.
+**Production (webgalerey.app):** set `NEXT_PUBLIC_GALLERY_RENDERER=three` on Vercel to document intent; behavior matches the built-in default. Use `unity` only for emergency rollback while Three admin mode is unfinished.
 
 ## Module layout
 
@@ -51,7 +52,7 @@ CC0 **Cozy Sky Night** 2K equirectangular panorama:
 | --- | --- |
 | Unity WebGL (`WebGL.wasm` + data) | ~50 MB download |
 | `three` npm package (minified) | ~0.6 MB |
-| This POC sky PNG | ~1.2 MB |
+| This sky PNG | ~1.2 MB |
 | Exhibition JS chunk (Three path, built) | ~2–4 MB gzip (depends on code-splitting) |
 
 Visitor memory: Three avoids loading the ~50 MB wasm heap; expect tens of MB lower on typical mobile browsers.

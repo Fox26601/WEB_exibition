@@ -206,16 +206,23 @@ export function ExhibitionApp({
   const useThree = rendererMode === "three";
   const useUnity = rendererMode === "unity" && unityAvailable;
 
-  if (adminBuild && useUnity) {
+  if (adminBuild) {
+    if (unityAvailable) {
+      return (
+        <div className="relative h-[100dvh] w-full overflow-hidden bg-black">
+          <UnityEmbed
+            catalogKind={catalogKind}
+            token={token}
+            lang={locale}
+            adminBuild
+            iframeRef={iframeRef}
+          />
+        </div>
+      );
+    }
     return (
-      <div className="relative h-[100dvh] w-full overflow-hidden bg-black">
-        <UnityEmbed
-          catalogKind={catalogKind}
-          token={token}
-          lang={locale}
-          adminBuild
-          iframeRef={iframeRef}
-        />
+      <div className="flex min-h-screen items-center justify-center bg-black px-6 text-center text-[var(--paper-dim)]">
+        <p>Admin 3D build requires the Unity WebGL build in this environment.</p>
       </div>
     );
   }

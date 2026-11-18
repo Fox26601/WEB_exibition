@@ -2,22 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveGalleryRenderer } from "./gallery-renderer.ts";
 
-test("resolveGalleryRenderer forces three from query when wasm present", () => {
+test("resolveGalleryRenderer defaults to three when wasm present", () => {
+  assert.equal(resolveGalleryRenderer(true, ""), "three");
+  assert.equal(resolveGalleryRenderer(true, "?catalog=live"), "three");
+});
+
+test("resolveGalleryRenderer forces three from explicit query", () => {
   assert.equal(
     resolveGalleryRenderer(true, "?renderer=three"),
     "three",
   );
+});
+
+test("resolveGalleryRenderer loads unity only when explicitly requested", () => {
+  assert.equal(resolveGalleryRenderer(true, "?renderer=unity"), "unity");
   assert.equal(
-    resolveGalleryRenderer(true, "?catalog=live&renderer=three"),
-    "three",
+    resolveGalleryRenderer(true, "?catalog=draft&renderer=unity"),
+    "unity",
   );
 });
 
-test("resolveGalleryRenderer prefers unity when wasm present and no override", () => {
-  assert.equal(resolveGalleryRenderer(true, ""), "unity");
-  assert.equal(resolveGalleryRenderer(true, "?catalog=live"), "unity");
-});
-
-test("resolveGalleryRenderer falls back to three without wasm", () => {
+test("resolveGalleryRenderer defaults to three without wasm", () => {
   assert.equal(resolveGalleryRenderer(false, ""), "three");
 });
