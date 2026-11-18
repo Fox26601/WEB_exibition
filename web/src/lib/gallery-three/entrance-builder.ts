@@ -3,14 +3,16 @@ import type { Catalog, GalleryEntrancePose, GalleryLayout } from "@/lib/catalog-
 import { DEFAULT_ENTRANCE_POSE } from "@/lib/catalog-types";
 import { ROOM } from "@/lib/room";
 import {
-  FLOOR_COLOR,
   FLOOR_THICKNESS,
   FLOOR_Y,
   GALLERY_HEIGHT,
-  WALL_COLOR,
   WALL_THICKNESS,
 } from "./constants";
-import { makeSurfaceMaterial } from "./layout-builder";
+import {
+  makeFloorMaterial,
+  makeSurfaceMaterial,
+  makeWallMaterial,
+} from "./layout-builder";
 import {
   applyTextureToMaterial,
   loadColorTexture,
@@ -88,7 +90,13 @@ function boxMesh(
 export function buildEntranceModule(
   layout: GalleryLayout | null | undefined,
   catalog: Catalog,
-  options?: { previewLite?: boolean; entrancePose?: GalleryEntrancePose | null },
+  options?: {
+    previewLite?: boolean;
+    entrancePose?: GalleryEntrancePose | null;
+    /** Shared with gallery rooms so foyer + layout floors match exactly. */
+    floorMat?: THREE.MeshStandardMaterial;
+    wallMat?: THREE.MeshStandardMaterial;
+  },
 ): EntranceBuildResult {
   const pose = computeEntrancePose(
     options?.entrancePose ?? layout?.entrance,
@@ -98,8 +106,10 @@ export function buildEntranceModule(
   root.position.set(pose.portal.x, 0, pose.portal.z);
   root.rotation.y = pose.yawRad;
 
-  const floorMat = makeSurfaceMaterial(FLOOR_COLOR);
-  const wallMat = makeSurfaceMaterial(WALL_COLOR);
+  const ownsFloor = !options?.floorMat;
+  const ownsWall = !options?.wallMat;
+  const floorMat = options?.floorMat ?? makeFloorMaterial();
+  const wallMat = options?.wallMat ?? makeWallMaterial();
   const trimMat = makeSurfaceMaterial(TRIM_COLOR);
   const topMat = makeSurfaceMaterial(TOP_COLOR);
   const bookletMat = makeSurfaceMaterial(BOOKLET_COLOR);
@@ -108,13 +118,13 @@ export function buildEntranceModule(
     toneMapped: true,
   });
   const mats: Array<{ dispose: () => void }> = [
-    floorMat,
-    wallMat,
     trimMat,
     topMat,
     bookletMat,
     posterMat,
   ];
+  if (ownsFloor) mats.push(floorMat);
+  if (ownsWall) mats.push(wallMat);
 
   const midLocalZ = -ENTRANCE_WORLD_DEPTH * 0.5;
   const w = ROOM.width;

@@ -15,6 +15,10 @@ export const WALL_CORNER_JOIN = 0;
 export const CANVAS_Z_OFFSET = 0.045;
 export const FLOOR_Y = -0.05;
 export const FLOOR_THICKNESS = 0.1;
+/** Walkable top of the floor slab (matches foyer BoxGeometry top face). */
+export const FLOOR_SURFACE_Y = FLOOR_Y + FLOOR_THICKNESS * 0.5;
+/** World-space UV meters per repeat — keeps foyer + room tiling density aligned. */
+export const FLOOR_UV_METERS = 4;
 /** Inter-room passage width (overrides narrow catalog connection values). */
 export const DEFAULT_DOOR_WIDTH = 4.0;
 /** Clear opening under doorway lintel (world Y). */
@@ -22,5 +26,6 @@ export const DOOR_CLEAR_HEIGHT = 2.55;
 export const SKY_PANORAMA_URL = "/sky/cozy-sky-night_2k.png";
 export const MAX_PIXEL_RATIO = 2;
 
-export const FLOOR_COLOR = 0x85888c;
+/** Slightly darker than WALL_COLOR so floors read as a distinct ground plane. */
+export const FLOOR_COLOR = 0x6e7278;
 export const WALL_COLOR = 0xadb0b8;

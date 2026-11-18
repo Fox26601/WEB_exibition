@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { ROOM, roomLength } from "@/lib/room";
-import { FLOOR_COLOR, WALL_COLOR, WALL_THICKNESS } from "./constants";
+import { FLOOR_SURFACE_Y, WALL_THICKNESS } from "./constants";
+import { makeFloorMaterial, makeWallMaterial } from "./layout-builder";
 
 export type CorridorBuildResult = {
   length: number;
@@ -11,15 +12,16 @@ export type CorridorBuildResult = {
 export function buildLegacyCorridor(artworkCount: number): CorridorBuildResult {
   const length = roomLength(artworkCount);
   const root = new THREE.Group();
-  const floorMat = new THREE.MeshStandardMaterial({ color: FLOOR_COLOR, roughness: 0.9 });
-  const wallMat = new THREE.MeshStandardMaterial({ color: WALL_COLOR, roughness: 0.95 });
+  const floorMat = makeFloorMaterial();
+  const wallMat = makeWallMaterial();
 
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(ROOM.width, length),
     floorMat,
   );
+  floor.name = "CorridorFloor";
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(0, 0, length / 2);
+  floor.position.set(0, FLOOR_SURFACE_Y, length / 2);
   root.add(floor);
 
   const wallH = ROOM.height;
