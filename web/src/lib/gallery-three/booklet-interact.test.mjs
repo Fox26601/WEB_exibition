@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  heldBookletLocalPose,
+  HELD_BOOKLET_LOWERED,
+  HELD_BOOKLET_RAISED,
   isWithinPedestalReach,
   PEDESTAL_INTERACT_RADIUS,
   resolveBookletKeyAction,
@@ -38,5 +41,19 @@ describe("resolveBookletKeyAction", () => {
       resolveBookletKeyAction({ owned: false, nearPedestal: false }),
       null,
     );
+  });
+});
+
+describe("heldBookletLocalPose", () => {
+  it("raises local Y when open and lowers when stowed", () => {
+    const raised = heldBookletLocalPose(true);
+    const lowered = heldBookletLocalPose(false);
+    assert.equal(raised, HELD_BOOKLET_RAISED);
+    assert.equal(lowered, HELD_BOOKLET_LOWERED);
+    assert.ok(
+      raised.position.y > lowered.position.y,
+      "raised booklet must sit higher in camera space",
+    );
+    assert.ok(raised.position.z > lowered.position.z);
   });
 });

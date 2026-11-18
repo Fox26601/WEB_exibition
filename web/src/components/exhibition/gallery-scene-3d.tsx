@@ -24,6 +24,7 @@ import {
   unionWalkBounds,
 } from "@/lib/gallery-three/entrance-builder";
 import {
+  heldBookletLocalPose,
   isWithinPedestalReach,
   resolveBookletKeyAction,
 } from "@/lib/gallery-three/booklet-interact";
@@ -42,6 +43,8 @@ type Props = {
   emptyLabel: string;
   previewLite?: boolean;
   bookletOwned?: boolean;
+  /** True while the booklet overlay is open (raised in hands). */
+  bookletRaised?: boolean;
   onSelect: (art: Artwork | null) => void;
   onOpenImage: (url: string) => void;
   onOpenVideo: (url: string, poster?: string) => void;
@@ -55,6 +58,7 @@ export function GalleryScene3D({
   emptyLabel,
   previewLite = false,
   bookletOwned = false,
+  bookletRaised = false,
   onSelect,
   onOpenImage,
   onOpenVideo,
@@ -71,6 +75,8 @@ export function GalleryScene3D({
   catalogRef.current = catalog;
   const bookletOwnedRef = useRef(bookletOwned);
   bookletOwnedRef.current = bookletOwned;
+  const bookletRaisedRef = useRef(bookletRaised);
+  bookletRaisedRef.current = bookletRaised;
 
   const callbacks = useRef({
     onSelect,
@@ -189,6 +195,46 @@ export function GalleryScene3D({
       pedestalPick.updateWorldMatrix(true, false);
       pedestalPick.getWorldPosition(pedestalWorld);
     }
+
+    // Minecraft-map hold: visible while owned; local Y raises/lowers with Q overlay.
+    const heldBookletMat = new THREE.MeshStandardMaterial({
+      color: 0xd2b98c,
+      roughness: 0.7,
+      metalness: 0.05,
+      side: THREE.DoubleSide,
+    });
+    const heldBooklet = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.55, 0.4),
+      heldBookletMat,
+    );
+    heldBooklet.name = "HeldBookletMap";
+    heldBooklet.visible = bookletOwnedRef.current;
+    heldBooklet.renderOrder = 10;
+    scene.add(heldBooklet);
+    const heldLocal = new THREE.Vector3();
+    const heldEuler = new THREE.Euler(0, 0, 0, "XYZ");
+    const heldQuat = new THREE.Quaternion();
+
+    function syncHeldBooklet() {
+      const owned = bookletOwnedRef.current;
+      heldBooklet.visible = owned;
+      if (!owned) return;
+      const pose = heldBookletLocalPose(bookletRaisedRef.current);
+      // Camera is not parented in the scene graph — compose world pose manually.
+      heldLocal
+        .set(pose.position.x, pose.position.y, pose.position.z)
+        .applyQuaternion(camera.quaternion)
+        .add(camera.position);
+      heldBooklet.position.copy(heldLocal);
+      heldEuler.set(
+        (pose.eulerDeg.x * Math.PI) / 180,
+        (pose.eulerDeg.y * Math.PI) / 180,
+        (pose.eulerDeg.z * Math.PI) / 180,
+      );
+      heldQuat.setFromEuler(heldEuler);
+      heldBooklet.quaternion.copy(camera.quaternion).multiply(heldQuat);
+    }
+    syncHeldBooklet();
 
     const artworkById = new Map(artworks.map((a) => [a.id, a]));
     let pickRoots: THREE.Object3D[] = [];
@@ -513,8 +559,10 @@ export function GalleryScene3D({
         }) => void;
         __galleryBookletDebug?: () => {
           owned: boolean;
+          raised: boolean;
           near: boolean;
           action: ReturnType<typeof resolveBookletKeyAction>;
+          heldLocalY: number;
           pedestal: { x: number; z: number };
           camera: { x: number; z: number };
         };
@@ -531,13 +579,16 @@ export function GalleryScene3D({
       };
       (window as Win).__galleryBookletDebug = () => {
         const near = nearPedestal();
+        const raised = bookletRaisedRef.current;
         return {
           owned: bookletOwnedRef.current,
+          raised,
           near,
           action: resolveBookletKeyAction({
             owned: bookletOwnedRef.current,
             nearPedestal: near,
           }),
+          heldLocalY: heldBookletLocalPose(raised).position.y,
           pedestal: { x: pedestalWorld.x, z: pedestalWorld.z },
           camera: { x: camera.position.x, z: camera.position.z },
         };
@@ -589,6 +640,7 @@ export function GalleryScene3D({
       if (bookletMesh) {
         bookletMesh.visible = !bookletOwnedRef.current;
       }
+      syncHeldBooklet();
       const hint = hintRef.current;
       if (hint) {
         const show = !!pedestalPick && !bookletOwnedRef.current && nearPedestal();
@@ -613,6 +665,9 @@ export function GalleryScene3D({
       lookEl?.removeEventListener("touchend", onLookEnd);
       for (const fn of teardowns) fn();
       for (const t of texDisposables) t.dispose();
+      heldBooklet.geometry.dispose();
+      heldBookletMat.dispose();
+      scene.remove(heldBooklet);
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) {
         mount.removeChild(renderer.domElement);

@@ -285,6 +285,7 @@ export function ExhibitionApp() {
         emptyLabel={copy.emptyRoom}
         previewLite={previewLite}
         bookletOwned={bookletOwned}
+        bookletRaised={bookletOpen}
         onSelect={setSelected}
         onOpenImage={(url) => setImageOverlay(url)}
         onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
