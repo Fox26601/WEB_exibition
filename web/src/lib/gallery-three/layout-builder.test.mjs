@@ -6,6 +6,7 @@ import { normalizeLayout } from "../catalog-types.ts";
 import { roomWorldVertices } from "../layout-geometry.ts";
 import {
   FLOOR_COLOR,
+  PORTAL_FLOOR_INSET,
   WALL_COLOR,
   gallerySurfaceY,
 } from "./constants.ts";
@@ -65,7 +66,7 @@ describe("buildLayoutScene floors", () => {
     wallMat.dispose();
   });
 
-  it("room floors cover the full polygon at raised gallery surface with UVs", () => {
+  it("room floors cover the polygon at raised gallery surface with UVs", () => {
     const layout = normalizeLayout(fixture.layout);
     const overlap = layoutOverlapRooms(layout);
     const floorMat = makeFloorMaterial();
@@ -94,6 +95,41 @@ describe("buildLayoutScene floors", () => {
       mesh.geometry.dispose();
     }
 
+    floorMat.dispose();
+  });
+
+  it("portal clip insets entrance-connected room floors away from doorway", () => {
+    const layout = normalizeLayout(fixture.layout);
+    const overlap = layoutOverlapRooms(layout);
+    const floorMat = makeFloorMaterial();
+    const hex = layout.rooms.find((r) => r.shape === "hexagon");
+    assert.ok(hex);
+
+    const parent = new THREE.Group();
+    const verts = roomWorldVertices(hex);
+    const mesh = buildRoomFloor(
+      parent,
+      hex.id,
+      verts,
+      overlap,
+      floorMat,
+      layout,
+    );
+    assert.ok(mesh);
+
+    const pos = mesh.geometry.getAttribute("position");
+    // Clipped polygon gains vertices along the inset portal chord.
+    assert.ok(pos.count >= 3);
+    const portalZ = -0.5;
+    for (let i = 0; i < pos.count; i++) {
+      assert.ok(
+        pos.getZ(i) >= portalZ + PORTAL_FLOOR_INSET - 1e-5,
+        `floor vert z=${pos.getZ(i)} should clear portal`,
+      );
+      assert.ok(Math.abs(pos.getY(i) - gallerySurfaceY()) < 1e-6);
+    }
+
+    mesh.geometry.dispose();
     floorMat.dispose();
   });
 

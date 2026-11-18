@@ -1,7 +1,11 @@
 import * as THREE from "three";
 import type { GalleryLayout } from "@/lib/catalog-types";
 import { layoutIsEmpty, normalizeLayout } from "@/lib/catalog-types";
-import { roomWorldVertices, type Vec2 } from "@/lib/layout-geometry";
+import {
+  entranceWorldVertices,
+  roomWorldVertices,
+  type Vec2,
+} from "@/lib/layout-geometry";
 import {
   layoutOverlapRooms,
   shouldKeepFloorTriangle,
@@ -25,6 +29,10 @@ import {
   galleryFloorCenterY,
   gallerySurfaceY,
 } from "./constants";
+import {
+  clipRoomFloorForPortal,
+  shouldKeepFloorTriangleOutsideFoyer,
+} from "./portal-floor-clip";
 import { buildWallMeshesFromPlan } from "./wall-slab-builder";
 
 export function makeSurfaceMaterial(
@@ -67,6 +75,7 @@ function appendFloorVertex(
 /**
  * Triangulated room floor covering the full polygon (wall centerlines).
  * World-space UVs match foyer tiling density; surface Y is raised gallery level.
+ * Optional layout clips floor at the entrance portal so tris do not z-fight stairs.
  */
 export function buildRoomFloor(
   parent: THREE.Object3D,
@@ -74,10 +83,18 @@ export function buildRoomFloor(
   verts: Vec2[],
   overlapRooms: ReturnType<typeof layoutOverlapRooms>,
   floorMat: THREE.Material,
+  layout?: GalleryLayout | null,
 ): THREE.Mesh | null {
-  const tris = triangulatePolygonXZ(verts);
+  const floorVerts =
+    layout != null
+      ? clipRoomFloorForPortal(verts, layout, roomId, layout.entrance)
+      : verts;
+  const foyerVerts =
+    layout != null ? entranceWorldVertices(layout.entrance) : null;
+
+  const tris = triangulatePolygonXZ(floorVerts);
   if (!tris) {
-    const aabb = computeAabbXZ(verts);
+    const aabb = computeAabbXZ(floorVerts);
     if (!aabb) return null;
     const cx = (aabb.minX + aabb.maxX) * 0.5;
     const cz = (aabb.minZ + aabb.maxZ) * 0.5;
@@ -100,8 +117,14 @@ export function buildRoomFloor(
     const ia = tris[t];
     const ib = tris[t + 1];
     const ic = tris[t + 2];
-    const cx = (verts[ia].x + verts[ib].x + verts[ic].x) / 3;
-    const cz = (verts[ia].z + verts[ib].z + verts[ic].z) / 3;
+    const cx = (floorVerts[ia].x + floorVerts[ib].x + floorVerts[ic].x) / 3;
+    const cz = (floorVerts[ia].z + floorVerts[ib].z + floorVerts[ic].z) / 3;
+    if (
+      foyerVerts &&
+      !shouldKeepFloorTriangleOutsideFoyer(foyerVerts, { x: cx, z: cz })
+    ) {
+      continue;
+    }
     if (multiOverlap && !shouldKeepFloorTriangle(overlapRooms, roomId, { x: cx, z: cz })) {
       continue;
     }
@@ -115,8 +138,8 @@ export function buildRoomFloor(
   const positions: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
-  for (let i = 0; i < verts.length; i++) {
-    appendFloorVertex(positions, uvs, verts[i].x, verts[i].z);
+  for (let i = 0; i < floorVerts.length; i++) {
+    appendFloorVertex(positions, uvs, floorVerts[i].x, floorVerts[i].z);
   }
   for (let i = 0; i < use.length; i++) indices.push(use[i]);
 
@@ -246,6 +269,7 @@ export function buildLayoutScene(
       verts,
       overlapRooms,
       floors.get(room.floorColor),
+      layout,
     );
     roomRoots.set(room.id, roomRoot);
     root.add(roomRoot);
