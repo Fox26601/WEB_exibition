@@ -102,6 +102,7 @@ function buildPaintingGroup(
   disposables.push(canvasMat);
   const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
   canvas.position.z = CANVAS_Z_OFFSET;
+  canvas.scale.x = -1;
   canvas.userData.artworkId = art.id;
   canvas.userData.isCanvas = true;
   group.add(canvas);
@@ -168,6 +169,7 @@ export function addCorridorArtworks(
     disposables.push(canvasMat);
     const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
     canvas.position.z = CANVAS_Z_OFFSET;
+    canvas.scale.x = -1;
     canvas.userData.artworkId = art.id;
     canvas.userData.isCanvas = true;
     group.add(canvas);

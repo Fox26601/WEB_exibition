@@ -23,7 +23,7 @@ import {
   WALL_COLOR,
 } from "./constants";
 import { lerpVec2, roomCentroid } from "./room-geometry";
-import { buildWallAlongEdge } from "./wall-mesh";
+import { addCornerPosts, buildWallAlongEdge } from "./wall-mesh";
 
 function findDoorwayWidth(
   layout: GalleryLayout,
@@ -169,6 +169,8 @@ export function buildLayoutScene(
         buildWallAlongEdge(roomRoot, a, b, door, wallMat, verts);
       }
     }
+
+    addCornerPosts(roomRoot, verts, wallMat);
 
     root.add(roomRoot);
   }

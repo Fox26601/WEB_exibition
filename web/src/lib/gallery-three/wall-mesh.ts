@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import type { Vec2 } from "@/lib/layout-geometry";
-import { GALLERY_HEIGHT, WALL_CORNER_MITER, WALL_INSET } from "./constants";
+import {
+  GALLERY_HEIGHT,
+  WALL_CORNER_MITER,
+  WALL_PLANE_BIAS,
+} from "./constants";
 import { inwardNormal, lerpVec2, roomCentroid } from "./room-geometry";
 
 /** Vertical wall quad along edge AB; front face points into the room. */
@@ -23,10 +27,10 @@ export function addWallQuad(
   const aEdge = { x: a.x - ux * miter, z: a.z - uz * miter };
   const bEdge = { x: b.x + ux * miter, z: b.z + uz * miter };
   const inward = inwardNormal(a, b, centroid);
-  const ax = aEdge.x + inward.x * WALL_INSET;
-  const az = aEdge.z + inward.z * WALL_INSET;
-  const bx = bEdge.x + inward.x * WALL_INSET;
-  const bz = bEdge.z + inward.z * WALL_INSET;
+  const ax = aEdge.x + inward.x * WALL_PLANE_BIAS;
+  const az = aEdge.z + inward.z * WALL_PLANE_BIAS;
+  const bx = bEdge.x + inward.x * WALL_PLANE_BIAS;
+  const bz = bEdge.z + inward.z * WALL_PLANE_BIAS;
   const topY = bottomY + height;
 
   const positions = new Float32Array([
@@ -50,6 +54,39 @@ export function addWallQuad(
   geom.computeVertexNormals();
 
   parent.add(new THREE.Mesh(geom, material));
+}
+
+/** Fill vertical gaps where inset wall quads meet at polygon vertices. */
+export function addCornerPosts(
+  parent: THREE.Object3D,
+  verts: Vec2[],
+  material: THREE.Material,
+): void {
+  const centroid = roomCentroid(verts);
+  if (!centroid || verts.length < 3) return;
+  const n = verts.length;
+  for (let i = 0; i < n; i++) {
+    const prev = verts[(i - 1 + n) % n];
+    const cur = verts[i];
+    const next = verts[(i + 1) % n];
+    const inPrev = inwardNormal(prev, cur, centroid);
+    const inNext = inwardNormal(cur, next, centroid);
+    let bx = inPrev.x + inNext.x;
+    let bz = inPrev.z + inNext.z;
+    const blen = Math.hypot(bx, bz);
+    if (blen < 1e-6) continue;
+    bx /= blen;
+    bz /= blen;
+    const cx = cur.x + bx * (WALL_PLANE_BIAS + 0.04);
+    const cz = cur.z + bz * (WALL_PLANE_BIAS + 0.04);
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(0.16, GALLERY_HEIGHT, 0.12),
+      material,
+    );
+    post.position.set(cx, GALLERY_HEIGHT * 0.5, cz);
+    post.rotation.y = Math.atan2(bx, bz);
+    parent.add(post);
+  }
 }
 
 export function buildWallAlongEdge(

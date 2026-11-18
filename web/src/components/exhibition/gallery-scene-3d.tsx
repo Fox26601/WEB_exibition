@@ -356,6 +356,31 @@ export function GalleryScene3D({
     const forward = new THREE.Vector3();
     const right = new THREE.Vector3();
 
+    const qaMode =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("qa") === "1";
+    if (qaMode) {
+      type Win = Window & {
+        __setGalleryCamera?: (p: {
+          x: number;
+          y: number;
+          z: number;
+          yawDeg: number;
+          pitchDeg?: number;
+        }) => void;
+      };
+      (window as Win).__setGalleryCamera = (p) => {
+        camera.position.set(p.x, p.y ?? 1.6, p.z);
+        euler.set(
+          ((p.pitchDeg ?? 0) * Math.PI) / 180,
+          (p.yawDeg * Math.PI) / 180,
+          0,
+          "YXZ",
+        );
+        camera.quaternion.setFromEuler(euler);
+      };
+    }
+
     const tick = () => {
       const dt = Math.min(clock.getDelta(), 0.05);
       const speed = 3.2;

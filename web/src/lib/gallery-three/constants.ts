@@ -2,10 +2,12 @@ import { ROOM } from "@/lib/room";
 
 export const GALLERY_HEIGHT = ROOM.height;
 export const WALL_THICKNESS = 0.12;
-/** Painting offset from wall plane (Unity WallSnapUtility.WallInset). */
+/** Painting offset from wall edge (Unity WallSnapUtility.WallInset). */
 export const WALL_INSET = 0.08;
-/** Extend each wall span along its edge so inset quads meet at corners. */
-export const WALL_CORNER_MITER = 0.1;
+/** Interior wall plane offset from edge (Unity RoomBuilder.WallPlaneBias). */
+export const WALL_PLANE_BIAS = 0.002;
+/** Extend each wall span along its edge so quads overlap at corners. */
+export const WALL_CORNER_MITER = 0.22;
 export const CANVAS_Z_OFFSET = 0.045;
 export const FLOOR_Y = -0.05;
 export const FLOOR_THICKNESS = 0.1;
