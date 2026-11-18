@@ -17,16 +17,16 @@ export function galleryRendererFromSearch(search: string): GalleryRendererMode |
 }
 
 /**
- * Pick exhibition 3D backend. `?renderer=three` and env `NEXT_PUBLIC_GALLERY_RENDERER=three`
- * force Three even when Unity wasm is present.
+ * Pick visitor exhibition 3D backend. Defaults to Three.js.
+ * Unity WebGL loads only when `?renderer=unity` or `NEXT_PUBLIC_GALLERY_RENDERER=unity`.
  */
 export function resolveGalleryRenderer(
-  unityBuildPresent: boolean,
+  _unityBuildPresent = false,
   search = "",
 ): GalleryRendererMode {
   const fromQuery = galleryRendererFromSearch(search);
   if (fromQuery) return fromQuery;
   const fromEnv = galleryRendererFromEnv();
   if (fromEnv) return fromEnv;
-  return unityBuildPresent ? "unity" : "three";
+  return "three";
 }
