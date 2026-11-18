@@ -171,6 +171,7 @@ export type AdminEditorStrings = {
   planMode: string;
   placeMode: string;
   deleteRoom: string;
+  rotateFigure: string;
   surfaces: string;
   floor: string;
   walls: string;
@@ -212,6 +213,7 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   planMode: "Plan",
   placeMode: "Place",
   deleteRoom: "Delete room",
+  rotateFigure: "Rotate",
   surfaces: "Surfaces",
   floor: "Floor",
   walls: "Walls",
@@ -224,11 +226,11 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   entranceHelp:
     "Entrance (foyer): not a room from the list — portal and spawn. Bright edge is the gallery door;",
   entranceHelpBody:
-    "outside. Snap the portal to a room (or a room to the entrance) — rotation adjusts automatically. Tap a room: square +45°, others +90°. Tap entrance +90°. Drag the empty canvas to pan the view.",
+    "outside. Snap the portal to a room (or a room to the entrance) — rotation adjusts automatically. Use the rotate control on the selected figure (square +45°, others +90°, entrance +90°). Drag the empty canvas to pan the view.",
   entranceHelpPlaceDrag:
     " In Place mode, drag a work from the list onto the plan or move a marker.",
   entranceHelpRoomsMeta:
-    " Rooms: drag to move, corner handle to stretch; doors: {count}.",
+    " Rooms: drag to move, corner handle to stretch, rotate button beside selection; doors: {count}.",
   entranceHelpAddRoom: " Add at least one room.",
   entranceLabel: "entrance",
   dropNoSnap: "Move closer to a wall.",
@@ -259,6 +261,7 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   planMode: "План",
   placeMode: "Place",
   deleteRoom: "Удалить комнату",
+  rotateFigure: "Повернуть",
   surfaces: "Поверхности",
   floor: "Пол",
   walls: "Стены",
@@ -271,10 +274,11 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   entranceHelp:
     "Вход (фойе): не комната из списка — портал и spawn. Светлая грань — дверь в галерею;",
   entranceHelpBody:
-    "снаружи. Подведи портал к комнате (или комнату ко входу) — поворот подстроится сам. Тап: квадрат +45°, остальные +90°, вход +90°. По пустому полю — перетаскивание, чтобы сдвинуть вид схемы.",
+    "снаружи. Подведи портал к комнате (или комнату ко входу) — поворот подстроится сам. Кнопка поворота у выбранной фигуры: квадрат +45°, остальные +90°, вход +90°. По пустому полю — перетаскивание, чтобы сдвинуть вид схемы.",
   entranceHelpPlaceDrag:
     " В режиме Place перетащите работу со списка на план или сдвиньте маркер.",
-  entranceHelpRoomsMeta: " Комнаты: перетаскивание, угол — stretch; дверей: {count}.",
+  entranceHelpRoomsMeta:
+    " Комнаты: перетаскивание, угол — stretch, кнопка поворота у выделения; дверей: {count}.",
   entranceHelpAddRoom: " Добавьте хотя бы одну комнату.",
   entranceLabel: "вход",
   dropNoSnap: "Подведите ближе к стене.",

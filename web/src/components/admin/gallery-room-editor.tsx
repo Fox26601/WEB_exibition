@@ -48,6 +48,8 @@ import {
   roomWorldVertices,
   roomsWithEntrance,
   rotateEntranceToAlignPortal,
+  nextEntranceRotation,
+  nextRoomRotation,
   softSnapEntrance,
   softSnapRoom,
   softSnapRoomTranslate,
@@ -142,6 +144,63 @@ function roomCentroid(verts: Vec2[]): Vec2 {
     x: verts.reduce((s, v) => s + v.x, 0) / n,
     z: verts.reduce((s, v) => s + v.z, 0) / n,
   };
+}
+
+/** SVG position for the plan rotate control: right of AABB, clear of verts[0] scale handle. */
+function rotateControlSvgPos(
+  verts: Vec2[],
+  origin: { x: number; z: number },
+  pan: EditorPan,
+): { x: number; y: number } {
+  const pts = verts.map((v) => worldToSvg(v, origin, pan));
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const p of pts) {
+    maxX = Math.max(maxX, p.x);
+    minY = Math.min(minY, p.y);
+    maxY = Math.max(maxY, p.y);
+  }
+  if (!Number.isFinite(maxX)) return { x: 0, y: 0 };
+  return { x: maxX + 18, y: (minY + maxY) / 2 };
+}
+
+function PlanRotateButton({
+  cx,
+  cy,
+  label,
+  onRotate,
+}: {
+  cx: number;
+  cy: number;
+  label: string;
+  onRotate: () => void;
+}) {
+  return (
+    <g
+      transform={`translate(${cx}, ${cy})`}
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onRotate();
+      }}
+      style={{ cursor: "pointer" }}
+    >
+      <title>{label}</title>
+      <circle r={11} fill="#d4a574" stroke="#1a1612" strokeWidth={1} />
+      <path
+        d="M -3.5 -3.5 A 5 5 0 1 1 -3.5 3.5"
+        fill="none"
+        stroke="#1a1612"
+        strokeWidth={1.6}
+        strokeLinecap="round"
+      />
+      <path d="M -5.5 -1.2 L -3.5 -3.8 L -1.2 -1.5" fill="#1a1612" />
+    </g>
+  );
 }
 
 type PlaceDragState = {
@@ -490,6 +549,51 @@ export function GalleryRoomEditor({
     if (selectedRoomId === id) setSelectedRoomId(null);
   }
 
+  function rotateSelectedFigure() {
+    if (!selectedRoomId || editorMode !== "plan") return;
+    const current = normalizeLayout(layoutLiveRef.current);
+
+    if (selectedRoomId === ENTRANCE_ROOM_ID) {
+      const entrance: GalleryEntrancePose = {
+        ...current.entrance,
+        rotation: nextEntranceRotation(current.entrance.rotation),
+      };
+      const snapped = softSnapEntrance(entrance, current.rooms);
+      commit({ ...current, entrance: snapped });
+      return;
+    }
+
+    const rooms = current.rooms.map((r) => {
+      if (r.id !== selectedRoomId) return r;
+      return {
+        ...r,
+        transform: {
+          ...r.transform,
+          rotation: nextRoomRotation(r.shape, r.transform.rotation || 0),
+        },
+        vertices: undefined,
+      };
+    });
+    const moving = rooms.find((r) => r.id === selectedRoomId);
+    if (!moving) return;
+    const others = roomsWithEntrance(
+      rooms.filter((r) => r.id !== selectedRoomId),
+      current.entrance,
+    );
+    const snapped = softSnapRoomTranslate(moving, others);
+    let entrance = current.entrance;
+    if (snapped.snappedTo?.roomId === ENTRANCE_ROOM_ID) {
+      entrance = rotateEntranceToAlignPortal(entrance, snapped.snappedTo);
+    }
+    commit({
+      ...current,
+      entrance,
+      rooms: rooms.map((r) =>
+        r.id === selectedRoomId ? snapped.room : r,
+      ),
+    });
+  }
+
   type DragMode = "move" | "scale" | "pan";
   const dragRef = useRef<{
     mode: DragMode;
@@ -693,52 +797,8 @@ export function GalleryRoomEditor({
     };
 
     const onUp = () => {
-      const drag = dragRef.current;
+      // Selection stays from pointerdown; bare tap no longer rotates.
       dragRef.current = null;
-      if (!drag || drag.moved || drag.mode !== "move") return;
-
-      const current = normalizeLayout(layoutLiveRef.current);
-
-      if (drag.targetId === ENTRANCE_ROOM_ID) {
-        const entrance: GalleryEntrancePose = {
-          ...current.entrance,
-          rotation: (current.entrance.rotation + 90) % 360,
-        };
-        const snapped = softSnapEntrance(entrance, current.rooms);
-        commit({ ...current, entrance: snapped });
-        return;
-      }
-
-      const rooms = current.rooms.map((r) => {
-        if (r.id !== drag.targetId) return r;
-        const step = r.shape === "square" ? 45 : 90;
-        return {
-          ...r,
-          transform: {
-            ...r.transform,
-            rotation: ((r.transform.rotation || 0) + step) % 360,
-          },
-          vertices: undefined,
-        };
-      });
-      const moving = rooms.find((r) => r.id === drag.targetId);
-      if (!moving) return;
-      const others = roomsWithEntrance(
-        rooms.filter((r) => r.id !== drag.targetId),
-        current.entrance,
-      );
-      const snapped = softSnapRoomTranslate(moving, others);
-      let entrance = current.entrance;
-      if (snapped.snappedTo?.roomId === ENTRANCE_ROOM_ID) {
-        entrance = rotateEntranceToAlignPortal(entrance, snapped.snappedTo);
-      }
-      commit({
-        ...current,
-        entrance,
-        rooms: rooms.map((r) =>
-          r.id === drag.targetId ? snapped.room : r,
-        ),
-      });
     };
 
     window.addEventListener("pointermove", onMove);
@@ -1020,6 +1080,23 @@ export function GalleryRoomEditor({
             >
               {t.entranceLabel}
             </text>
+            {interactRooms && entranceSelected
+              ? (() => {
+                  const p = rotateControlSvgPos(
+                    entranceVerts,
+                    origin,
+                    panOffset,
+                  );
+                  return (
+                    <PlanRotateButton
+                      cx={p.x}
+                      cy={p.y}
+                      label={t.rotateFigure}
+                      onRotate={rotateSelectedFigure}
+                    />
+                  );
+                })()
+              : null}
           </g>
 
           {normalized.rooms.map((room) => {
@@ -1032,6 +1109,7 @@ export function GalleryRoomEditor({
             );
             const c = roomCentroid(verts);
             const label = worldToSvg(c, origin, panOffset);
+            const rotateBtn = rotateControlSvgPos(verts, origin, panOffset);
             const colors = planRoomSvgColors(room, selected);
             return (
               <g key={room.id}>
@@ -1059,6 +1137,14 @@ export function GalleryRoomEditor({
                     strokeWidth={1}
                     onPointerDown={(e) => onBodyPointerDown(e, room.id, "scale")}
                     style={{ cursor: "nwse-resize" }}
+                  />
+                ) : null}
+                {interactRooms && selected ? (
+                  <PlanRotateButton
+                    cx={rotateBtn.x}
+                    cy={rotateBtn.y}
+                    label={t.rotateFigure}
+                    onRotate={rotateSelectedFigure}
                   />
                 ) : null}
                 <text
