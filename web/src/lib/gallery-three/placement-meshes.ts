@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Artwork, ArtworkPlacement, Catalog, GalleryLayout } from "@/lib/catalog-types";
 import { ENTRANCE_ROOM_ID } from "@/lib/catalog-types";
 import { slotPose } from "@/lib/room";
+import { loadColorTexture, resolveGalleryMediaUrl } from "./texture-load";
 import { paintingPoseFromPlacement, sculpturePoseFromPlacement } from "./painting-pose";
 
 const FRAME_COLORS: Record<string, number> = {
@@ -93,8 +94,9 @@ function buildPaintingGroup(
   }
 
   const canvasMat = new THREE.MeshStandardMaterial({
-    color: 0x888888,
+    color: 0x9a958e,
     roughness: 0.6,
+    side: THREE.DoubleSide,
   });
   disposables.push(canvasMat);
   const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
@@ -103,10 +105,11 @@ function buildPaintingGroup(
   canvas.userData.isCanvas = true;
   group.add(canvas);
 
-  const texUrl = art.urlWall || art.urlFull || art.urlPoster;
+  const texUrl = resolveGalleryMediaUrl(
+    art.urlWall || art.urlFull || art.urlPoster,
+  );
   if (texUrl) {
-    loader.load(texUrl, (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
+    loadColorTexture(loader, texUrl, (tex) => {
       canvasMat.map = tex;
       canvasMat.color.set(0xffffff);
       canvasMat.needsUpdate = true;
@@ -159,7 +162,11 @@ export function addCorridorArtworks(
     disposables.push(frameMat);
     group.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.4, 0.08), frameMat));
 
-    const canvasMat = new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.6 });
+    const canvasMat = new THREE.MeshStandardMaterial({
+      color: 0x9a958e,
+      roughness: 0.6,
+      side: THREE.DoubleSide,
+    });
     disposables.push(canvasMat);
     const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
     canvas.position.z = 0.05;
@@ -167,10 +174,11 @@ export function addCorridorArtworks(
     canvas.userData.isCanvas = true;
     group.add(canvas);
 
-    const texUrl = art.urlWall || art.urlFull || art.urlPoster;
+    const texUrl = resolveGalleryMediaUrl(
+      art.urlWall || art.urlFull || art.urlPoster,
+    );
     if (texUrl) {
-      loader.load(texUrl, (tex) => {
-        tex.colorSpace = THREE.SRGBColorSpace;
+      loadColorTexture(loader, texUrl, (tex) => {
         canvasMat.map = tex;
         canvasMat.color.set(0xffffff);
         canvasMat.needsUpdate = true;

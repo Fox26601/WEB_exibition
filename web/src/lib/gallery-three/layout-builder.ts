@@ -20,11 +20,10 @@ import {
   FLOOR_COLOR,
   FLOOR_THICKNESS,
   FLOOR_Y,
-  GALLERY_HEIGHT,
   WALL_COLOR,
-  WALL_THICKNESS,
 } from "./constants";
-import { edgeYawRad, inwardNormal, lerpVec2, roomCentroid } from "./room-geometry";
+import { lerpVec2, roomCentroid } from "./room-geometry";
+import { buildWallAlongEdge } from "./wall-mesh";
 
 function findDoorwayWidth(
   layout: GalleryLayout,
@@ -42,98 +41,21 @@ function findDoorwayWidth(
   return 0;
 }
 
-function makeMaterial(color: number, map?: THREE.Texture): THREE.MeshStandardMaterial {
+export function makeSurfaceMaterial(
+  color: number,
+  map?: THREE.Texture,
+): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({
     color: map ? 0xffffff : color,
     map,
     roughness: 0.92,
     metalness: 0,
+    side: THREE.FrontSide,
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1,
   });
   return mat;
-}
-
-function addBoxWall(
-  parent: THREE.Object3D,
-  midX: number,
-  midZ: number,
-  length: number,
-  yawRad: number,
-  height: number,
-  material: THREE.Material,
-  inward: Vec2,
-): void {
-  const geom = new THREE.BoxGeometry(WALL_THICKNESS, height, Math.max(0.05, length));
-  const mesh = new THREE.Mesh(geom, material);
-  mesh.position.set(midX, height * 0.5, midZ);
-  mesh.rotation.y = yawRad;
-  // Pull interior face slightly away from the edge to reduce z-fighting (V4).
-  mesh.position.x += inward.x * (WALL_THICKNESS * 0.25);
-  mesh.position.z += inward.z * (WALL_THICKNESS * 0.25);
-  parent.add(mesh);
-}
-
-function buildWallSegment(
-  parent: THREE.Object3D,
-  a: Vec2,
-  b: Vec2,
-  doorwayWidth: number,
-  wallMat: THREE.Material,
-  centroid: Vec2,
-): void {
-  const mid = lerpVec2(a, b, 0.5);
-  const len = Math.hypot(b.x - a.x, b.z - a.z);
-  const yawRad = edgeYawRad(a, b);
-  const inward = inwardNormal(a, b, centroid);
-
-  if (doorwayWidth <= 0.01 || doorwayWidth >= len - 0.2) {
-    addBoxWall(parent, mid.x, mid.z, len, yawRad, GALLERY_HEIGHT, wallMat, inward);
-    return;
-  }
-
-  const halfDoor = doorwayWidth * 0.5;
-  const halfRemain = (len - doorwayWidth) * 0.5;
-  if (halfRemain < 0.05) {
-    const lintelH = Math.max(0.2, GALLERY_HEIGHT - 2.2);
-    addBoxWall(
-      parent,
-      mid.x,
-      mid.z,
-      len,
-      yawRad,
-      lintelH,
-      wallMat,
-      inward,
-    );
-    const lintel = new THREE.Mesh(
-      new THREE.BoxGeometry(doorwayWidth, lintelH, WALL_THICKNESS),
-      wallMat,
-    );
-    lintel.position.set(mid.x, 2.2 + lintelH * 0.5, mid.z);
-    lintel.rotation.y = yawRad;
-    parent.add(lintel);
-    return;
-  }
-
-  const dir = { x: (b.x - a.x) / len, z: (b.z - a.z) / len };
-  const leftMid = {
-    x: mid.x - dir.x * (halfDoor + halfRemain * 0.5),
-    z: mid.z - dir.z * (halfDoor + halfRemain * 0.5),
-  };
-  const rightMid = {
-    x: mid.x + dir.x * (halfDoor + halfRemain * 0.5),
-    z: mid.z + dir.z * (halfDoor + halfRemain * 0.5),
-  };
-  addBoxWall(parent, leftMid.x, leftMid.z, halfRemain, yawRad, GALLERY_HEIGHT, wallMat, inward);
-  addBoxWall(parent, rightMid.x, rightMid.z, halfRemain, yawRad, GALLERY_HEIGHT, wallMat, inward);
-  const lintelH = GALLERY_HEIGHT - 2.2;
-  addBoxWall(parent, mid.x, mid.z, doorwayWidth, yawRad, lintelH, wallMat, inward);
-  const lintelMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(doorwayWidth, lintelH, WALL_THICKNESS),
-    wallMat,
-  );
-  lintelMesh.position.set(mid.x, 2.2 + lintelH * 0.5, mid.z);
-  lintelMesh.rotation.y = yawRad;
-  parent.add(lintelMesh);
 }
 
 function buildRoomFloor(
@@ -187,12 +109,13 @@ function buildRoomFloor(
   geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geom.setIndex(indices);
   geom.computeVertexNormals();
-  const mesh = new THREE.Mesh(geom, floorMat);
-  parent.add(mesh);
+  parent.add(new THREE.Mesh(geom, floorMat));
 }
 
 export type LayoutBuildResult = {
   root: THREE.Group;
+  floorMat: THREE.MeshStandardMaterial;
+  wallMat: THREE.MeshStandardMaterial;
   dispose: () => void;
 };
 
@@ -204,13 +127,9 @@ export function buildLayoutScene(
   const root = new THREE.Group();
   root.name = "GalleryLayout";
 
-  const floorMat = makeMaterial(FLOOR_COLOR, textures.floor);
-  const wallMat = makeMaterial(WALL_COLOR, textures.wall);
+  const floorMat = makeSurfaceMaterial(FLOOR_COLOR, textures.floor);
+  const wallMat = makeSurfaceMaterial(WALL_COLOR, textures.wall);
   const overlapRooms = layoutOverlapRooms(layout);
-  const disposables: Array<THREE.BufferGeometry | THREE.Material | THREE.Texture> = [
-    floorMat,
-    wallMat,
-  ];
 
   for (const room of layout.rooms) {
     if (!room?.id) continue;
@@ -218,7 +137,6 @@ export function buildLayoutScene(
     roomRoot.name = `Room_${room.id}`;
     const verts = roomWorldVertices(room);
     if (verts.length < 3) continue;
-    const centroid = roomCentroid(verts) ?? verts[0];
 
     buildRoomFloor(roomRoot, room.id, verts, overlapRooms, floorMat);
 
@@ -241,14 +159,14 @@ export function buildLayoutScene(
               Math.hypot(bSpan.x - aSpan.x, bSpan.z - aSpan.z) - 0.2,
             );
           }
-          buildWallSegment(roomRoot, aSpan, bSpan, spanDoor, wallMat, centroid);
+          buildWallAlongEdge(roomRoot, aSpan, bSpan, spanDoor, wallMat, verts);
         }
       } else if (spans && spans.length === 0) {
         continue;
       } else {
         const door =
           doorway > 0.01 ? doorway : isEntranceEdgeFallback(a, b, verts) ? DEFAULT_DOOR_WIDTH : 0;
-        buildWallSegment(roomRoot, a, b, door, wallMat, centroid);
+        buildWallAlongEdge(roomRoot, a, b, door, wallMat, verts);
       }
     }
 
@@ -257,14 +175,15 @@ export function buildLayoutScene(
 
   return {
     root,
+    floorMat,
+    wallMat,
     dispose: () => {
       root.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
-        if (mesh.isMesh) {
-          mesh.geometry?.dispose();
-        }
+        if (mesh.isMesh) mesh.geometry?.dispose();
       });
-      for (const d of disposables) d.dispose();
+      floorMat.dispose();
+      wallMat.dispose();
     },
   };
 }
