@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { Artwork, ArtworkPlacement, Catalog, GalleryLayout } from "@/lib/catalog-types";
 import { ENTRANCE_ROOM_ID } from "@/lib/catalog-types";
 import { slotPose } from "@/lib/room";
-import { loadColorTexture, resolveGalleryMediaUrl } from "./texture-load";
+import { applyTextureToMaterial, loadColorTexture } from "./texture-load";
 import { paintingPoseFromPlacement, sculpturePoseFromPlacement } from "./painting-pose";
 
 const FRAME_COLORS: Record<string, number> = {
@@ -68,7 +68,7 @@ function buildPaintingGroup(
   art: Artwork,
   placement: ArtworkPlacement,
   pose: NonNullable<ReturnType<typeof paintingPoseFromPlacement>>,
-  loader: THREE.TextureLoader,
+  _loader: THREE.TextureLoader,
   disposables: Array<THREE.Material | THREE.Texture>,
 ): THREE.Group {
   const group = new THREE.Group();
@@ -93,10 +93,10 @@ function buildPaintingGroup(
     group.add(frame);
   }
 
-  const canvasMat = new THREE.MeshStandardMaterial({
+  const canvasMat = new THREE.MeshBasicMaterial({
     color: 0x9a958e,
-    roughness: 0.6,
     side: THREE.DoubleSide,
+    toneMapped: true,
   });
   disposables.push(canvasMat);
   const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
@@ -105,14 +105,11 @@ function buildPaintingGroup(
   canvas.userData.isCanvas = true;
   group.add(canvas);
 
-  const texUrl = resolveGalleryMediaUrl(
-    art.urlWall || art.urlFull || art.urlPoster,
-  );
+  const texUrl = art.urlWall || art.urlFull || art.urlPoster;
   if (texUrl) {
-    loadColorTexture(loader, texUrl, (tex) => {
-      canvasMat.map = tex;
-      canvasMat.color.set(0xffffff);
-      canvasMat.needsUpdate = true;
+    void loadColorTexture(texUrl).then((tex) => {
+      if (!tex) return;
+      applyTextureToMaterial(canvasMat, tex);
       disposables.push(tex);
     });
   }
@@ -162,10 +159,10 @@ export function addCorridorArtworks(
     disposables.push(frameMat);
     group.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.4, 0.08), frameMat));
 
-    const canvasMat = new THREE.MeshStandardMaterial({
+    const canvasMat = new THREE.MeshBasicMaterial({
       color: 0x9a958e,
-      roughness: 0.6,
       side: THREE.DoubleSide,
+      toneMapped: true,
     });
     disposables.push(canvasMat);
     const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
@@ -174,14 +171,11 @@ export function addCorridorArtworks(
     canvas.userData.isCanvas = true;
     group.add(canvas);
 
-    const texUrl = resolveGalleryMediaUrl(
-      art.urlWall || art.urlFull || art.urlPoster,
-    );
+    const texUrl = art.urlWall || art.urlFull || art.urlPoster;
     if (texUrl) {
-      loadColorTexture(loader, texUrl, (tex) => {
-        canvasMat.map = tex;
-        canvasMat.color.set(0xffffff);
-        canvasMat.needsUpdate = true;
+      void loadColorTexture(texUrl).then((tex) => {
+        if (!tex) return;
+        applyTextureToMaterial(canvasMat, tex);
         disposables.push(tex);
       });
     }

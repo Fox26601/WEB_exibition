@@ -9,28 +9,69 @@ export function resolveGalleryMediaUrl(url: string): string {
   return url;
 }
 
+function isCrossOriginUrl(resolved: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const u = new URL(resolved, window.location.href);
+    return u.origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 export function createGalleryTextureLoader(): THREE.TextureLoader {
   const loader = new THREE.TextureLoader();
-  loader.crossOrigin = "anonymous";
   return loader;
 }
 
-export function loadColorTexture(
-  loader: THREE.TextureLoader,
+/** Prefer fetch + ImageBitmap (reliable on Vercel); fall back to TextureLoader. */
+export async function loadColorTexture(
   url: string,
-  onReady: (tex: THREE.Texture) => void,
-): void {
+): Promise<THREE.Texture | null> {
   const resolved = resolveGalleryMediaUrl(url);
-  if (!resolved) return;
-  loader.load(
-    resolved,
-    (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      onReady(tex);
-    },
-    undefined,
-    () => {
-      /* keep solid fallback color */
-    },
-  );
+  if (!resolved) return null;
+
+  try {
+    const res = await fetch(resolved, {
+      mode: "cors",
+      credentials: isCrossOriginUrl(resolved) ? "omit" : "same-origin",
+    });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const bitmap = await createImageBitmap(blob);
+    const tex = new THREE.Texture(bitmap);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    return tex;
+  } catch {
+    return loadColorTextureViaLoader(resolved);
+  }
+}
+
+function loadColorTextureViaLoader(resolved: string): Promise<THREE.Texture | null> {
+  return new Promise((resolve) => {
+    const loader = createGalleryTextureLoader();
+    if (isCrossOriginUrl(resolved)) {
+      loader.setCrossOrigin("anonymous");
+    }
+    loader.load(
+      resolved,
+      (tex) => {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.needsUpdate = true;
+        resolve(tex);
+      },
+      undefined,
+      () => resolve(null),
+    );
+  });
+}
+
+export function applyTextureToMaterial(
+  mat: THREE.MeshStandardMaterial | THREE.MeshBasicMaterial,
+  tex: THREE.Texture,
+): void {
+  mat.map = tex;
+  mat.color.set(0xffffff);
+  mat.needsUpdate = true;
 }
