@@ -30,6 +30,12 @@ import {
   isWithinPedestalReach,
   resolveBookletKeyAction,
 } from "@/lib/gallery-three/booklet-interact";
+import {
+  ARTWORK_INTERACT_DISTANCE,
+  ARTWORK_LOOK_DISTANCE,
+  firstArtworkHit,
+  resolveIntersection,
+} from "@/lib/gallery-three/artwork-interact";
 import { layoutWalkBounds } from "@/lib/gallery-three/painting-pose";
 import {
   sampleEyeY,
@@ -52,6 +58,8 @@ type Props = {
   bookletOwned?: boolean;
   /** True while the booklet overlay is open (raised in hands). */
   bookletRaised?: boolean;
+  /** When true, look-at must not clear / swap the current artwork selection. */
+  freezeLookSelection?: boolean;
   onSelect: (art: Artwork | null) => void;
   onOpenImage: (url: string) => void;
   onOpenVideo: (url: string, poster?: string) => void;
@@ -66,6 +74,7 @@ export function GalleryScene3D({
   previewLite = false,
   bookletOwned = false,
   bookletRaised = false,
+  freezeLookSelection = false,
   onSelect,
   onOpenImage,
   onOpenVideo,
@@ -84,6 +93,8 @@ export function GalleryScene3D({
   bookletOwnedRef.current = bookletOwned;
   const bookletRaisedRef = useRef(bookletRaised);
   bookletRaisedRef.current = bookletRaised;
+  const freezeLookRef = useRef(freezeLookSelection);
+  freezeLookRef.current = freezeLookSelection;
 
   const callbacks = useRef({
     onSelect,
@@ -373,12 +384,11 @@ export function GalleryScene3D({
     };
 
     const raycaster = new THREE.Raycaster();
+    raycaster.far = ARTWORK_INTERACT_DISTANCE;
     const pointer = new THREE.Vector2();
+    let lookFocusedId: string | null = null;
 
-    function pick(
-      clientX?: number,
-      clientY?: number,
-    ): THREE.Intersection | null {
+    function setPointerFromEvent(clientX?: number, clientY?: number) {
       if (
         pointerLocked ||
         clientX === undefined ||
@@ -386,39 +396,62 @@ export function GalleryScene3D({
       ) {
         // Pointer lock freezes client coords; aim from view center.
         pointer.set(0, 0);
-      } else {
-        const rect = renderer.domElement.getBoundingClientRect();
-        pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-        pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        return;
       }
-      raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObjects(pickRoots, true);
-      return hits[0] || null;
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     }
 
-    function handleSelect(hit: THREE.Intersection, isDouble: boolean) {
-      const obj = hit.object;
-      let probe: THREE.Object3D | null = obj;
-      while (probe) {
-        if (probe.userData.isPedestal) {
-          fireBooklet(bookletOwnedRef.current ? "toggle" : "pickup");
-          return;
-        }
-        probe = probe.parent;
+    function pickHits(
+      clientX?: number,
+      clientY?: number,
+    ): THREE.Intersection[] {
+      setPointerFromEvent(clientX, clientY);
+      raycaster.far = ARTWORK_INTERACT_DISTANCE;
+      raycaster.setFromCamera(pointer, camera);
+      return raycaster.intersectObjects(pickRoots, true);
+    }
+
+    function handleSelect(hits: THREE.Intersection[], isDouble: boolean) {
+      if (hits.length === 0) {
+        lookFocusedId = null;
+        callbacks.current.onSelect(null);
+        return;
       }
-      const id = (obj.userData.artworkId ||
-        obj.parent?.userData.artworkId) as string | undefined;
-      if (!id) return;
-      const art = artworkById.get(id);
+
+      const top = resolveIntersection(hits[0], ARTWORK_INTERACT_DISTANCE);
+      if (top.kind === "pedestal") {
+        fireBooklet(bookletOwnedRef.current ? "toggle" : "pickup");
+        return;
+      }
+
+      const artHit = firstArtworkHit(hits, ARTWORK_INTERACT_DISTANCE);
+      if (artHit.kind !== "artwork" || !artHit.artworkId) {
+        lookFocusedId = null;
+        callbacks.current.onSelect(null);
+        return;
+      }
+
+      const art = artworkById.get(artHit.artworkId);
       if (!art) return;
 
-      if (obj.userData.isHeadphones || (art.type === "video" && !isDouble)) {
+      const hitObj = hits.find((h) => {
+        const r = resolveIntersection(h, ARTWORK_INTERACT_DISTANCE);
+        return r.artworkId === art.id;
+      })?.object;
+
+      if (
+        hitObj?.userData.isHeadphones ||
+        (art.type === "video" && !isDouble)
+      ) {
         if (art.urlVideo) {
           callbacks.current.onOpenVideo(art.urlVideo, art.urlPoster);
           return;
         }
       }
 
+      lookFocusedId = art.id;
       callbacks.current.onSelect(art);
 
       if (isDouble && art.type === "image") {
@@ -426,15 +459,31 @@ export function GalleryScene3D({
       }
     }
 
+    function syncLookAtSelection() {
+      if (freezeLookRef.current) return;
+      raycaster.far = ARTWORK_LOOK_DISTANCE;
+      pointer.set(0, 0);
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(pickRoots, true);
+      const artHit = firstArtworkHit(hits, ARTWORK_LOOK_DISTANCE);
+      const nextId = artHit.kind === "artwork" ? artHit.artworkId : null;
+      if (nextId === lookFocusedId) return;
+      lookFocusedId = nextId;
+      if (!nextId) {
+        callbacks.current.onSelect(null);
+        return;
+      }
+      const art = artworkById.get(nextId);
+      callbacks.current.onSelect(art ?? null);
+    }
+
     const onDblClick = (e: MouseEvent) => {
-      const hit = pick(e.clientX, e.clientY);
-      if (hit) handleSelect(hit, true);
+      handleSelect(pickHits(e.clientX, e.clientY), true);
     };
 
     const onSingleClick = (e: MouseEvent) => {
       if (isTouch) return;
-      const hit = pick(e.clientX, e.clientY);
-      if (hit) handleSelect(hit, false);
+      handleSelect(pickHits(e.clientX, e.clientY), false);
     };
 
     const joyEl = joyRef.current;
@@ -520,29 +569,27 @@ export function GalleryScene3D({
       if (!wasDrag || moved) return;
       const t = e.changedTouches[0];
       if (!t) return;
-      const hit = pick(t.clientX, t.clientY);
-      if (!hit) return;
-      const id = (hit.object.userData.artworkId ||
-        hit.object.parent?.userData.artworkId) as string | undefined;
+      const hits = pickHits(t.clientX, t.clientY);
+      const artHit = firstArtworkHit(hits, ARTWORK_INTERACT_DISTANCE);
+      const id = artHit.artworkId;
       const now = Date.now();
       const isDouble = !!id && id === lastTapId && now - lastTap < 350;
       lastTap = now;
       lastTapId = id || null;
-      handleSelect(hit, isDouble);
+      handleSelect(hits, isDouble);
     };
 
     const onTouchTap = (e: TouchEvent) => {
       const t = e.changedTouches[0];
       if (joyEl?.contains(t.target as Node)) return;
-      const hit = pick(t.clientX, t.clientY);
-      if (!hit) return;
-      const id = (hit.object.userData.artworkId ||
-        hit.object.parent?.userData.artworkId) as string | undefined;
+      const hits = pickHits(t.clientX, t.clientY);
+      const artHit = firstArtworkHit(hits, ARTWORK_INTERACT_DISTANCE);
+      const id = artHit.artworkId;
       const now = Date.now();
       const isDouble = !!id && id === lastTapId && now - lastTap < 350;
       lastTap = now;
       lastTapId = id || null;
-      handleSelect(hit, isDouble);
+      handleSelect(hits, isDouble);
     };
 
     lookEl?.addEventListener("touchstart", onLookStart, { passive: true });
@@ -670,6 +717,7 @@ export function GalleryScene3D({
         bookletMesh.visible = !bookletOwnedRef.current;
       }
       syncHeldBooklet();
+      syncLookAtSelection();
       const hint = hintRef.current;
       if (hint) {
         const show = !!pedestalPick && !bookletOwnedRef.current && nearPedestal();
