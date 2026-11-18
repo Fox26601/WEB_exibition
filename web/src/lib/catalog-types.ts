@@ -360,7 +360,7 @@ export function createDefaultCatalog(): Catalog {
               he: "ברוכים הבאים",
             },
             body: {
-              en: "Pick up the booklet at the entrance pedestal. Press Q (or Map on mobile) to open it.",
+              en: "Pick up the booklet at the entrance pedestal (click or press Q nearby). Press Q again to raise or lower it (Map on mobile).",
               ru: "Возьмите буклет у пьедестала у входа. Q (или Map на мобильном) открывает его.",
               uk: "Візьміть буклет біля п'єдесталу. Q (або Map на мобільному) відкриває його.",
               he: "קחו את החוברת מהכן בכניסה. Q (או Map במובייל) פותח אותה.",

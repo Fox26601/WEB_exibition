@@ -64,6 +64,8 @@ export type EntranceBuildResult = {
   spawn: { x: number; z: number; yawDeg: number };
   walkBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
   pedestalRoot: THREE.Object3D;
+  /** Booklet mesh on the pedestal; hide when the visitor is holding it. */
+  bookletMesh: THREE.Object3D;
   dispose: () => void;
 };
 
@@ -278,6 +280,7 @@ export function buildEntranceModule(
     spawn: { x: pose.spawn.x, z: pose.spawn.z, yawDeg: pose.yawDeg },
     walkBounds: { minX, maxX, minZ, maxZ },
     pedestalRoot,
+    bookletMesh: booklet,
     dispose: () => {
       root.traverse((obj) => {
         const mesh = obj as THREE.Mesh;

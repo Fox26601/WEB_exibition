@@ -23,11 +23,17 @@ import {
   ENTRANCE_SCHEMATIC_DEPTH,
   unionWalkBounds,
 } from "@/lib/gallery-three/entrance-builder";
+import {
+  isWithinPedestalReach,
+  resolveBookletKeyAction,
+} from "@/lib/gallery-three/booklet-interact";
 import { layoutWalkBounds } from "@/lib/gallery-three/painting-pose";
 import { ROOM } from "@/lib/room";
 import { createGalleryTextureLoader } from "@/lib/gallery-three/texture-load";
 import { applySkyToScene, loadNightSky } from "@/lib/gallery-three/sky";
 import { roomLength } from "@/lib/room";
+
+type BookletAction = "pickup" | "toggle";
 
 type Props = {
   catalog: Catalog;
@@ -35,11 +41,12 @@ type Props = {
   locale: Locale;
   emptyLabel: string;
   previewLite?: boolean;
+  bookletOwned?: boolean;
   onSelect: (art: Artwork | null) => void;
   onOpenImage: (url: string) => void;
   onOpenVideo: (url: string, poster?: string) => void;
   onOpenInfo: () => void;
-  onPedestalPickup?: () => void;
+  onBookletInteract?: (action: BookletAction) => void;
 };
 
 export function GalleryScene3D({
@@ -47,33 +54,37 @@ export function GalleryScene3D({
   artworks,
   emptyLabel,
   previewLite = false,
+  bookletOwned = false,
   onSelect,
   onOpenImage,
   onOpenVideo,
   onOpenInfo,
-  onPedestalPickup,
+  onBookletInteract,
 }: Props) {
   const mountRef = useRef<HTMLDivElement>(null);
   const joyRef = useRef<HTMLDivElement>(null);
   const lookRef = useRef<HTMLDivElement>(null);
+  const hintRef = useRef<HTMLParagraphElement>(null);
   const artworksRef = useRef(artworks);
   artworksRef.current = artworks;
   const catalogRef = useRef(catalog);
   catalogRef.current = catalog;
+  const bookletOwnedRef = useRef(bookletOwned);
+  bookletOwnedRef.current = bookletOwned;
 
   const callbacks = useRef({
     onSelect,
     onOpenImage,
     onOpenVideo,
     onOpenInfo,
-    onPedestalPickup,
+    onBookletInteract,
   });
   callbacks.current = {
     onSelect,
     onOpenImage,
     onOpenVideo,
     onOpenInfo,
-    onPedestalPickup,
+    onBookletInteract,
   };
 
   useEffect(() => {
@@ -114,6 +125,8 @@ export function GalleryScene3D({
     let walkBounds: ReturnType<typeof layoutWalkBounds> = null;
     const teardowns: Array<() => void> = [];
     let pedestalPick: THREE.Object3D | null = null;
+    let bookletMesh: THREE.Object3D | null = null;
+    const pedestalWorld = new THREE.Vector3();
 
     if (useLayout) {
       const built = buildLayoutScene(layout, {});
@@ -127,6 +140,7 @@ export function GalleryScene3D({
       scene.add(entrance.root);
       teardowns.push(entrance.dispose);
       pedestalPick = entrance.pedestalRoot;
+      bookletMesh = entrance.bookletMesh;
       walkBounds = unionWalkBounds(walkBounds, entrance.walkBounds);
 
       camera.position.set(entrance.spawn.x, 1.6, entrance.spawn.z);
@@ -151,6 +165,7 @@ export function GalleryScene3D({
       scene.add(entrance.root);
       teardowns.push(entrance.dispose);
       pedestalPick = entrance.pedestalRoot;
+      bookletMesh = entrance.bookletMesh;
       walkBounds = unionWalkBounds(
         {
           minX: -ROOM.width / 2 + 0.5,
@@ -165,6 +180,14 @@ export function GalleryScene3D({
       if (!previewLite) {
         scene.fog = new THREE.Fog(0x05070f, corridorLength * 0.75, corridorLength * 1.55);
       }
+    }
+
+    if (bookletMesh) {
+      bookletMesh.visible = !bookletOwnedRef.current;
+    }
+    if (pedestalPick) {
+      pedestalPick.updateWorldMatrix(true, false);
+      pedestalPick.getWorldPosition(pedestalWorld);
     }
 
     const artworkById = new Map(artworks.map((a) => [a.id, a]));
@@ -216,15 +239,42 @@ export function GalleryScene3D({
 
     const joy = { x: 0, y: 0 };
     let lookDragging = false;
+    let lookMoved = false;
     let lastLookX = 0;
     let lastLookY = 0;
+    let lookStartX = 0;
+    let lookStartY = 0;
     let lastTap = 0;
     let lastTapId: string | null = null;
 
+    function nearPedestal(): boolean {
+      if (!pedestalPick) return false;
+      return isWithinPedestalReach(
+        camera.position.x,
+        camera.position.z,
+        pedestalWorld.x,
+        pedestalWorld.z,
+      );
+    }
+
+    function fireBooklet(action: BookletAction) {
+      callbacks.current.onBookletInteract?.(action);
+    }
+
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
       keys.add(e.code);
       if (e.code === "KeyE") callbacks.current.onOpenInfo();
-      if (e.code === "KeyQ") callbacks.current.onPedestalPickup?.();
+      if (e.code === "KeyQ") {
+        const action = resolveBookletKeyAction({
+          owned: bookletOwnedRef.current,
+          nearPedestal: nearPedestal(),
+        });
+        if (action) {
+          e.preventDefault();
+          fireBooklet(action);
+        }
+      }
       if (e.code === "Escape") {
         document.exitPointerLock?.();
         callbacks.current.onSelect(null);
@@ -254,10 +304,22 @@ export function GalleryScene3D({
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
 
-    function pick(clientX: number, clientY: number): THREE.Intersection | null {
-      const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    function pick(
+      clientX?: number,
+      clientY?: number,
+    ): THREE.Intersection | null {
+      if (
+        pointerLocked ||
+        clientX === undefined ||
+        clientY === undefined
+      ) {
+        // Pointer lock freezes client coords; aim from view center.
+        pointer.set(0, 0);
+      } else {
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      }
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(pickRoots, true);
       return hits[0] || null;
@@ -268,7 +330,7 @@ export function GalleryScene3D({
       let probe: THREE.Object3D | null = obj;
       while (probe) {
         if (probe.userData.isPedestal) {
-          callbacks.current.onPedestalPickup?.();
+          fireBooklet(bookletOwnedRef.current ? "toggle" : "pickup");
           return;
         }
         probe = probe.parent;
@@ -355,8 +417,11 @@ export function GalleryScene3D({
 
     const onLookStart = (e: TouchEvent) => {
       lookDragging = true;
+      lookMoved = false;
       lastLookX = e.changedTouches[0].clientX;
       lastLookY = e.changedTouches[0].clientY;
+      lookStartX = lastLookX;
+      lookStartY = lastLookY;
     };
     const onLookMove = (e: TouchEvent) => {
       if (!lookDragging) return;
@@ -365,14 +430,34 @@ export function GalleryScene3D({
       const dy = t.clientY - lastLookY;
       lastLookX = t.clientX;
       lastLookY = t.clientY;
+      if (
+        Math.hypot(t.clientX - lookStartX, t.clientY - lookStartY) > 12
+      ) {
+        lookMoved = true;
+      }
       euler.setFromQuaternion(camera.quaternion);
       euler.y -= dx * 0.005;
       euler.x -= dy * 0.005;
       euler.x = Math.max(-1.2, Math.min(1.2, euler.x));
       camera.quaternion.setFromEuler(euler);
     };
-    const onLookEnd = () => {
+    const onLookEnd = (e: TouchEvent) => {
+      const wasDrag = lookDragging;
+      const moved = lookMoved;
       lookDragging = false;
+      lookMoved = false;
+      if (!wasDrag || moved) return;
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const hit = pick(t.clientX, t.clientY);
+      if (!hit) return;
+      const id = (hit.object.userData.artworkId ||
+        hit.object.parent?.userData.artworkId) as string | undefined;
+      const now = Date.now();
+      const isDouble = !!id && id === lastTapId && now - lastTap < 350;
+      lastTap = now;
+      lastTapId = id || null;
+      handleSelect(hit, isDouble);
     };
 
     const onTouchTap = (e: TouchEvent) => {
@@ -426,6 +511,13 @@ export function GalleryScene3D({
           yawDeg: number;
           pitchDeg?: number;
         }) => void;
+        __galleryBookletDebug?: () => {
+          owned: boolean;
+          near: boolean;
+          action: ReturnType<typeof resolveBookletKeyAction>;
+          pedestal: { x: number; z: number };
+          camera: { x: number; z: number };
+        };
       };
       (window as Win).__setGalleryCamera = (p) => {
         camera.position.set(p.x, p.y ?? 1.6, p.z);
@@ -436,6 +528,19 @@ export function GalleryScene3D({
           "YXZ",
         );
         camera.quaternion.setFromEuler(euler);
+      };
+      (window as Win).__galleryBookletDebug = () => {
+        const near = nearPedestal();
+        return {
+          owned: bookletOwnedRef.current,
+          near,
+          action: resolveBookletKeyAction({
+            owned: bookletOwnedRef.current,
+            nearPedestal: near,
+          }),
+          pedestal: { x: pedestalWorld.x, z: pedestalWorld.z },
+          camera: { x: camera.position.x, z: camera.position.z },
+        };
       };
     }
 
@@ -481,6 +586,15 @@ export function GalleryScene3D({
         corridorWalkClamp(camera.position, corridorLength);
       }
 
+      if (bookletMesh) {
+        bookletMesh.visible = !bookletOwnedRef.current;
+      }
+      const hint = hintRef.current;
+      if (hint) {
+        const show = !!pedestalPick && !bookletOwnedRef.current && nearPedestal();
+        hint.style.opacity = show ? "1" : "0";
+      }
+
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     };
@@ -503,6 +617,14 @@ export function GalleryScene3D({
       if (renderer.domElement.parentElement === mount) {
         mount.removeChild(renderer.domElement);
       }
+      if (qaMode) {
+        type Win = Window & {
+          __setGalleryCamera?: unknown;
+          __galleryBookletDebug?: unknown;
+        };
+        delete (window as Win).__setGalleryCamera;
+        delete (window as Win).__galleryBookletDebug;
+      }
     };
   }, [catalog, artworks, emptyLabel, previewLite]);
 
@@ -524,8 +646,14 @@ export function GalleryScene3D({
       >
         <div className="absolute start-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/35" />
       </div>
+      <p
+        ref={hintRef}
+        className="pointer-events-none absolute bottom-24 start-1/2 z-20 -translate-x-1/2 rounded bg-black/55 px-3 py-1.5 font-[family-name:var(--font-ui)] text-[0.7rem] text-white/85 opacity-0 transition-opacity duration-200 sm:bottom-16"
+      >
+        Click pedestal or press Q to take booklet
+      </p>
       <p className="pointer-events-none absolute bottom-3 end-3 z-20 hidden font-[family-name:var(--font-ui)] text-[0.65rem] text-white/40 md:block">
-        WASD · mouse look · pedestal / Q booklet · double-click image · E info
+        WASD · mouse look · Q raise/lower booklet · click pedestal · E info
       </p>
     </div>
   );
