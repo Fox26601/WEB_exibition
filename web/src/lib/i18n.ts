@@ -171,6 +171,10 @@ export type AdminEditorStrings = {
   planMode: string;
   placeMode: string;
   deleteRoom: string;
+  surfaces: string;
+  floor: string;
+  walls: string;
+  addRoom: string;
   autosaveSaving: string;
   autosaveSaved: string;
   autosaveFailed: string;
@@ -208,6 +212,10 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   planMode: "Plan",
   placeMode: "Place",
   deleteRoom: "Delete room",
+  surfaces: "Surfaces",
+  floor: "Floor",
+  walls: "Walls",
+  addRoom: "Add room",
   autosaveSaving: "Autosaving draft…",
   autosaveSaved: "Draft saved",
   autosaveFailed: "Autosave failed",
@@ -251,6 +259,10 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   planMode: "План",
   placeMode: "Place",
   deleteRoom: "Удалить комнату",
+  surfaces: "Поверхности",
+  floor: "Пол",
+  walls: "Стены",
+  addRoom: "Добавить комнату",
   autosaveSaving: "Сохранение черновика…",
   autosaveSaved: "Черновик сохранён",
   autosaveFailed: "Ошибка автосохранения",
