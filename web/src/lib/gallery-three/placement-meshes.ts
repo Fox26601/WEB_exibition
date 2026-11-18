@@ -3,6 +3,7 @@ import type { Artwork, ArtworkPlacement, Catalog, GalleryLayout } from "@/lib/ca
 import { ENTRANCE_ROOM_ID } from "@/lib/catalog-types";
 import { slotPose } from "@/lib/room";
 import { applyTextureToMaterial, loadColorTexture } from "./texture-load";
+import { CANVAS_Z_OFFSET } from "./constants";
 import { paintingPoseFromPlacement, sculpturePoseFromPlacement } from "./painting-pose";
 
 const FRAME_COLORS: Record<string, number> = {
@@ -95,12 +96,12 @@ function buildPaintingGroup(
 
   const canvasMat = new THREE.MeshBasicMaterial({
     color: 0x9a958e,
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
     toneMapped: true,
   });
   disposables.push(canvasMat);
   const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
-  canvas.position.z = 0.05;
+  canvas.position.z = CANVAS_Z_OFFSET;
   canvas.userData.artworkId = art.id;
   canvas.userData.isCanvas = true;
   group.add(canvas);
@@ -161,12 +162,12 @@ export function addCorridorArtworks(
 
     const canvasMat = new THREE.MeshBasicMaterial({
       color: 0x9a958e,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       toneMapped: true,
     });
     disposables.push(canvasMat);
     const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
-    canvas.position.z = 0.05;
+    canvas.position.z = CANVAS_Z_OFFSET;
     canvas.userData.artworkId = art.id;
     canvas.userData.isCanvas = true;
     group.add(canvas);

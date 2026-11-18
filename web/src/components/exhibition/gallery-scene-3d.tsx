@@ -23,11 +23,7 @@ import {
   layoutSpawnPoint,
   layoutWalkBounds,
 } from "@/lib/gallery-three/painting-pose";
-import {
-  applyTextureToMaterial,
-  createGalleryTextureLoader,
-  loadColorTexture,
-} from "@/lib/gallery-three/texture-load";
+import { createGalleryTextureLoader } from "@/lib/gallery-three/texture-load";
 import { applySkyToScene, loadNightSky } from "@/lib/gallery-three/sky";
 import { roomLength } from "@/lib/room";
 
@@ -87,17 +83,6 @@ export function GalleryScene3D({
     const loader = createGalleryTextureLoader();
     const texDisposables: THREE.Texture[] = [];
 
-    const applyRepeatTexture = (
-      mat: THREE.MeshStandardMaterial,
-      tex: THREE.Texture,
-      repeat: number,
-    ) => {
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-      tex.repeat.set(repeat, repeat);
-      applyTextureToMaterial(mat, tex);
-      texDisposables.push(tex);
-    };
-
     loadNightSky(loader, (skyTex) => {
       texDisposables.push(skyTex);
       applySkyToScene(scene, skyTex, previewLite);
@@ -117,12 +102,6 @@ export function GalleryScene3D({
       const built = buildLayoutScene(layout, {});
       scene.add(built.root);
       teardowns.push(built.dispose);
-      void loadColorTexture("/samples/sample-04.jpg").then((t) => {
-        if (t) applyRepeatTexture(built.wallMat, t, 4);
-      });
-      void loadColorTexture("/samples/sample-02.jpg").then((t) => {
-        if (t) applyRepeatTexture(built.floorMat, t, 3);
-      });
       walkBounds = layoutWalkBounds(layout.rooms);
       const spawn = walkBounds
         ? layoutSpawnPoint(layout, walkBounds)

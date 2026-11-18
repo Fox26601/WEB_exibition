@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Vec2 } from "@/lib/layout-geometry";
-import { GALLERY_HEIGHT, WALL_INSET } from "./constants";
+import { GALLERY_HEIGHT, WALL_CORNER_MITER, WALL_INSET } from "./constants";
 import { inwardNormal, lerpVec2, roomCentroid } from "./room-geometry";
 
 /** Vertical wall quad along edge AB; front face points into the room. */
@@ -13,13 +13,20 @@ export function addWallQuad(
   height: number = GALLERY_HEIGHT,
   bottomY = 0,
 ): void {
-  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const len = Math.hypot(dx, dz);
   if (len < 0.02) return;
+  const ux = dx / len;
+  const uz = dz / len;
+  const miter = Math.min(WALL_CORNER_MITER, len * 0.45);
+  const aEdge = { x: a.x - ux * miter, z: a.z - uz * miter };
+  const bEdge = { x: b.x + ux * miter, z: b.z + uz * miter };
   const inward = inwardNormal(a, b, centroid);
-  const ax = a.x + inward.x * WALL_INSET;
-  const az = a.z + inward.z * WALL_INSET;
-  const bx = b.x + inward.x * WALL_INSET;
-  const bz = b.z + inward.z * WALL_INSET;
+  const ax = aEdge.x + inward.x * WALL_INSET;
+  const az = aEdge.z + inward.z * WALL_INSET;
+  const bx = bEdge.x + inward.x * WALL_INSET;
+  const bz = bEdge.z + inward.z * WALL_INSET;
   const topY = bottomY + height;
 
   const positions = new Float32Array([
