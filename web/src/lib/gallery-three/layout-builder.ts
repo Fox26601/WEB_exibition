@@ -1,15 +1,12 @@
 import * as THREE from "three";
 import type { GalleryLayout } from "@/lib/catalog-types";
 import { layoutIsEmpty, normalizeLayout } from "@/lib/catalog-types";
+import { edgePoints, roomWorldVertices, type Vec2 } from "@/lib/layout-geometry";
 import {
-  edgePoints,
-  roomWorldVertices,
-  type Vec2,
-} from "@/lib/layout-geometry";
-import {
+  edgeFullyInsideOverlap,
   layoutOverlapRooms,
   shouldKeepFloorTriangle,
-  wallSpansForEdge,
+  splitPointsOnEdge,
 } from "@/lib/room-overlap-clip";
 import {
   computeAabbXZ,
@@ -20,10 +17,13 @@ import {
   FLOOR_COLOR,
   FLOOR_THICKNESS,
   FLOOR_Y,
+  GALLERY_HEIGHT,
   WALL_COLOR,
+  WALL_THICKNESS,
 } from "./constants";
+import { layoutWalkBounds } from "./painting-pose";
 import { lerpVec2, roomCentroid } from "./room-geometry";
-import { buildWallAlongEdge } from "./wall-mesh";
+import { addCornerPosts, buildWallAlongEdge } from "./wall-mesh";
 
 function findDoorwayWidth(
   layout: GalleryLayout,
@@ -56,6 +56,45 @@ export function makeSurfaceMaterial(
     polygonOffsetUnits: 1,
   });
   return mat;
+}
+
+/** Blocks sky leaking through open-top corners along wall crest. */
+function addCornerCeilingBlocks(
+  parent: THREE.Object3D,
+  verts: Vec2[],
+  mat: THREE.Material,
+): void {
+  const y = FLOOR_Y + GALLERY_HEIGHT + 0.02;
+  const size = WALL_THICKNESS * 5.2;
+  for (const v of verts) {
+    const block = new THREE.Mesh(
+      new THREE.BoxGeometry(size, 0.48, size),
+      mat,
+    );
+    block.position.set(v.x, y, v.z);
+    parent.add(block);
+  }
+}
+
+function buildRoomCeilingCap(
+  parent: THREE.Object3D,
+  verts: Vec2[],
+  mat: THREE.Material,
+): void {
+  const tris = triangulatePolygonXZ(verts);
+  if (!tris || tris.length < 3) return;
+  const y = FLOOR_Y + GALLERY_HEIGHT - 0.04;
+  const positions: number[] = [];
+  for (const v of verts) {
+    positions.push(v.x, y, v.z);
+  }
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geom.setIndex([...tris]);
+  geom.computeVertexNormals();
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.renderOrder = -1;
+  parent.add(mesh);
 }
 
 function buildRoomFloor(
@@ -139,39 +178,50 @@ export function buildLayoutScene(
     if (verts.length < 3) continue;
 
     buildRoomFloor(roomRoot, room.id, verts, overlapRooms, floorMat);
+    buildRoomCeilingCap(roomRoot, verts, wallMat);
+    addCornerCeilingBlocks(roomRoot, verts, wallMat);
 
     for (let i = 0; i < verts.length; i++) {
       const [a, b] = edgePoints(verts, i);
       const doorway = findDoorwayWidth(layout, room.id, i);
-      const spans =
-        overlapRooms.length > 1
-          ? wallSpansForEdge(overlapRooms, room.id, i)
-          : null;
+      const door =
+        doorway > 0.01
+          ? doorway
+          : isEntranceEdgeFallback(a, b, verts)
+            ? DEFAULT_DOOR_WIDTH
+            : 0;
 
-      if (spans && spans.length > 0) {
-        for (const span of spans) {
-          const aSpan = lerpVec2(a, b, span.t0);
-          const bSpan = lerpVec2(a, b, span.t1);
-          let spanDoor = 0;
-          if (doorway > 0.01 && span.t0 <= 0.5 && span.t1 >= 0.5) {
-            spanDoor = Math.min(
-              doorway,
-              Math.hypot(bSpan.x - aSpan.x, bSpan.z - aSpan.z) - 0.2,
-            );
-          }
-          buildWallAlongEdge(roomRoot, aSpan, bSpan, spanDoor, wallMat, verts);
+      if (overlapRooms.length > 1) {
+        if (edgeFullyInsideOverlap(overlapRooms, room.id, a, b)) {
+          continue;
         }
-      } else if (spans && spans.length === 0) {
-        continue;
-      } else {
-        const door =
-          doorway > 0.01 ? doorway : isEntranceEdgeFallback(a, b, verts) ? DEFAULT_DOOR_WIDTH : 0;
         buildWallAlongEdge(roomRoot, a, b, door, wallMat, verts);
+        for (const split of splitPointsOnEdge(overlapRooms, room.id, i)) {
+          const postH = GALLERY_HEIGHT - FLOOR_Y + 0.2;
+          const post = new THREE.Mesh(
+            new THREE.BoxGeometry(
+              WALL_THICKNESS * 4.2,
+              postH,
+              WALL_THICKNESS * 4.2,
+            ),
+            wallMat,
+          );
+          post.position.set(split.x, FLOOR_Y + postH * 0.5, split.z);
+          roomRoot.add(post);
+        }
+        continue;
       }
+
+      buildWallAlongEdge(roomRoot, a, b, door, wallMat, verts);
     }
+
+    addCornerPosts(roomRoot, verts, wallMat);
 
     root.add(roomRoot);
   }
+
+  addLayoutJunctionPosts(root, layout, wallMat);
+  addLayoutCeilingLid(root, layout, wallMat);
 
   return {
     root,
@@ -186,6 +236,56 @@ export function buildLayoutScene(
       wallMat.dispose();
     },
   };
+}
+
+/** Shared vertices across rooms — extra mass closes overlap dihedral gaps. */
+function addLayoutCeilingLid(
+  parent: THREE.Object3D,
+  layout: GalleryLayout,
+  mat: THREE.Material,
+): void {
+  const bounds = layoutWalkBounds(layout.rooms);
+  if (!bounds) return;
+  const pad = 3.2;
+  const w = Math.max(1, bounds.maxX - bounds.minX + pad);
+  const d = Math.max(1, bounds.maxZ - bounds.minZ + pad);
+  const y0 = FLOOR_Y + GALLERY_HEIGHT - 0.08;
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(w, 0.55, d), mat);
+  lid.position.set(
+    (bounds.minX + bounds.maxX) * 0.5,
+    y0 + 0.275,
+    (bounds.minZ + bounds.maxZ) * 0.5,
+  );
+  parent.add(lid);
+  const skirt = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.52, d + 0.6), mat);
+  skirt.position.set(lid.position.x, FLOOR_Y + GALLERY_HEIGHT + 0.22, lid.position.z);
+  parent.add(skirt);
+}
+
+function addLayoutJunctionPosts(
+  parent: THREE.Object3D,
+  layout: GalleryLayout,
+  wallMat: THREE.Material,
+): void {
+  const pts: Vec2[] = [];
+  const merge = 0.1;
+  for (const room of layout.rooms) {
+    for (const v of roomWorldVertices(room)) {
+      if (pts.some((p) => Math.hypot(p.x - v.x, p.z - v.z) < merge)) continue;
+      pts.push(v);
+    }
+  }
+  const postH = GALLERY_HEIGHT - FLOOR_Y + 0.22;
+  const postY = FLOOR_Y + postH * 0.5;
+  const size = WALL_THICKNESS * 4.2;
+  for (const p of pts) {
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(size, postH, size),
+      wallMat,
+    );
+    post.position.set(p.x, postY, p.z);
+    parent.add(post);
+  }
 }
 
 function isEntranceEdgeFallback(a: Vec2, b: Vec2, verts: Vec2[]): boolean {

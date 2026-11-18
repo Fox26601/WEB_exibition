@@ -2,7 +2,17 @@ import * as THREE from "three";
 import type { Artwork, ArtworkPlacement, Catalog, GalleryLayout } from "@/lib/catalog-types";
 import { ENTRANCE_ROOM_ID } from "@/lib/catalog-types";
 import { slotPose } from "@/lib/room";
-import { applyTextureToMaterial, loadColorTexture } from "./texture-load";
+import {
+  applyTextureToMaterial,
+  loadColorTexture,
+  orientGalleryPosterTexture,
+  flipGalleryPosterTextureV,
+} from "./texture-load";
+import { CANVAS_Z_OFFSET } from "./constants";
+import {
+  posterCanvasOrientation,
+  posterCanvasOrientationForPlacement,
+} from "./poster-canvas-orientation";
 import { paintingPoseFromPlacement, sculpturePoseFromPlacement } from "./painting-pose";
 
 const FRAME_COLORS: Record<string, number> = {
@@ -42,7 +52,14 @@ export function addPlacementsToScene(
     if (placement.kind === "painting") {
       const pose = paintingPoseFromPlacement(placement, layout);
       if (!pose) continue;
-      const group = buildPaintingGroup(art, placement, pose, loader, disposables);
+      const group = buildPaintingGroup(
+        art,
+        placement,
+        pose,
+        layout,
+        loader,
+        disposables,
+      );
       scene.add(group);
       pickRoots.push(group);
     } else if (placement.kind === "sculpture") {
@@ -68,6 +85,7 @@ function buildPaintingGroup(
   art: Artwork,
   placement: ArtworkPlacement,
   pose: NonNullable<ReturnType<typeof paintingPoseFromPlacement>>,
+  layout: GalleryLayout,
   _loader: THREE.TextureLoader,
   disposables: Array<THREE.Material | THREE.Texture>,
 ): THREE.Group {
@@ -95,12 +113,14 @@ function buildPaintingGroup(
 
   const canvasMat = new THREE.MeshBasicMaterial({
     color: 0x9a958e,
-    side: THREE.DoubleSide,
+    side: THREE.FrontSide,
     toneMapped: true,
   });
   disposables.push(canvasMat);
+  const orient = posterCanvasOrientationForPlacement(placement, layout);
   const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
-  canvas.position.z = 0.05;
+  canvas.position.z = CANVAS_Z_OFFSET;
+  if (orient.rotate180) canvas.rotation.y = Math.PI;
   canvas.userData.artworkId = art.id;
   canvas.userData.isCanvas = true;
   group.add(canvas);
@@ -109,6 +129,8 @@ function buildPaintingGroup(
   if (texUrl) {
     void loadColorTexture(texUrl).then((tex) => {
       if (!tex) return;
+      if (orient.flipV) flipGalleryPosterTextureV(tex);
+      else if (orient.textureMirror) orientGalleryPosterTexture(tex);
       applyTextureToMaterial(canvasMat, tex);
       disposables.push(tex);
     });
@@ -161,12 +183,12 @@ export function addCorridorArtworks(
 
     const canvasMat = new THREE.MeshBasicMaterial({
       color: 0x9a958e,
-      side: THREE.DoubleSide,
+      side: THREE.FrontSide,
       toneMapped: true,
     });
     disposables.push(canvasMat);
     const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
-    canvas.position.z = 0.05;
+    canvas.position.z = CANVAS_Z_OFFSET;
     canvas.userData.artworkId = art.id;
     canvas.userData.isCanvas = true;
     group.add(canvas);
@@ -175,6 +197,8 @@ export function addCorridorArtworks(
     if (texUrl) {
       void loadColorTexture(texUrl).then((tex) => {
         if (!tex) return;
+        const orient = posterCanvasOrientation(art.id);
+        if (orient.textureMirror) orientGalleryPosterTexture(tex);
         applyTextureToMaterial(canvasMat, tex);
         disposables.push(tex);
       });

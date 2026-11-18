@@ -5,7 +5,12 @@ import {
   roomWorldVertices,
   type Vec2,
 } from "@/lib/layout-geometry";
-import { resolvedWallHeightT } from "@/lib/placement-eval";
+import { placementWorldPoint, resolvedWallHeightT } from "@/lib/placement-eval";
+import {
+  layoutOverlapRooms,
+  wallSpansForEdge,
+  type WallSpan,
+} from "@/lib/room-overlap-clip";
 import { inwardNormal, lerpVec2, roomCentroid } from "./room-geometry";
 
 export type PaintingPose3D = {
@@ -13,6 +18,36 @@ export type PaintingPose3D = {
   /** Y-axis rotation in radians (faces into room). */
   yawRad: number;
 };
+
+/** Snap hang point to a wall span that actually exists after overlap clip. */
+export function resolveTAlongWallSpan(
+  roomId: string,
+  edgeIndex: number,
+  tAlong: number,
+  layout: GalleryLayout,
+): number | null {
+  const overlap = layoutOverlapRooms(layout);
+  if (overlap.length <= 1) {
+    return Math.max(0, Math.min(1, tAlong));
+  }
+  const spans = wallSpansForEdge(overlap, roomId, edgeIndex);
+  if (spans.length === 0) return null;
+  return nearestTOnSpans(tAlong, spans);
+}
+
+function nearestTOnSpans(t: number, spans: WallSpan[]): number {
+  let bestT = Math.max(0, Math.min(1, t));
+  let bestD = Infinity;
+  for (const s of spans) {
+    const c = Math.max(s.t0, Math.min(s.t1, t));
+    const d = Math.abs(t - c);
+    if (d < bestD) {
+      bestD = d;
+      bestT = c;
+    }
+  }
+  return bestT;
+}
 
 export function paintingPoseFromPlacement(
   placement: ArtworkPlacement,
@@ -28,8 +63,8 @@ export function paintingPoseFromPlacement(
     verts.length;
   const [a, b] = edgePoints(verts, edgeIdx);
   const centroid = roomCentroid(verts) ?? lerpVec2(a, b, 0.5);
-  const t = Math.max(0, Math.min(1, placement.tAlongEdge ?? 0.5));
-  const along = lerpVec2(a, b, t);
+  const along = placementWorldPoint(placement, layout);
+  if (!along) return null;
   const inward = inwardNormal(a, b, centroid);
   const hangY = GALLERY_HEIGHT * resolvedWallHeightT(placement);
   const yawRad = Math.atan2(inward.x, inward.z);

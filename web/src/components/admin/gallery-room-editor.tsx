@@ -45,6 +45,13 @@ import {
   softSnapRoomTranslate,
   type Vec2,
 } from "@/lib/layout-geometry";
+import {
+  EDITOR_PLAN_PAD,
+  EDITOR_PLAN_SCALE,
+  editorPlanOrigin,
+  worldToEditorSvg,
+  type EditorPan,
+} from "@/lib/layout-editor-projection";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -60,25 +67,18 @@ type Props = {
   locale?: Locale;
 };
 
-const SCALE = 36;
-const PAD = 40;
+const SCALE = EDITOR_PLAN_SCALE;
+const PAD = EDITOR_PLAN_PAD;
 const VIEW_W = 720;
 const VIEW_H = 520;
 const MOVE_GAIN = 0.45;
 const STRETCH_GAIN = 0.25;
 const DRAG_THRESHOLD_PX = 6;
 
-type PanOffset = { x: number; y: number };
+type PanOffset = EditorPan;
 
-function worldToSvg(
-  p: Vec2,
-  origin: Vec2,
-  pan: PanOffset,
-): { x: number; y: number } {
-  return {
-    x: PAD + (p.x - origin.x) * SCALE + pan.x,
-    y: PAD + (p.z - origin.z) * SCALE + pan.y,
-  };
+function worldToSvg(p: Vec2, origin: Vec2, pan: PanOffset) {
+  return worldToEditorSvg(p, origin, pan);
 }
 
 function svgToWorld(
@@ -116,26 +116,6 @@ function clientDeltaToSvg(
 }
 
 const CANVAS_PAN_ID = "__canvas_pan__";
-
-function boundsOrigin(
-  rooms: GalleryRoom[],
-  entrance: GalleryEntrancePose,
-): Vec2 {
-  let minX = Infinity;
-  let minZ = Infinity;
-  const consider = (verts: Vec2[]) => {
-    for (const v of verts) {
-      minX = Math.min(minX, v.x);
-      minZ = Math.min(minZ, v.z);
-    }
-  };
-  for (const room of rooms) consider(roomWorldVertices(room));
-  consider(entranceWorldVertices(entrance));
-  if (!Number.isFinite(minX) || !Number.isFinite(minZ)) {
-    return { x: -4, z: -1 };
-  }
-  return { x: minX - 1.5, z: minZ - 1.5 };
-}
 
 function polygonPath(verts: Vec2[], origin: Vec2, pan: PanOffset): string {
   return (
@@ -199,7 +179,7 @@ export function GalleryRoomEditor({
 
   const normalized = useMemo(() => normalizeLayout(layout), [layout]);
   const origin = useMemo(
-    () => boundsOrigin(normalized.rooms, normalized.entrance),
+    () => editorPlanOrigin(normalized.rooms, normalized.entrance),
     [normalized.rooms, normalized.entrance],
   );
   const commit = useCallback(

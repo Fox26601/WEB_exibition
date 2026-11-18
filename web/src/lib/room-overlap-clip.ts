@@ -1,4 +1,8 @@
-import type { GalleryLayout, GalleryRoom } from "./catalog-types";
+import type {
+  ArtworkPlacement,
+  GalleryLayout,
+  GalleryRoom,
+} from "./catalog-types";
 import { normalizeLayout } from "./catalog-types";
 import {
   edgePoints,
@@ -140,6 +144,95 @@ function isDuplicateCoplanarWall(
 }
 
 /** Exterior wall intervals along one room edge (omit spans inside other rooms). */
+function mergePlacementPads(
+  layout: GalleryLayout,
+  roomId: string,
+  edgeIndex: number,
+  spans: WallSpan[],
+  edgeLen: number,
+): WallSpan[] {
+  const placements = layout.placements.filter(
+    (p): p is ArtworkPlacement & { tAlongEdge: number } =>
+      p.kind === "painting" &&
+      p.roomId === roomId &&
+      p.wallEdgeIndex === edgeIndex &&
+      p.tAlongEdge != null,
+  );
+  if (placements.length === 0) return spans;
+  const pad = Math.min(0.38, 1.1 / (edgeLen || 1));
+  const out: WallSpan[] = spans.map((s) => ({ ...s }));
+  for (const p of placements) {
+    const t = Math.max(0, Math.min(1, p.tAlongEdge));
+    if (out.some((s) => t >= s.t0 - 1e-6 && t <= s.t1 + 1e-6)) continue;
+    out.push({ t0: Math.max(0, t - pad), t1: Math.min(1, t + pad) });
+  }
+  out.sort((x, y) => x.t0 - y.t0);
+  const merged: WallSpan[] = [];
+  for (const s of out) {
+    const last = merged[merged.length - 1];
+    if (last && s.t0 <= last.t1 + 1e-6) {
+      last.t1 = Math.max(last.t1, s.t1);
+    } else {
+      merged.push({ ...s });
+    }
+  }
+  return merged.length ? merged : out;
+}
+
+export function wallSpansForEdgeWithPlacements(
+  layout: GalleryLayout,
+  roomId: string,
+  edgeIndex: number,
+): WallSpan[] {
+  const overlap = layoutOverlapRooms(layout);
+  const room = overlap.find((r) => r.id === roomId);
+  if (!room) return [];
+  const [a, b] = edgePoints(room.verts, edgeIndex);
+  const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+  const spans = wallSpansForEdge(overlap, roomId, edgeIndex);
+  return mergePlacementPads(layout, roomId, edgeIndex, spans, len);
+}
+
+/** True when the whole edge sits in another room's interior (admin still draws the outline). */
+export function edgeFullyInsideOverlap(
+  rooms: OverlapRoom[],
+  roomId: string,
+  a: Vec2,
+  b: Vec2,
+): boolean {
+  for (const t of [0.2, 0.5, 0.8]) {
+    const p = lerp2(a, b, t);
+    let covered = false;
+    for (const other of rooms) {
+      if (other.id === roomId) continue;
+      if (!pointInPolygon(p, other.verts)) continue;
+      if (pointOnPolygonBoundary(p, other.verts)) continue;
+      covered = true;
+      break;
+    }
+    if (!covered) return false;
+  }
+  return true;
+}
+
+/** Interior split points where room edges meet (overlap T-junctions). */
+export function splitPointsOnEdge(
+  rooms: OverlapRoom[],
+  roomId: string,
+  edgeIndex: number,
+): Vec2[] {
+  const room = rooms.find((r) => r.id === roomId);
+  if (!room) return [];
+  const [a, b] = edgePoints(room.verts, edgeIndex);
+  const splits = splitsOnEdge(rooms, roomId, edgeIndex);
+  const pts: Vec2[] = [];
+  for (const t of splits) {
+    if (t <= 1e-6 || t >= 1 - 1e-6) continue;
+    pts.push(lerp2(a, b, t));
+  }
+  return pts;
+}
+
 export function wallSpansForEdge(
   rooms: OverlapRoom[],
   roomId: string,
