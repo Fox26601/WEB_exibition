@@ -195,6 +195,7 @@ export type AdminEditorStrings = {
   untitled: string;
   publishToLive: string;
   openDraft3d: string;
+  openLive3d: string;
   artworksPlaceHint: string;
   draftAutosaveIntro: string;
   lastLivePublish: string;
@@ -236,6 +237,7 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   untitled: "(untitled)",
   publishToLive: "Publish to live site",
   openDraft3d: "Open draft in 3D",
+  openLive3d: "Open live exhibition in 3D",
   artworksPlaceHint:
     "Upload and publish here. Place published works on the room plan in Place mode.",
   draftAutosaveIntro: "Draft autosaves on every layout change.",
@@ -277,6 +279,7 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   untitled: "(без названия)",
   publishToLive: "Опубликовать на сайт",
   openDraft3d: "Открыть черновик в 3D",
+  openLive3d: "Открыть live-выставку в 3D",
   artworksPlaceHint:
     "Загружайте и публикуйте здесь. На плане расставляйте опубликованные работы в режиме Place.",
   draftAutosaveIntro: "Черновик сохраняется при каждом изменении плана.",

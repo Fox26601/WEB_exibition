@@ -3,7 +3,7 @@
  * Runtime meshes are built only from this plan (Three adapter).
  */
 import type { ArtworkPlacement, GalleryLayout } from "./catalog-types";
-import { normalizeLayout } from "./catalog-types";
+import { ENTRANCE_ROOM_ID, normalizeLayout } from "./catalog-types";
 import {
   distPointToSegment,
   edgePoints,
@@ -12,8 +12,10 @@ import {
   type Vec2,
 } from "./layout-geometry";
 import {
+  edgeFullyInsideOverlap,
   layoutOverlapRooms,
   wallSpansForEdge,
+  type OverlapRoom,
   type WallSpan,
 } from "./room-overlap-clip";
 import { DEFAULT_DOOR_WIDTH } from "./gallery-three/constants";
@@ -55,6 +57,25 @@ function findDoorwayWidth(
   return 0;
 }
 
+/**
+ * On a room↔room doorway, only the lexicographically lower roomId owns the wall
+ * shell (matches overlap coplanar dedup). Higher partner keeps snap_surface pads only.
+ */
+function deferSharedDoorwayShell(
+  layout: GalleryLayout,
+  roomId: string,
+  edgeIndex: number,
+): boolean {
+  for (const c of layout.connections) {
+    let partner: string | null = null;
+    if (c.roomA === roomId && c.edgeA === edgeIndex) partner = c.roomB;
+    else if (c.roomB === roomId && c.edgeB === edgeIndex) partner = c.roomA;
+    if (!partner || partner === ENTRANCE_ROOM_ID) continue;
+    return partner < roomId;
+  }
+  return false;
+}
+
 function isEntranceEdgeFallback(a: Vec2, b: Vec2, verts: Vec2[]): boolean {
   let minZ = Infinity;
   for (const v of verts) minZ = Math.min(minZ, v.z);
@@ -92,6 +113,38 @@ function edgeNeedsExteriorShell(
       }
     }
     if (!inOtherInterior) return true;
+  }
+  return false;
+}
+
+/**
+ * True when this edge runs along another room's boundary (shared wall).
+ * Clip correctly returns [] for the higher roomId; restoring a full shell here
+ * doubles the doorway / seams and looks "crooked".
+ */
+function edgeLooksSharedCoplanar(
+  overlapRooms: OverlapRoom[],
+  roomId: string,
+  a: Vec2,
+  b: Vec2,
+): boolean {
+  const samples = [0.2, 0.5, 0.8];
+  for (const other of overlapRooms) {
+    if (other.id === roomId) continue;
+    let hits = 0;
+    for (const t of samples) {
+      const p = {
+        x: a.x + (b.x - a.x) * t,
+        z: a.z + (b.z - a.z) * t,
+      };
+      const nearBoundary = other.verts.some((_, j) => {
+        const c = other.verts[j];
+        const d = other.verts[(j + 1) % other.verts.length];
+        return distPointToSegment(p, c, d).dist < 0.12;
+      });
+      if (nearBoundary) hits += 1;
+    }
+    if (hits >= 2) return true;
   }
   return false;
 }
@@ -195,9 +248,19 @@ export function buildLayoutWallPlan(layoutInput: GalleryLayout): LayoutWallPlan 
       }
 
       let exteriorSpans: WallSpan[];
-      if (multiOverlap) {
+      if (deferSharedDoorwayShell(layout, room.id, edgeIndex)) {
+        exteriorSpans = [];
+      } else if (multiOverlap) {
         exteriorSpans = wallSpansForEdge(overlapRooms, room.id, edgeIndex);
-        if (exteriorSpans.length === 0 && edgeNeedsExteriorShell(room.id, a, b, overlapRooms)) {
+        // Empty clip means shared/coplanar or fully interior — do NOT restore a
+        // full {0,1} shell (that reintroduced double walls / crooked seams).
+        // Paintings still get snap_surface pads via addSnapSurfaceSpans.
+        if (
+          exteriorSpans.length === 0 &&
+          edgeNeedsExteriorShell(room.id, a, b, overlapRooms) &&
+          !edgeFullyInsideOverlap(overlapRooms, room.id, a, b) &&
+          !edgeLooksSharedCoplanar(overlapRooms, room.id, a, b)
+        ) {
           exteriorSpans = [{ t0: 0, t1: 1 }];
         }
       } else {

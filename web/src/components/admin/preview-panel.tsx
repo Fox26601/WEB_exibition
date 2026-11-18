@@ -74,8 +74,9 @@ export function PreviewPanel() {
   }, [catalog]);
 
   const planPreviewSrc = token
-    ? `/exhibition?catalog=draft&token=${encodeURIComponent(token)}&lang=${locale}`
+    ? `/exhibition?catalog=draft&token=${encodeURIComponent(token)}&lang=${locale}&_=${encodeURIComponent(catalog?.updatedAt || "draft")}`
     : "";
+  const liveExhibitionSrc = `/exhibition?lang=${locale}&_=${encodeURIComponent(liveUpdatedAt || "live")}`;
 
   const persistLayout = useCallback(async (layout: GalleryLayout) => {
     setSaveStatus("saving");
@@ -329,8 +330,8 @@ export function PreviewPanel() {
           artworks={publishedArts}
           locale={locale}
         />
-        {planPreviewSrc ? (
-          <p className="mt-4 text-sm">
+        <p className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          {planPreviewSrc ? (
             <a
               href={planPreviewSrc}
               target="_blank"
@@ -339,8 +340,16 @@ export function PreviewPanel() {
             >
               {adminT.openDraft3d}
             </a>
-          </p>
-        ) : null}
+          ) : null}
+          <a
+            href={liveExhibitionSrc}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--amber-bright)] underline-offset-2 hover:underline"
+          >
+            {adminT.openLive3d}
+          </a>
+        </p>
       </div>
 
       <div className="mt-8">
