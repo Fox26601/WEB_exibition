@@ -10,7 +10,7 @@ import {
   flipGalleryPosterTextureV,
 } from "./texture-load";
 import { CANVAS_Z_OFFSET } from "./constants";
-import { ARTWORK_PICK_SIZE } from "./artwork-interact";
+import { ARTWORK_PICK_SIZE, SCULPTURE_PICK_SIZE } from "./artwork-interact";
 import {
   posterCanvasOrientation,
   posterCanvasOrientationForPlacement,
@@ -178,9 +178,32 @@ function buildSculptureGroup(
   disposables: Array<THREE.Material | THREE.Texture>,
 ): THREE.Group {
   const group = new THREE.Group();
-  group.position.set(pose.position.x, 0, pose.position.z);
+  // Feet on raised gallery floor (same surface visitors walk on).
+  group.position.set(pose.position.x, pose.position.y, pose.position.z);
   group.rotation.y = (pose.yawDeg * Math.PI) / 180;
   group.userData.artworkId = art.id;
+  group.userData.isSculpture = true;
+
+  // Invisible volume so look-at / E / Q stay reliable before/while GLB loads.
+  const pickMat = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  disposables.push(pickMat);
+  const pickProxy = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      SCULPTURE_PICK_SIZE.x,
+      SCULPTURE_PICK_SIZE.y,
+      SCULPTURE_PICK_SIZE.z,
+    ),
+    pickMat,
+  );
+  pickProxy.position.y = SCULPTURE_PICK_SIZE.y * 0.5;
+  pickProxy.userData.artworkId = art.id;
+  pickProxy.userData.isPickProxy = true;
+  pickProxy.userData.isSculpture = true;
+  group.add(pickProxy);
 
   const placeholderMat = new THREE.MeshStandardMaterial({
     color: 0x6a6258,
@@ -193,6 +216,7 @@ function buildSculptureGroup(
   );
   placeholder.position.y = 0.45;
   placeholder.userData.artworkId = art.id;
+  placeholder.userData.isSculpture = true;
   group.add(placeholder);
 
   const modelUrl = art.modelUrl?.trim();
@@ -218,6 +242,7 @@ function buildSculptureGroup(
       model.position.y -= box.min.y;
       model.traverse((obj) => {
         obj.userData.artworkId = art.id;
+        obj.userData.isSculpture = true;
       });
       group.remove(placeholder);
       placeholder.geometry.dispose();

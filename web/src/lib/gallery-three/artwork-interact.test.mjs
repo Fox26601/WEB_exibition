@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   ARTWORK_LOOK_DISTANCE,
+  ARTWORK_PICK_SIZE,
+  SCULPTURE_PICK_SIZE,
   artworkHitDistance3D,
   distanceSq3D,
   firstArtworkHit,
@@ -17,6 +19,13 @@ function fakeObj(userData, parent = null) {
 describe("artwork-interact", () => {
   it("exposes a look distance beyond the old Unity 8m and prior 14m reach", () => {
     assert.ok(ARTWORK_LOOK_DISTANCE > 14);
+  });
+
+  it("exposes a floor sculpture pick volume for look-at", () => {
+    assert.ok(SCULPTURE_PICK_SIZE.x >= 1);
+    assert.ok(SCULPTURE_PICK_SIZE.y >= 1);
+    assert.ok(SCULPTURE_PICK_SIZE.z >= 1);
+    assert.ok(ARTWORK_PICK_SIZE.x > 0);
   });
 
   it("resolves artworkId from nested mesh parents", () => {

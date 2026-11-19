@@ -18,7 +18,10 @@ import {
   buildLayoutWallPlan,
   wallPlanSpansForEdge,
 } from "./wall-plan";
-import { paintingPoseFromPlacement } from "./gallery-three/painting-pose";
+import {
+  paintingPoseFromPlacement,
+  sculpturePoseFromPlacement,
+} from "./gallery-three/painting-pose";
 import { WALL_INSET } from "./gallery-three/constants";
 import { inwardNormal, roomCentroid } from "./gallery-three/room-geometry";
 
@@ -83,6 +86,29 @@ export function evaluateLayoutEditorParity(
       });
       continue;
     }
+
+    if (p.kind === "sculpture") {
+      const pose = sculpturePoseFromPlacement(p);
+      if (!pose) {
+        issues.push({
+          code: "runtime_pose",
+          detail: `no 3D pose for ${p.artworkId}`,
+        });
+        continue;
+      }
+      const drift = Math.hypot(
+        pose.position.x - editorPt.x,
+        pose.position.z - editorPt.z,
+      );
+      if (drift > 0.025) {
+        issues.push({
+          code: "placement_runtime",
+          detail: `${p.artworkId} sculpture 3D drift ${drift.toFixed(3)} from floor point`,
+        });
+      }
+      continue;
+    }
+
     const pose = paintingPoseFromPlacement(p, layout);
     if (!pose) {
       issues.push({

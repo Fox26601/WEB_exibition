@@ -14,6 +14,9 @@ export const ARTWORK_INTERACT_DISTANCE = ARTWORK_LOOK_DISTANCE;
 /** Invisible pick volume size (meters) — taller pad helps upward look-at. */
 export const ARTWORK_PICK_SIZE = { x: 1.55, y: 1.85, z: 0.45 } as const;
 
+/** Floor sculpture pick volume (meters) — wide enough for look-at from stand-off. */
+export const SCULPTURE_PICK_SIZE = { x: 1.2, y: 1.6, z: 1.2 } as const;
+
 export type ArtworkHitKind = "artwork" | "pedestal" | "none";
 
 export type ResolvedArtworkHit = {
