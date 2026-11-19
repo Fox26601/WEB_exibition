@@ -8,7 +8,25 @@ import {
   PEDESTAL_INTERACT_RADIUS,
   resolveBookletKeyAction,
   resolveExhibitionQAction,
+  shouldCompositeHeldMapOverMedia,
 } from "./booklet-interact.ts";
+
+describe("shouldCompositeHeldMapOverMedia", () => {
+  it("composites held map over View only when owned + media open", () => {
+    assert.equal(
+      shouldCompositeHeldMapOverMedia({ mediaOpen: true, bookletOwned: true }),
+      true,
+    );
+    assert.equal(
+      shouldCompositeHeldMapOverMedia({ mediaOpen: true, bookletOwned: false }),
+      false,
+    );
+    assert.equal(
+      shouldCompositeHeldMapOverMedia({ mediaOpen: false, bookletOwned: true }),
+      false,
+    );
+  });
+});
 
 describe("isWithinPedestalReach", () => {
   it("is true at the pedestal and false beyond the radius", () => {

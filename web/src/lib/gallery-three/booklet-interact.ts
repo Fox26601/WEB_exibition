@@ -60,6 +60,17 @@ export function resolveExhibitionQAction(opts: {
   return { kind: "entrance", action };
 }
 
+/**
+ * Owned entrance map never uses Map/Booklet HUD chrome.
+ * When HTML View covers WebGL, composite the existing HeldBookletMap above it.
+ */
+export function shouldCompositeHeldMapOverMedia(opts: {
+  mediaOpen: boolean;
+  bookletOwned: boolean;
+}): boolean {
+  return opts.mediaOpen && opts.bookletOwned;
+}
+
 /** Camera-local offset for the held map quad (meters). */
 export type HeldBookletLocalPose = {
   position: { x: number; y: number; z: number };

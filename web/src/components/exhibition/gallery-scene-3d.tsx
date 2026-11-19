@@ -69,6 +69,11 @@ type Props = {
   mapPageIndex?: number;
   /** When true, look-at must not clear / swap the current artwork selection. */
   freezeLookSelection?: boolean;
+  /**
+   * View/fullscreen HTML covers the gallery — raise this canvas above it and
+   * draw only the held map (transparent clear) so the FP item stays visible.
+   */
+  compositeHeldMapOverMedia?: boolean;
   /** Selected painting id (chrome / View); Q fallback when look-at is frozen. */
   selectedArtworkId?: string | null;
   onSelect: (art: Artwork | null) => void;
@@ -92,6 +97,7 @@ export function GalleryScene3D({
   mapPages = [],
   mapPageIndex = 0,
   freezeLookSelection = false,
+  compositeHeldMapOverMedia = false,
   selectedArtworkId = null,
   onSelect,
   onOpenImage,
@@ -118,6 +124,8 @@ export function GalleryScene3D({
   mapPageIndexRef.current = mapPageIndex;
   const localeRef = useRef(locale);
   localeRef.current = locale;
+  const compositeHeldMapRef = useRef(compositeHeldMapOverMedia);
+  compositeHeldMapRef.current = compositeHeldMapOverMedia;
   const freezeLookRef = useRef(freezeLookSelection);
   freezeLookRef.current = freezeLookSelection;
   const selectedArtworkIdRef = useRef(selectedArtworkId);
@@ -155,17 +163,24 @@ export function GalleryScene3D({
       120,
     );
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // alpha: true so we can clear transparent and stack the held map over View.
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setClearColor(0x000000, 1);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
+    renderer.domElement.style.background = "transparent";
     mount.appendChild(renderer.domElement);
 
     const loader = createGalleryTextureLoader();
     const texDisposables: THREE.Texture[] = [];
+    let galleryBackground: THREE.Color | THREE.Texture | null = null;
+    let galleryFog: THREE.Fog | THREE.FogExp2 | null = null;
 
     loadNightSky(loader, (skyTex) => {
       texDisposables.push(skyTex);
       applySkyToScene(scene, skyTex, previewLite);
+      galleryBackground = scene.background as THREE.Texture;
+      galleryFog = scene.fog;
     });
 
     const ambient = new THREE.AmbientLight(0xfff2e0, 0.55);
@@ -250,6 +265,7 @@ export function GalleryScene3D({
       camera.lookAt(0, spawnEye, Math.min(4, corridorLength / 2));
       if (!previewLite) {
         scene.fog = new THREE.Fog(0x05070f, corridorLength * 0.75, corridorLength * 1.55);
+        galleryFog = scene.fog;
       }
     }
 
@@ -286,6 +302,9 @@ export function GalleryScene3D({
     heldBooklet.visible = bookletOwnedRef.current;
     heldBooklet.renderOrder = 1000;
     heldBooklet.frustumCulled = false;
+    // Layer 1: when View covers the gallery we render only this layer.
+    heldBooklet.layers.set(1);
+    camera.layers.enable(1);
     camera.add(heldBooklet);
     let raiseAmt = bookletRaisedRef.current ? 1 : 0;
     let lastMapPaintKey = "";
@@ -804,6 +823,22 @@ export function GalleryScene3D({
         hint.style.opacity = show ? "1" : "0";
       }
 
+      // Owned + View: transparent canvas above the HTML modal, held map only.
+      const composite =
+        compositeHeldMapRef.current && bookletOwnedRef.current;
+      if (composite) {
+        camera.layers.set(1);
+        renderer.setClearColor(0x000000, 0);
+        scene.background = null;
+        scene.fog = null;
+      } else {
+        camera.layers.set(0);
+        camera.layers.enable(1);
+        renderer.setClearColor(0x000000, 1);
+        scene.background = galleryBackground;
+        scene.fog = galleryFog;
+      }
+
       renderer.render(scene, camera);
       raf = requestAnimationFrame(tick);
     };
@@ -843,29 +878,44 @@ export function GalleryScene3D({
 
   return (
     <div
-      className="relative h-full w-full"
+      className={
+        compositeHeldMapOverMedia
+          ? "pointer-events-none absolute inset-0 z-[45] h-full w-full"
+          : "absolute inset-0 z-0 h-full w-full"
+      }
       data-gallery-renderer="three"
+      data-held-map-over-media={compositeHeldMapOverMedia ? "1" : "0"}
     >
       <div ref={mountRef} className="h-full w-full" />
       <div
         ref={lookRef}
-        className="absolute inset-0 z-10 touch-none md:pointer-events-none md:hidden"
+        className={`absolute inset-0 z-10 touch-none md:pointer-events-none md:hidden ${
+          compositeHeldMapOverMedia ? "hidden" : ""
+        }`}
         aria-hidden
       />
       <div
         ref={joyRef}
-        className="absolute bottom-8 start-6 z-20 h-28 w-28 rounded-full border border-white/30 bg-white/10 backdrop-blur-sm md:hidden"
+        className={`absolute bottom-8 start-6 z-20 h-28 w-28 rounded-full border border-white/30 bg-white/10 backdrop-blur-sm md:hidden ${
+          compositeHeldMapOverMedia ? "hidden" : ""
+        }`}
         aria-label="Move joystick"
       >
         <div className="absolute start-1/2 top-1/2 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/35" />
       </div>
       <p
         ref={hintRef}
-        className="pointer-events-none absolute bottom-24 start-1/2 z-20 -translate-x-1/2 rounded bg-black/55 px-3 py-1.5 font-[family-name:var(--font-ui)] text-[0.7rem] text-white/85 opacity-0 transition-opacity duration-200 sm:bottom-16"
+        className={`pointer-events-none absolute bottom-24 start-1/2 z-20 -translate-x-1/2 rounded bg-black/55 px-3 py-1.5 font-[family-name:var(--font-ui)] text-[0.7rem] text-white/85 opacity-0 transition-opacity duration-200 sm:bottom-16 ${
+          compositeHeldMapOverMedia ? "hidden" : ""
+        }`}
       >
         Click pedestal or press Q to take booklet
       </p>
-      <p className="pointer-events-none absolute bottom-3 end-3 z-20 hidden font-[family-name:var(--font-ui)] text-[0.65rem] text-white/40 md:block">
+      <p
+        className={`pointer-events-none absolute bottom-3 end-3 z-20 hidden font-[family-name:var(--font-ui)] text-[0.65rem] text-white/40 md:block ${
+          compositeHeldMapOverMedia ? "!hidden" : ""
+        }`}
+      >
         WASD · mouse look · E toggle view · Q map or art sheet · click pedestal
       </p>
     </div>
