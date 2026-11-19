@@ -2,9 +2,9 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-import type { Artwork, Catalog } from "@/lib/catalog-types";
+import type { Artwork, BookletPage, Catalog } from "@/lib/catalog-types";
 import { normalizeLayout } from "@/lib/catalog-types";
-import type { Locale } from "@/lib/i18n";
+import { pickLocalized, type Locale } from "@/lib/i18n";
 import { MAX_PIXEL_RATIO } from "@/lib/gallery-three/constants";
 import {
   buildLayoutScene,
@@ -28,6 +28,8 @@ import {
 import {
   heldBookletLocalPose,
   isWithinPedestalReach,
+  lerpHeldBookletPose,
+  paintHeldMapPage,
   resolveBookletKeyAction,
   resolveExhibitionQAction,
 } from "@/lib/gallery-three/booklet-interact";
@@ -57,8 +59,11 @@ type Props = {
   emptyLabel: string;
   previewLite?: boolean;
   bookletOwned?: boolean;
-  /** True while the booklet overlay is open (raised in hands). */
+  /** True while the held map is raised in first-person hands. */
   bookletRaised?: boolean;
+  /** Entrance booklet pages painted onto the FP held map. */
+  mapPages?: BookletPage[];
+  mapPageIndex?: number;
   /** When true, look-at must not clear / swap the current artwork selection. */
   freezeLookSelection?: boolean;
   onSelect: (art: Artwork | null) => void;
@@ -66,7 +71,7 @@ type Props = {
   onOpenVideo: (url: string, poster?: string) => void;
   /** E / View / mobile tap: toggle fullscreen art modal (image or video). */
   onOpenFullscreen: (art: Artwork | null) => void;
-  /** Q while focused on art: toggle that artwork's booklet (raise/lower). */
+  /** Q while focused on art and map not owned: toggle compact art bottom sheet. */
   onOpenArtBooklet: (artworkId: string) => void;
   onBookletInteract?: (action: BookletAction) => void;
 };
@@ -74,10 +79,13 @@ type Props = {
 export function GalleryScene3D({
   catalog,
   artworks,
+  locale,
   emptyLabel,
   previewLite = false,
   bookletOwned = false,
   bookletRaised = false,
+  mapPages = [],
+  mapPageIndex = 0,
   freezeLookSelection = false,
   onSelect,
   onOpenImage,
@@ -98,6 +106,12 @@ export function GalleryScene3D({
   bookletOwnedRef.current = bookletOwned;
   const bookletRaisedRef = useRef(bookletRaised);
   bookletRaisedRef.current = bookletRaised;
+  const mapPagesRef = useRef(mapPages);
+  mapPagesRef.current = mapPages;
+  const mapPageIndexRef = useRef(mapPageIndex);
+  mapPageIndexRef.current = mapPageIndex;
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
   const freezeLookRef = useRef(freezeLookSelection);
   freezeLookRef.current = freezeLookSelection;
 
@@ -239,30 +253,63 @@ export function GalleryScene3D({
       pedestalPick.getWorldPosition(pedestalWorld);
     }
 
-    // Minecraft-map hold: visible while owned; local Y raises/lowers with Q overlay.
-    const heldBookletMat = new THREE.MeshStandardMaterial({
-      color: 0xd2b98c,
-      roughness: 0.7,
-      metalness: 0.05,
+    // Minecraft-map hold: FP item in hands — parchment texture, no HUD modal.
+    const heldMapCanvas = document.createElement("canvas");
+    heldMapCanvas.width = 1024;
+    heldMapCanvas.height = 768;
+    const heldMapTex = new THREE.CanvasTexture(heldMapCanvas);
+    heldMapTex.colorSpace = THREE.SRGBColorSpace;
+    texDisposables.push(heldMapTex);
+    const heldBookletMat = new THREE.MeshBasicMaterial({
+      map: heldMapTex,
       side: THREE.DoubleSide,
+      depthTest: false,
+      depthWrite: false,
+      transparent: false,
     });
     const heldBooklet = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.55, 0.4),
+      new THREE.PlaneGeometry(0.72, 0.54),
       heldBookletMat,
     );
     heldBooklet.name = "HeldBookletMap";
     heldBooklet.visible = bookletOwnedRef.current;
-    heldBooklet.renderOrder = 10;
+    heldBooklet.renderOrder = 1000;
+    heldBooklet.frustumCulled = false;
     scene.add(heldBooklet);
     const heldLocal = new THREE.Vector3();
     const heldEuler = new THREE.Euler(0, 0, 0, "XYZ");
     const heldQuat = new THREE.Quaternion();
+    let raiseAmt = bookletRaisedRef.current ? 1 : 0;
+    let lastMapPaintKey = "";
 
-    function syncHeldBooklet() {
+    function paintHeldMapIfNeeded() {
+      const pages = mapPagesRef.current;
+      const n = pages.length;
+      const idx = Math.max(0, Math.min(mapPageIndexRef.current, Math.max(0, n - 1)));
+      const page = pages[idx];
+      const title = pickLocalized(page?.title, localeRef.current) || "Map";
+      const body = pickLocalized(page?.body, localeRef.current) || "";
+      const pageLabel = n > 1 ? `${idx + 1} / ${n}` : "";
+      const key = `${localeRef.current}|${idx}|${title}|${body}|${pageLabel}`;
+      if (key === lastMapPaintKey) return;
+      lastMapPaintKey = key;
+      paintHeldMapPage(heldMapCanvas, { title, body, pageLabel });
+      heldMapTex.needsUpdate = true;
+    }
+
+    function syncHeldBooklet(dt = 0.016) {
       const owned = bookletOwnedRef.current;
       heldBooklet.visible = owned;
-      if (!owned) return;
-      const pose = heldBookletLocalPose(bookletRaisedRef.current);
+      if (!owned) {
+        raiseAmt = 0;
+        return;
+      }
+      paintHeldMapIfNeeded();
+      const target = bookletRaisedRef.current ? 1 : 0;
+      raiseAmt = THREE.MathUtils.damp(raiseAmt, target, 14, dt);
+      const pose = lerpHeldBookletPose(raiseAmt);
+      const scale = 0.78 + 0.22 * raiseAmt;
+      heldBooklet.scale.set(scale, scale, 1);
       // Camera is not parented in the scene graph — compose world pose manually.
       heldLocal
         .set(pose.position.x, pose.position.y, pose.position.z)
@@ -277,7 +324,7 @@ export function GalleryScene3D({
       heldQuat.setFromEuler(heldEuler);
       heldBooklet.quaternion.copy(camera.quaternion).multiply(heldQuat);
     }
-    syncHeldBooklet();
+    syncHeldBooklet(0);
 
     const artworkById = new Map(artworks.map((a) => [a.id, a]));
     let pickRoots: THREE.Object3D[] = [];
@@ -739,7 +786,7 @@ export function GalleryScene3D({
       if (bookletMesh) {
         bookletMesh.visible = !bookletOwnedRef.current;
       }
-      syncHeldBooklet();
+      syncHeldBooklet(dt);
       syncLookAtSelection();
       const hint = hintRef.current;
       if (hint) {
@@ -808,7 +855,7 @@ export function GalleryScene3D({
         Click pedestal or press Q to take booklet
       </p>
       <p className="pointer-events-none absolute bottom-3 end-3 z-20 hidden font-[family-name:var(--font-ui)] text-[0.65rem] text-white/40 md:block">
-        WASD · mouse look · E toggle view · Q raise/lower booklet · click pedestal
+        WASD · mouse look · E toggle view · Q map or art sheet · click pedestal
       </p>
     </div>
   );

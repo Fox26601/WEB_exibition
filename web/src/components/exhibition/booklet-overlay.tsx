@@ -52,13 +52,23 @@ export function BookletOverlay({
     return () => window.removeEventListener("keydown", onKey);
   }, [embedded, multi, index, onPage, safePages.length]);
 
+  const compact = !embedded && anchor === "below-art";
+
   const sheet = (
     <div
-      className={`flex w-full max-w-lg flex-col overflow-hidden border border-[var(--line)] bg-[#14110e] ${
-        embedded ? "max-h-[min(28rem,70vh)] shadow-lg" : "max-h-[75vh]"
+      className={`flex w-full flex-col overflow-hidden border border-[var(--line)] bg-[#14110e] ${
+        embedded
+          ? "max-h-[min(28rem,70vh)] max-w-lg shadow-lg"
+          : compact
+            ? "max-h-[min(42vh,22rem)] max-w-md"
+            : "max-h-[75vh] max-w-lg"
       }`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-white/10 px-5 py-3">
+      <div
+        className={`flex items-center justify-between gap-3 border-b border-white/10 ${
+          compact ? "px-4 py-2.5" : "px-5 py-3"
+        }`}
+      >
         <span className="font-[family-name:var(--font-display)] text-sm tracking-wide text-white/80">
           {titleLabel}
         </span>
@@ -72,13 +82,25 @@ export function BookletOverlay({
           </button>
         ) : null}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+      <div
+        className={`min-h-0 flex-1 overflow-y-auto ${
+          compact ? "px-4 py-3" : "px-5 py-4"
+        }`}
+      >
         {page ? (
           <>
-            <h2 className="mb-3 font-[family-name:var(--font-display)] text-2xl font-bold text-white">
+            <h2
+              className={`font-[family-name:var(--font-display)] font-bold text-white ${
+                compact ? "mb-2 text-xl" : "mb-3 text-2xl"
+              }`}
+            >
               {pickLocalized(page.title, locale)}
             </h2>
-            <p className="whitespace-pre-wrap leading-relaxed text-[var(--paper-dim)]">
+            <p
+              className={`whitespace-pre-wrap text-[var(--paper-dim)] ${
+                compact ? "text-sm leading-relaxed" : "leading-relaxed"
+              }`}
+            >
               {pickLocalized(page.body, locale) || "—"}
             </p>
           </>
@@ -87,7 +109,11 @@ export function BookletOverlay({
         )}
       </div>
       {multi ? (
-        <div className="flex items-center justify-between gap-3 border-t border-white/10 px-5 py-3">
+        <div
+          className={`flex items-center justify-between gap-3 border-t border-white/10 ${
+            compact ? "px-4 py-2.5" : "px-5 py-3"
+          }`}
+        >
           <button
             type="button"
             className="btn btn-ghost !py-1.5 !px-3 !text-[0.7rem]"
@@ -116,10 +142,10 @@ export function BookletOverlay({
     return <div className="w-full">{sheet}</div>;
   }
 
-  // Above art fullscreen (z-40) so Q / Booklet can raise over View.
+  // Above art fullscreen (z-40). below-art = compact info sheet; center = held map.
   const shellClass =
     anchor === "below-art"
-      ? "absolute inset-0 z-[45] flex items-end justify-center bg-black/40 px-4 pb-6 pt-28 sm:pb-10 sm:pt-36"
+      ? "absolute inset-0 z-[45] flex items-end justify-center bg-black/30 px-3 pb-[5.5rem] pt-40 pointer-events-none sm:pb-12 sm:pt-36 [&>*]:pointer-events-auto"
       : "absolute inset-0 z-[45] flex items-end justify-center bg-black/55 p-4 sm:items-center";
 
   return <div className={shellClass}>{sheet}</div>;

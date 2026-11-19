@@ -46,33 +46,14 @@ describe("resolveBookletKeyAction", () => {
 });
 
 describe("resolveExhibitionQAction", () => {
-  it("prefers focused art booklet over pedestal", () => {
-    assert.deepEqual(
-      resolveExhibitionQAction({
-        focusedArtworkId: "sample-01",
-        owned: false,
-        nearPedestal: true,
-      }),
-      { kind: "art-booklet", artworkId: "sample-01" },
-    );
+  it("when owned, Q always raise/lowers the held map (even with art focused)", () => {
     assert.deepEqual(
       resolveExhibitionQAction({
         focusedArtworkId: "sample-01",
         owned: true,
         nearPedestal: false,
       }),
-      { kind: "art-booklet", artworkId: "sample-01" },
-    );
-  });
-
-  it("falls back to foyer pedestal when no art is focused", () => {
-    assert.deepEqual(
-      resolveExhibitionQAction({
-        focusedArtworkId: null,
-        owned: false,
-        nearPedestal: true,
-      }),
-      { kind: "entrance", action: "pickup" },
+      { kind: "entrance", action: "toggle" },
     );
     assert.deepEqual(
       resolveExhibitionQAction({
@@ -81,6 +62,28 @@ describe("resolveExhibitionQAction", () => {
         nearPedestal: false,
       }),
       { kind: "entrance", action: "toggle" },
+    );
+  });
+
+  it("when not owned, focused art opens the compact art sheet (not the map)", () => {
+    assert.deepEqual(
+      resolveExhibitionQAction({
+        focusedArtworkId: "sample-01",
+        owned: false,
+        nearPedestal: true,
+      }),
+      { kind: "art-booklet", artworkId: "sample-01" },
+    );
+  });
+
+  it("when not owned and no art focused, pedestal pickup or ignore", () => {
+    assert.deepEqual(
+      resolveExhibitionQAction({
+        focusedArtworkId: null,
+        owned: false,
+        nearPedestal: true,
+      }),
+      { kind: "entrance", action: "pickup" },
     );
     assert.equal(
       resolveExhibitionQAction({

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type { Artwork, Catalog } from "@/lib/catalog-types";
 import {
+  advanceBookletPageIndex,
   normalizeArtwork,
   normalizeArtworkBooklet,
   normalizeSettings,
@@ -121,6 +122,24 @@ export function ExhibitionApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Held map page-turn (no HUD chrome) while raised in hands.
+  useEffect(() => {
+    if (!bookletOwned || !bookletOpen || artBookletOpen) return;
+    const pages = catalog ? normalizeSettings(catalog.settings).entrance.booklet : [];
+    if (pages.length <= 1) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setBookletPage((i) => advanceBookletPageIndex(i, -1, pages.length));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setBookletPage((i) => advanceBookletPageIndex(i, 1, pages.length));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [bookletOwned, bookletOpen, artBookletOpen, catalog]);
+
   function openFooterModal(kind: FooterModal) {
     if (kind === "review") {
       setReviewStatus("idle");
@@ -164,18 +183,12 @@ export function ExhibitionApp() {
   const settings = catalog ? normalizeSettings(catalog.settings) : null;
 
   function postToggleBooklet() {
-    // Same control raises/lowers the active booklet (art if raised/focused, else foyer map).
+    // Map CTA: only the held Minecraft booklet (or dismiss art sheet if it is up).
     if (artBookletOpen) {
       setArtBookletOpen(false);
       return;
     }
-    if (artBookletId && selected?.id === artBookletId) {
-      setBookletOpen(false);
-      setArtBookletOpen(true);
-      return;
-    }
     if (!bookletOwned) return;
-    setArtBookletOpen(false);
     setBookletOpen((open) => !open);
   }
 
@@ -191,13 +204,14 @@ export function ExhibitionApp() {
     setBookletOpen((open) => !open);
   }
 
+  /** Compact art bottom sheet (Q when map not owned, or Booklet CTA). Toggle same control. */
   function onOpenArtBooklet(artworkId: string) {
     const art =
       artworks.find((a) => a.id === artworkId) ||
       catalog?.artworks.find((a) => a.id === artworkId);
     if (!art) return;
     setSelected(art);
-    // One raised booklet at a time (Minecraft map): lower foyer when raising art.
+    // Lower held map while the art sheet is up (one primary read surface).
     setBookletOpen(false);
     if (artBookletOpen && artBookletId === artworkId) {
       setArtBookletOpen(false);
@@ -206,7 +220,6 @@ export function ExhibitionApp() {
     setArtBookletId(artworkId);
     setArtBookletPage(0);
     setArtBookletOpen(true);
-    // Keep fullscreen under the booklet — Q / Booklet raise over View.
   }
 
   /** E / View: same control opens and closes fullscreen. */
@@ -314,7 +327,41 @@ export function ExhibitionApp() {
       </div>
 
       {bookletOwned || artBookletOpen ? (
-        <div className="pointer-events-none absolute bottom-14 start-1/2 z-50 -translate-x-1/2">
+        <div className="pointer-events-none absolute bottom-14 start-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-2">
+          {bookletOwned &&
+          bookletOpen &&
+          !artBookletOpen &&
+          settings.entrance.booklet.length > 1 ? (
+            <div className="pointer-events-auto flex items-center gap-2 rounded bg-black/45 px-2 py-1 backdrop-blur-sm">
+              <button
+                type="button"
+                className="btn btn-ghost !py-1 !px-2 !text-[0.7rem]"
+                disabled={bookletPage <= 0}
+                onClick={() =>
+                  setBookletPage((i) =>
+                    advanceBookletPageIndex(i, -1, settings.entrance.booklet.length),
+                  )
+                }
+              >
+                ←
+              </button>
+              <span className="text-[0.65rem] text-white/60">
+                {bookletPage + 1} / {settings.entrance.booklet.length}
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost !py-1 !px-2 !text-[0.7rem]"
+                disabled={bookletPage >= settings.entrance.booklet.length - 1}
+                onClick={() =>
+                  setBookletPage((i) =>
+                    advanceBookletPageIndex(i, 1, settings.entrance.booklet.length),
+                  )
+                }
+              >
+                →
+              </button>
+            </div>
+          ) : null}
           <button
             type="button"
             className="pointer-events-auto btn btn-solid !py-2 !px-5"
@@ -361,6 +408,8 @@ export function ExhibitionApp() {
         previewLite={previewLite}
         bookletOwned={bookletOwned}
         bookletRaised={bookletOpen}
+        mapPages={settings.entrance.booklet}
+        mapPageIndex={bookletPage}
         freezeLookSelection={
           artBookletOpen || !!imageOverlay || !!videoOverlay
         }
@@ -371,17 +420,6 @@ export function ExhibitionApp() {
         onOpenArtBooklet={onOpenArtBooklet}
         onBookletInteract={onBookletInteract}
       />
-
-      {bookletOpen && bookletOwned && !artBookletOpen ? (
-        <BookletOverlay
-          pages={settings.entrance.booklet}
-          pageIndex={bookletPage}
-          locale={locale}
-          closeLabel={copy.close}
-          onClose={() => setBookletOpen(false)}
-          onPage={setBookletPage}
-        />
-      ) : null}
 
       {artBookletOpen && artBookletPages.length > 0 ? (
         <BookletOverlay
