@@ -3,6 +3,9 @@ import { describe, it } from "node:test";
 import {
   HELD_BOOKLET_LOWERED,
   HELD_BOOKLET_RAISED,
+  HELD_MAP_PLANE,
+  HELD_MAP_SCALE_RAISED,
+  heldMapFovHeightFraction,
   lerpHeldBookletPose,
   paintHeldMapPage,
 } from "./booklet-interact.ts";
@@ -20,9 +23,26 @@ describe("lerpHeldBookletPose", () => {
   });
 });
 
+describe("heldMapFovHeightFraction", () => {
+  it("keeps raised Minecraft map within ~25–35% of view height", () => {
+    const frac = heldMapFovHeightFraction(HELD_BOOKLET_RAISED.position.z, {
+      height: HELD_MAP_PLANE.height,
+      scale: HELD_MAP_SCALE_RAISED,
+    });
+    assert.ok(frac >= 0.25, `too small: ${frac}`);
+    assert.ok(frac <= 0.35, `too large: ${frac}`);
+  });
+
+  it("places raised map bottom-right of view (not centered)", () => {
+    assert.ok(HELD_BOOKLET_RAISED.position.x >= 0.15);
+    assert.ok(HELD_BOOKLET_RAISED.position.y <= -0.1);
+  });
+});
+
 describe("paintHeldMapPage", () => {
   it("paints parchment without throwing", () => {
     const ops = [];
+    const fonts = [];
     const canvas = { width: 512, height: 384 };
     canvas.getContext = () => ({
       canvas,
@@ -44,6 +64,13 @@ describe("paintHeldMapPage", () => {
       measureText(t) {
         return { width: String(t).length * 8 };
       },
+      set font(v) {
+        fonts.push(v);
+        this._font = v;
+      },
+      get font() {
+        return this._font || "";
+      },
     });
     paintHeldMapPage(canvas, {
       title: "Exhibition map",
@@ -52,5 +79,10 @@ describe("paintHeldMapPage", () => {
     });
     assert.ok(ops.includes("fillRect"));
     assert.ok(ops.includes("fillText"));
+    const titleFont = fonts.find((f) => String(f).includes("bold"));
+    assert.ok(titleFont, "expected bold title font");
+    const px = Number(String(titleFont).match(/(\d+)px/)?.[1] || 0);
+    // Compact title: ~4.2% of canvas width (512 → ~22px), not the old ~6.5%.
+    assert.ok(px > 0 && px <= Math.round(512 * 0.05), `title too large: ${px}`);
   });
 });

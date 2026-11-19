@@ -97,7 +97,7 @@ describe("resolveExhibitionQAction", () => {
 });
 
 describe("heldBookletLocalPose", () => {
-  it("raises local Y and pulls closer when open", () => {
+  it("raises local Y and faces more toward the camera when open", () => {
     const raised = heldBookletLocalPose(true);
     const lowered = heldBookletLocalPose(false);
     assert.equal(raised, HELD_BOOKLET_RAISED);
@@ -107,8 +107,8 @@ describe("heldBookletLocalPose", () => {
       "raised booklet must sit higher in camera space",
     );
     assert.ok(
-      raised.position.z < lowered.position.z,
-      "raised map is closer to the face (smaller forward distance)",
+      raised.eulerDeg.x < lowered.eulerDeg.x,
+      "raised map is more face-on (smaller pitch)",
     );
   });
 });

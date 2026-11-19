@@ -63,20 +63,50 @@ export type HeldBookletLocalPose = {
 };
 
 /**
+ * Minecraft FP inventory-map size (meters). Kept small so raised height
+ * stays ~25–35% of a 70° vertical FOV at the raised forward distance.
+ */
+export const HELD_MAP_PLANE = { width: 0.3, height: 0.225 } as const;
+
+/** Gallery FP camera vertical FOV (degrees) — matches gallery-scene-3d. */
+export const HELD_MAP_CAMERA_FOV_DEG = 70;
+
+/**
+ * Fraction of vertical FOV covered by the held map height at a forward distance.
+ * Used to keep the raised map Minecraft-item sized (target band 0.25–0.35).
+ */
+export function heldMapFovHeightFraction(
+  distance: number,
+  opts?: { height?: number; scale?: number; fovDeg?: number },
+): number {
+  const height = opts?.height ?? HELD_MAP_PLANE.height;
+  const scale = opts?.scale ?? 1;
+  const fovDeg = opts?.fovDeg ?? HELD_MAP_CAMERA_FOV_DEG;
+  if (!(distance > 0) || !(fovDeg > 0)) return 0;
+  const halfH = (height * scale) / 2;
+  const angularDeg = (2 * Math.atan(halfH / distance) * 180) / Math.PI;
+  return angularDeg / fovDeg;
+}
+
+/**
  * Camera-local poses. `position.z` is distance in front of the camera
  * (Three.js looks down −Z; callers must place at local (x, y, −z)).
  */
-/** Raised (reading) — closer to face, near face-on. */
+/** Raised (reading) — bottom-right FP item, face-on enough to read. */
 export const HELD_BOOKLET_RAISED: HeldBookletLocalPose = {
-  position: { x: 0.04, y: -0.04, z: 0.36 },
-  eulerDeg: { x: 8, y: -3, z: 2 },
+  position: { x: 0.2, y: -0.16, z: 0.58 },
+  eulerDeg: { x: 12, y: -8, z: 4 },
 };
 
-/** Lowered (stowed in hands) — farther / lower, more edge-on. */
+/** Lowered (stowed in hands) — farther corner, more edge-on. */
 export const HELD_BOOKLET_LOWERED: HeldBookletLocalPose = {
-  position: { x: 0.28, y: -0.38, z: 0.48 },
-  eulerDeg: { x: 68, y: -16, z: 10 },
+  position: { x: 0.26, y: -0.34, z: 0.52 },
+  eulerDeg: { x: 72, y: -14, z: 10 },
 };
+
+/** Mesh scale while raising (slight grow; must stay ≤ ~35% FOV height). */
+export const HELD_MAP_SCALE_LOWERED = 0.88;
+export const HELD_MAP_SCALE_RAISED = 1;
 
 /** Local pose for the in-view held booklet; raised sits higher in camera space. */
 export function heldBookletLocalPose(raised: boolean): HeldBookletLocalPose {
@@ -138,29 +168,32 @@ export function paintHeldMapPage(
   ctx.fillStyle = "#e4d2a6";
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = "#cbb888";
-  ctx.fillRect(0, 0, w, 18);
-  ctx.fillRect(0, h - 18, w, 18);
+  const edge = Math.max(10, Math.round(h * 0.018));
+  ctx.fillRect(0, 0, w, edge);
+  ctx.fillRect(0, h - edge, w, edge);
   ctx.strokeStyle = "#8b6914";
-  ctx.lineWidth = Math.max(4, w * 0.012);
-  ctx.strokeRect(10, 10, w - 20, h - 20);
+  ctx.lineWidth = Math.max(3, w * 0.01);
+  ctx.strokeRect(8, 8, w - 16, h - 16);
 
-  const pad = w * 0.08;
+  const pad = w * 0.09;
   const maxW = w - pad * 2;
   ctx.fillStyle = "#2a1c0e";
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.font = `bold ${Math.round(w * 0.065)}px Georgia, "Times New Roman", serif`;
+  // Compact title — map is a small FP item; avoid giant “Exhibition” fill.
+  ctx.font = `bold ${Math.round(w * 0.042)}px Georgia, "Times New Roman", serif`;
   const titleLines = wrapCanvasLines(ctx, opts.title || "Map", maxW).slice(0, 2);
   let y = pad;
+  const titleStep = w * 0.055;
   for (const line of titleLines) {
     ctx.fillText(line, pad, y);
-    y += w * 0.08;
+    y += titleStep;
   }
-  y += w * 0.02;
-  ctx.font = `${Math.round(w * 0.042)}px Georgia, "Times New Roman", serif`;
+  y += w * 0.018;
+  ctx.font = `${Math.round(w * 0.032)}px Georgia, "Times New Roman", serif`;
   ctx.fillStyle = "#3d2a14";
   const bodyLines = wrapCanvasLines(ctx, opts.body || "", maxW);
-  const lineH = w * 0.055;
+  const lineH = w * 0.042;
   const maxBodyY = h - pad - (opts.pageLabel ? lineH * 1.4 : 0);
   for (const line of bodyLines) {
     if (y + lineH > maxBodyY) break;
@@ -168,7 +201,7 @@ export function paintHeldMapPage(
     y += lineH;
   }
   if (opts.pageLabel) {
-    ctx.font = `${Math.round(w * 0.035)}px Georgia, "Times New Roman", serif`;
+    ctx.font = `${Math.round(w * 0.028)}px Georgia, "Times New Roman", serif`;
     ctx.fillStyle = "#6a542e";
     ctx.textAlign = "right";
     ctx.fillText(opts.pageLabel, w - pad, h - pad * 0.85);
