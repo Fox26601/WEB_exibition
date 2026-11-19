@@ -646,7 +646,7 @@ export function ExhibitionApp() {
           pageIndex={bookletPage}
           locale={locale}
           closeLabel={copy.close}
-          anchor="center"
+          anchor="below-art"
           titleLabel={copy.map}
           onClose={() => setBookletOpen(false)}
           onPage={setBookletPage}

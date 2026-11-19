@@ -142,11 +142,11 @@ export function BookletOverlay({
     return <div className="w-full">{sheet}</div>;
   }
 
-  // Always above art fullscreen (z-40) and under top chrome controls (z-60).
-  // below-art = compact painting sheet; center = map HUD when View covers WebGL.
+  // Always above art fullscreen (z-40) and under chrome (z-60).
+  // below-art = bottom-edge / corner sheet so the painting stays visible.
   const shellClass =
     anchor === "below-art"
-      ? "absolute inset-0 z-50 flex items-end justify-center bg-transparent px-3 pb-[5.5rem] pt-40 pointer-events-none sm:pb-12 sm:pt-36 [&>*]:pointer-events-auto"
+      ? "absolute inset-0 z-50 flex items-end justify-end bg-transparent px-3 pb-[5.5rem] pt-40 pointer-events-none sm:justify-end sm:px-6 sm:pb-12 sm:pt-36 [&>*]:pointer-events-auto"
       : "absolute inset-0 z-50 flex items-end justify-center bg-black/40 p-4 pointer-events-none sm:items-center [&>*]:pointer-events-auto";
 
   return <div className={shellClass}>{sheet}</div>;
