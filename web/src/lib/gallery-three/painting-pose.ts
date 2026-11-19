@@ -83,11 +83,20 @@ export function paintingPoseFromPlacement(
 export function sculpturePoseFromPlacement(
   placement: ArtworkPlacement,
 ): { position: { x: number; y: number; z: number }; yawDeg: number } | null {
+  // Floor volumes only — reject wall-hang fields without floor coords.
   if (placement.kind !== "sculpture") return null;
-  if (placement.floorX == null || placement.floorZ == null) return null;
+  if (
+    placement.floorX == null ||
+    placement.floorZ == null ||
+    !Number.isFinite(placement.floorX) ||
+    !Number.isFinite(placement.floorZ)
+  ) {
+    return null;
+  }
   return {
     position: {
       x: placement.floorX,
+      // Feet on raised gallery walk surface (never wall hang Y).
       y: GALLERY_FLOOR_RAISE,
       z: placement.floorZ,
     },
