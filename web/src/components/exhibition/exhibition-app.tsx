@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type { Artwork, Catalog } from "@/lib/catalog-types";
 import {
+  advanceBookletPageIndex,
   normalizeArtwork,
   normalizeArtworkBooklet,
   normalizeSettings,
@@ -121,6 +122,24 @@ export function ExhibitionApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Held map page-turn (no HUD chrome) while raised in hands.
+  useEffect(() => {
+    if (!bookletOwned || !bookletOpen || artBookletOpen) return;
+    const pages = catalog ? normalizeSettings(catalog.settings).entrance.booklet : [];
+    if (pages.length <= 1) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setBookletPage((i) => advanceBookletPageIndex(i, -1, pages.length));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setBookletPage((i) => advanceBookletPageIndex(i, 1, pages.length));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [bookletOwned, bookletOpen, artBookletOpen, catalog]);
+
   function openFooterModal(kind: FooterModal) {
     if (kind === "review") {
       setReviewStatus("idle");
@@ -164,12 +183,12 @@ export function ExhibitionApp() {
   const settings = catalog ? normalizeSettings(catalog.settings) : null;
 
   function postToggleBooklet() {
-    if (artBookletId && selected?.id === artBookletId) {
-      setArtBookletOpen((open) => !open);
+    // Map CTA: only the held Minecraft booklet (or dismiss art sheet if it is up).
+    if (artBookletOpen) {
+      setArtBookletOpen(false);
       return;
     }
     if (!bookletOwned) return;
-    setArtBookletOpen(false);
     setBookletOpen((open) => !open);
   }
 
@@ -185,12 +204,14 @@ export function ExhibitionApp() {
     setBookletOpen((open) => !open);
   }
 
+  /** Compact art bottom sheet (Q when map not owned, or Booklet CTA). Toggle same control. */
   function onOpenArtBooklet(artworkId: string) {
     const art =
       artworks.find((a) => a.id === artworkId) ||
       catalog?.artworks.find((a) => a.id === artworkId);
     if (!art) return;
     setSelected(art);
+    // Lower held map while the art sheet is up (one primary read surface).
     setBookletOpen(false);
     if (artBookletOpen && artBookletId === artworkId) {
       setArtBookletOpen(false);
@@ -201,8 +222,14 @@ export function ExhibitionApp() {
     setArtBookletOpen(true);
   }
 
-  function onOpenFullscreen(art: Artwork) {
-    setArtBookletOpen(false);
+  /** E / View: same control opens and closes fullscreen. */
+  function onToggleFullscreen(art: Artwork | null) {
+    if (imageOverlay || videoOverlay) {
+      setImageOverlay(null);
+      setVideoOverlay(null);
+      return;
+    }
+    if (!art) return;
     openArtworkFullscreen(art, setImageOverlay, setVideoOverlay);
   }
 
@@ -300,7 +327,41 @@ export function ExhibitionApp() {
       </div>
 
       {bookletOwned || artBookletOpen ? (
-        <div className="pointer-events-none absolute bottom-14 start-1/2 z-20 -translate-x-1/2">
+        <div className="pointer-events-none absolute bottom-14 start-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-2">
+          {bookletOwned &&
+          bookletOpen &&
+          !artBookletOpen &&
+          settings.entrance.booklet.length > 1 ? (
+            <div className="pointer-events-auto flex items-center gap-2 rounded bg-black/45 px-2 py-1 backdrop-blur-sm">
+              <button
+                type="button"
+                className="btn btn-ghost !py-1 !px-2 !text-[0.7rem]"
+                disabled={bookletPage <= 0}
+                onClick={() =>
+                  setBookletPage((i) =>
+                    advanceBookletPageIndex(i, -1, settings.entrance.booklet.length),
+                  )
+                }
+              >
+                ←
+              </button>
+              <span className="text-[0.65rem] text-white/60">
+                {bookletPage + 1} / {settings.entrance.booklet.length}
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost !py-1 !px-2 !text-[0.7rem]"
+                disabled={bookletPage >= settings.entrance.booklet.length - 1}
+                onClick={() =>
+                  setBookletPage((i) =>
+                    advanceBookletPageIndex(i, 1, settings.entrance.booklet.length),
+                  )
+                }
+              >
+                →
+              </button>
+            </div>
+          ) : null}
           <button
             type="button"
             className="pointer-events-auto btn btn-solid !py-2 !px-5"
@@ -347,28 +408,20 @@ export function ExhibitionApp() {
         previewLite={previewLite}
         bookletOwned={bookletOwned}
         bookletRaised={bookletOpen}
+        mapPages={settings.entrance.booklet}
+        mapPageIndex={bookletPage}
         freezeLookSelection={
           artBookletOpen || !!imageOverlay || !!videoOverlay
         }
         onSelect={setSelected}
         onOpenImage={(url) => setImageOverlay(url)}
         onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
-        onOpenFullscreen={onOpenFullscreen}
+        onOpenFullscreen={onToggleFullscreen}
         onOpenArtBooklet={onOpenArtBooklet}
         onBookletInteract={onBookletInteract}
       />
 
-      {bookletOpen && bookletOwned && !artBookletOpen ? (
-        <BookletOverlay
-          pages={settings.entrance.booklet}
-          pageIndex={bookletPage}
-          locale={locale}
-          closeLabel={copy.close}
-          onClose={() => setBookletOpen(false)}
-          onPage={setBookletPage}
-        />
-      ) : null}
-
+      {/* Compact art sheet only (no-booklet Q / Booklet CTA). Owned map = FP 3D mesh, never this overlay. */}
       {artBookletOpen && artBookletPages.length > 0 ? (
         <BookletOverlay
           pages={artBookletPages}
@@ -382,11 +435,8 @@ export function ExhibitionApp() {
         />
       ) : null}
 
-      {selected &&
-      !artBookletOpen &&
-      !imageOverlay &&
-      !videoOverlay ? (
-        <div className="pointer-events-none absolute bottom-24 start-1/2 z-20 flex w-[min(92vw,28rem)] -translate-x-1/2 flex-col items-center gap-2 sm:bottom-8">
+      {selected ? (
+        <div className="pointer-events-none absolute bottom-24 start-1/2 z-50 flex w-[min(92vw,28rem)] -translate-x-1/2 flex-col items-center gap-2 sm:bottom-8">
           <p className="rounded bg-black/55 px-3 py-1.5 text-center font-[family-name:var(--font-display)] text-sm font-semibold tracking-wide text-white/90">
             {pickLocalized(selected.title, locale)}
           </p>
@@ -394,13 +444,13 @@ export function ExhibitionApp() {
             <button
               type="button"
               className="btn btn-solid !py-2"
-              onClick={() => onOpenFullscreen(selected)}
+              onClick={() => onToggleFullscreen(selected)}
             >
               {copy.view}
             </button>
             <button
               type="button"
-              className="btn !py-2"
+              className={`btn !py-2 ${artBookletOpen ? "btn-solid" : ""}`}
               onClick={() => onOpenArtBooklet(selected.id)}
             >
               {copy.booklet}
