@@ -15,6 +15,7 @@ import { LangSwitcher } from "@/components/lang-switcher";
 import { shouldCompositeHeldMapOverMedia } from "@/lib/gallery-three/booklet-interact";
 import { GalleryScene3D } from "./gallery-scene-3d";
 import { BookletOverlay } from "./booklet-overlay";
+import { ModelViewOverlay } from "./model-view-overlay";
 
 type InfoModal = "artist" | "curator" | "donate" | "links" | null;
 type FooterModal = "review" | "contact" | null;
@@ -26,13 +27,17 @@ function openArtworkFullscreen(
   art: Artwork,
   setImage: (url: string | null) => void,
   setVideo: (v: { url: string; poster?: string } | null) => void,
+  setModel: (url: string | null) => void,
 ) {
+  if (art.type === "model" && art.modelUrl?.trim()) {
+    setModel(art.modelUrl.trim());
+    return;
+  }
   if (art.type === "video" && art.urlVideo) {
     setVideo({ url: art.urlVideo, poster: art.urlPoster || undefined });
     return;
   }
-  const src =
-    art.urlFull || art.urlWall || art.urlPoster || art.modelUrl || "";
+  const src = art.urlFull || art.urlWall || art.urlPoster || "";
   if (src) setImage(src);
 }
 
@@ -46,6 +51,7 @@ export function ExhibitionApp() {
     url: string;
     poster?: string;
   } | null>(null);
+  const [modelOverlay, setModelOverlay] = useState<string | null>(null);
   const [previewLite, setPreviewLite] = useState(false);
   const [infoModal, setInfoModal] = useState<InfoModal>(null);
   const [bookletOpen, setBookletOpen] = useState(false);
@@ -120,9 +126,10 @@ export function ExhibitionApp() {
         setBookletOpen(false);
         return;
       }
-      if (imageOverlay || videoOverlay) {
+      if (imageOverlay || videoOverlay || modelOverlay) {
         setImageOverlay(null);
         setVideoOverlay(null);
+        setModelOverlay(null);
         return;
       }
       setInfoModal(null);
@@ -130,7 +137,7 @@ export function ExhibitionApp() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [artBookletOpen, bookletOpen, imageOverlay, videoOverlay]);
+  }, [artBookletOpen, bookletOpen, imageOverlay, videoOverlay, modelOverlay]);
 
   // Held map page-turn (no HUD chrome) while raised in hands.
   useEffect(() => {
@@ -239,15 +246,21 @@ export function ExhibitionApp() {
     if (selected) onOpenArtBooklet(selected.id);
   }
 
-  /** E / View: same control opens and closes fullscreen. */
+  /** E / View: same control opens and closes fullscreen (image / video / model). */
   function onToggleFullscreen(art: Artwork | null) {
-    if (imageOverlay || videoOverlay) {
+    if (imageOverlay || videoOverlay || modelOverlay) {
       setImageOverlay(null);
       setVideoOverlay(null);
+      setModelOverlay(null);
       return;
     }
     if (!art) return;
-    openArtworkFullscreen(art, setImageOverlay, setVideoOverlay);
+    openArtworkFullscreen(
+      art,
+      setImageOverlay,
+      setVideoOverlay,
+      setModelOverlay,
+    );
   }
 
   const artBookletPages = useMemo(() => {
@@ -259,7 +272,7 @@ export function ExhibitionApp() {
     return normalizeArtworkBooklet(art);
   }, [artBookletId, artworks, catalog]);
 
-  const mediaOpen = !!imageOverlay || !!videoOverlay;
+  const mediaOpen = !!imageOverlay || !!videoOverlay || !!modelOverlay;
   /** Owned map = FP mesh only; raise canvas over View (no Map HUD sheet). */
   const compositeHeldMapOverMedia = shouldCompositeHeldMapOverMedia({
     mediaOpen,
@@ -630,7 +643,15 @@ export function ExhibitionApp() {
         </div>
       ) : null}
 
-      {/* Booklets + painting chrome AFTER media so Q/Booklet always stack above View. */}
+      {modelOverlay ? (
+        <ModelViewOverlay
+          modelUrl={modelOverlay}
+          closeLabel={copy.close}
+          onClose={() => setModelOverlay(null)}
+        />
+      ) : null}
+
+      {/* Booklets + art chrome AFTER media so Q/Booklet always stack above View. */}
       {/* !owned art sheet only — owned map never uses BookletOverlay chrome. */}
       {artBookletOpen && artBookletPages.length > 0 ? (
         <BookletOverlay

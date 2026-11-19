@@ -10,6 +10,7 @@ import {
 } from "./catalog-types";
 import { readBlobText, writeBlobText } from "./blob-store";
 import { syncPaintingYaws } from "./placement-eval";
+import { ensureTestSculpturePlacement } from "./gallery-three/sculpture-seed";
 
 const LIVE_KEY = "catalog-live.json";
 const DRAFT_KEY = "catalog-draft.json";
@@ -86,7 +87,8 @@ function ensureSampleMedia(catalog: Catalog): Catalog {
     });
   }
   catalog.artworks.sort((a, b) => a.sort - b.sort);
-  return catalog;
+  // Floor test sculpture so visitor look-at / View / Booklet match paintings.
+  return ensureTestSculpturePlacement(catalog);
 }
 
 export async function saveCatalog(
