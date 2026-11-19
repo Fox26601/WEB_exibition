@@ -122,11 +122,14 @@ export function ModelViewOverlay({ modelUrl, closeLabel, onClose }: Props) {
 
   return (
     <div
-      className="absolute inset-0 z-40 flex flex-col bg-black/92"
+      className="absolute inset-0 z-40 flex items-center justify-center bg-black/92 p-8 sm:p-12 md:p-16"
       role="dialog"
       aria-label="Sculpture view"
     >
-      <div ref={mountRef} className="min-h-0 flex-1" />
+      <div
+        ref={mountRef}
+        className="relative h-[min(78vh,46rem)] w-[min(86vw,52rem)] overflow-hidden"
+      />
       <button
         type="button"
         className="btn absolute end-4 top-4 z-10"

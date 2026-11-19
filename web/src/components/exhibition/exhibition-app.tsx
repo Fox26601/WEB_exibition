@@ -603,7 +603,7 @@ export function ExhibitionApp() {
 
       {imageOverlay ? (
         <div
-          className="absolute inset-0 z-40 flex items-center justify-center bg-black/90 p-4"
+          className="absolute inset-0 z-40 flex items-center justify-center bg-black/90 p-8 sm:p-12 md:p-16"
           onClick={() => setImageOverlay(null)}
           role="dialog"
         >
@@ -611,7 +611,7 @@ export function ExhibitionApp() {
           <img
             src={imageOverlay}
             alt=""
-            className="max-h-full max-w-full object-contain"
+            className="max-h-[min(78vh,46rem)] max-w-[min(82vw,52rem)] object-contain"
           />
           <button
             type="button"
@@ -624,14 +624,14 @@ export function ExhibitionApp() {
       ) : null}
 
       {videoOverlay ? (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black p-2">
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black p-8 sm:p-12 md:p-16">
           <video
             src={videoOverlay.url}
             poster={videoOverlay.poster}
             controls
             playsInline
             autoPlay
-            className="max-h-full max-w-full"
+            className="max-h-[min(78vh,46rem)] max-w-[min(82vw,52rem)]"
           />
           <button
             type="button"
