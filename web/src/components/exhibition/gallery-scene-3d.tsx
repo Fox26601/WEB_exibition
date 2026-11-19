@@ -26,6 +26,9 @@ import {
   unionWalkBounds,
 } from "@/lib/gallery-three/entrance-builder";
 import {
+  HELD_MAP_PLANE,
+  HELD_MAP_SCALE_LOWERED,
+  HELD_MAP_SCALE_RAISED,
   heldBookletLocalPose,
   isWithinPedestalReach,
   lerpHeldBookletPose,
@@ -271,7 +274,7 @@ export function GalleryScene3D({
       transparent: false,
     });
     const heldBooklet = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.85, 0.64),
+      new THREE.PlaneGeometry(HELD_MAP_PLANE.width, HELD_MAP_PLANE.height),
       heldBookletMat,
     );
     heldBooklet.name = "HeldBookletMap";
@@ -308,7 +311,9 @@ export function GalleryScene3D({
       const target = bookletRaisedRef.current ? 1 : 0;
       raiseAmt = THREE.MathUtils.damp(raiseAmt, target, 14, dt);
       const pose = lerpHeldBookletPose(raiseAmt);
-      const scale = 0.82 + 0.28 * raiseAmt;
+      const scale =
+        HELD_MAP_SCALE_LOWERED +
+        (HELD_MAP_SCALE_RAISED - HELD_MAP_SCALE_LOWERED) * raiseAmt;
       heldBooklet.scale.set(scale, scale, 1);
       // pose.z = distance in front; Three.js camera forward is −Z.
       heldBooklet.position.set(
