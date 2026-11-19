@@ -35,7 +35,8 @@ describe("heldMapFovHeightFraction", () => {
 
   it("places raised map bottom-right of view (not centered)", () => {
     assert.ok(HELD_BOOKLET_RAISED.position.x >= 0.15);
-    assert.ok(HELD_BOOKLET_RAISED.position.y <= -0.1);
+    // Lower than mid-frame so it sits under the View painting chrome.
+    assert.ok(HELD_BOOKLET_RAISED.position.y <= -0.2);
   });
 });
 

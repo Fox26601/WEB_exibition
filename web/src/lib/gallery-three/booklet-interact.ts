@@ -110,7 +110,7 @@ export function heldMapFovHeightFraction(
  */
 /** Raised (reading) — bottom-right FP item, face-on enough to read. */
 export const HELD_BOOKLET_RAISED: HeldBookletLocalPose = {
-  position: { x: 0.2, y: -0.16, z: 0.58 },
+  position: { x: 0.2, y: -0.24, z: 0.58 },
   eulerDeg: { x: 12, y: -8, z: 4 },
 };
 
