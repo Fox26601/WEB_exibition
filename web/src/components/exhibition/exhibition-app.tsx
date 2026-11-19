@@ -12,6 +12,7 @@ import {
 import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
+import { shouldCompositeHeldMapOverMedia } from "@/lib/gallery-three/booklet-interact";
 import { GalleryScene3D } from "./gallery-scene-3d";
 import { BookletOverlay } from "./booklet-overlay";
 
@@ -259,9 +260,11 @@ export function ExhibitionApp() {
   }, [artBookletId, artworks, catalog]);
 
   const mediaOpen = !!imageOverlay || !!videoOverlay;
-  /** HTML fullscreen covers WebGL — show map pages as a sheet above View. */
-  const mapHudOverMedia =
-    mediaOpen && bookletOwned && bookletOpen && !artBookletOpen;
+  /** Owned map = FP mesh only; raise canvas over View (no Map HUD sheet). */
+  const compositeHeldMapOverMedia = shouldCompositeHeldMapOverMedia({
+    mediaOpen,
+    bookletOwned,
+  });
   const bookletControlLabel =
     bookletOwned && !artBookletOpen ? copy.map : copy.booklet;
   const showBookletControl =
@@ -390,6 +393,7 @@ export function ExhibitionApp() {
         mapPages={settings.entrance.booklet}
         mapPageIndex={bookletPage}
         freezeLookSelection={artBookletOpen || mediaOpen}
+        compositeHeldMapOverMedia={compositeHeldMapOverMedia}
         selectedArtworkId={selected?.id ?? null}
         onSelect={setSelected}
         onOpenImage={(url) => setImageOverlay(url)}
@@ -627,6 +631,7 @@ export function ExhibitionApp() {
       ) : null}
 
       {/* Booklets + painting chrome AFTER media so Q/Booklet always stack above View. */}
+      {/* !owned art sheet only — owned map never uses BookletOverlay chrome. */}
       {artBookletOpen && artBookletPages.length > 0 ? (
         <BookletOverlay
           pages={artBookletPages}
@@ -640,19 +645,6 @@ export function ExhibitionApp() {
         />
       ) : null}
 
-      {mapHudOverMedia ? (
-        <BookletOverlay
-          pages={settings.entrance.booklet}
-          pageIndex={bookletPage}
-          locale={locale}
-          closeLabel={copy.close}
-          anchor="below-art"
-          titleLabel={copy.map}
-          onClose={() => setBookletOpen(false)}
-          onPage={setBookletPage}
-        />
-      ) : null}
-
       {selected || showBookletControl ? (
         <div className="pointer-events-none absolute bottom-14 start-1/2 z-[60] flex w-[min(92vw,28rem)] -translate-x-1/2 flex-col items-center gap-2 sm:bottom-8">
           {selected ? (
@@ -663,7 +655,6 @@ export function ExhibitionApp() {
           {bookletOwned &&
           bookletOpen &&
           !artBookletOpen &&
-          !mapHudOverMedia &&
           settings.entrance.booklet.length > 1 ? (
             <div className="pointer-events-auto flex items-center gap-2 rounded bg-black/45 px-2 py-1 backdrop-blur-sm">
               <button
