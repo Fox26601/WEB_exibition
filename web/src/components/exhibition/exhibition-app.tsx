@@ -421,6 +421,7 @@ export function ExhibitionApp() {
         onBookletInteract={onBookletInteract}
       />
 
+      {/* Compact art sheet only (no-booklet Q / Booklet CTA). Owned map = FP 3D mesh, never this overlay. */}
       {artBookletOpen && artBookletPages.length > 0 ? (
         <BookletOverlay
           pages={artBookletPages}

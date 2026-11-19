@@ -31,11 +31,10 @@ export type ExhibitionQAction =
   | { kind: "entrance"; action: "pickup" | "toggle" };
 
 /**
- * Q routing:
- * - Holding the entrance booklet → always Minecraft raise/lower (map), even on art.
- * - No booklet yet + art focused → compact art bottom sheet (toggle).
- * - Else pedestal pickup when near.
- * Works while fullscreen is open.
+ * Exact Q rule:
+ * 1) bookletOwned → Minecraft FP map raise/lower (never art HUD modal).
+ * 2) !bookletOwned + art focused → compact bottom-sheet HUD (keep).
+ * 3) Else pedestal pickup when near.
  */
 export function resolveExhibitionQAction(opts: {
   focusedArtworkId: string | null;
@@ -63,16 +62,20 @@ export type HeldBookletLocalPose = {
   eulerDeg: { x: number; y: number; z: number };
 };
 
-/** Raised (reading) — near face-on Minecraft map. */
+/**
+ * Camera-local poses. `position.z` is distance in front of the camera
+ * (Three.js looks down −Z; callers must place at local (x, y, −z)).
+ */
+/** Raised (reading) — closer to face, near face-on. */
 export const HELD_BOOKLET_RAISED: HeldBookletLocalPose = {
-  position: { x: 0.06, y: -0.06, z: 0.4 },
-  eulerDeg: { x: 6, y: -4, z: 3 },
+  position: { x: 0.04, y: -0.04, z: 0.36 },
+  eulerDeg: { x: 8, y: -3, z: 2 },
 };
 
-/** Lowered (stowed in hands) — peripheral, more edge-on. */
+/** Lowered (stowed in hands) — farther / lower, more edge-on. */
 export const HELD_BOOKLET_LOWERED: HeldBookletLocalPose = {
-  position: { x: 0.3, y: -0.42, z: 0.38 },
-  eulerDeg: { x: 72, y: -18, z: 10 },
+  position: { x: 0.28, y: -0.38, z: 0.48 },
+  eulerDeg: { x: 68, y: -16, z: 10 },
 };
 
 /** Local pose for the in-view held booklet; raised sits higher in camera space. */
@@ -85,6 +88,8 @@ export function lerpHeldBookletPose(t: number): HeldBookletLocalPose {
   const a = HELD_BOOKLET_LOWERED;
   const b = HELD_BOOKLET_RAISED;
   const u = Math.min(1, Math.max(0, t));
+  if (u <= 0) return a;
+  if (u >= 1) return b;
   return {
     position: {
       x: a.position.x + (b.position.x - a.position.x) * u,

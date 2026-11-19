@@ -253,7 +253,10 @@ export function GalleryScene3D({
       pedestalPick.getWorldPosition(pedestalWorld);
     }
 
-    // Minecraft-map hold: FP item in hands — parchment texture, no HUD modal.
+    // Minecraft-map hold: camera child (local −Z = in front). Owned map is this
+    // mesh only — art/no-booklet UI still uses BookletOverlay bottom sheet elsewhere.
+    // Camera must be in the scene graph for children to render.
+    scene.add(camera);
     const heldMapCanvas = document.createElement("canvas");
     heldMapCanvas.width = 1024;
     heldMapCanvas.height = 768;
@@ -268,17 +271,14 @@ export function GalleryScene3D({
       transparent: false,
     });
     const heldBooklet = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.72, 0.54),
+      new THREE.PlaneGeometry(0.85, 0.64),
       heldBookletMat,
     );
     heldBooklet.name = "HeldBookletMap";
     heldBooklet.visible = bookletOwnedRef.current;
     heldBooklet.renderOrder = 1000;
     heldBooklet.frustumCulled = false;
-    scene.add(heldBooklet);
-    const heldLocal = new THREE.Vector3();
-    const heldEuler = new THREE.Euler(0, 0, 0, "XYZ");
-    const heldQuat = new THREE.Quaternion();
+    camera.add(heldBooklet);
     let raiseAmt = bookletRaisedRef.current ? 1 : 0;
     let lastMapPaintKey = "";
 
@@ -308,21 +308,19 @@ export function GalleryScene3D({
       const target = bookletRaisedRef.current ? 1 : 0;
       raiseAmt = THREE.MathUtils.damp(raiseAmt, target, 14, dt);
       const pose = lerpHeldBookletPose(raiseAmt);
-      const scale = 0.78 + 0.22 * raiseAmt;
+      const scale = 0.82 + 0.28 * raiseAmt;
       heldBooklet.scale.set(scale, scale, 1);
-      // Camera is not parented in the scene graph — compose world pose manually.
-      heldLocal
-        .set(pose.position.x, pose.position.y, pose.position.z)
-        .applyQuaternion(camera.quaternion)
-        .add(camera.position);
-      heldBooklet.position.copy(heldLocal);
-      heldEuler.set(
+      // pose.z = distance in front; Three.js camera forward is −Z.
+      heldBooklet.position.set(
+        pose.position.x,
+        pose.position.y,
+        -pose.position.z,
+      );
+      heldBooklet.rotation.set(
         (pose.eulerDeg.x * Math.PI) / 180,
         (pose.eulerDeg.y * Math.PI) / 180,
         (pose.eulerDeg.z * Math.PI) / 180,
       );
-      heldQuat.setFromEuler(heldEuler);
-      heldBooklet.quaternion.copy(camera.quaternion).multiply(heldQuat);
     }
     syncHeldBooklet(0);
 
@@ -814,7 +812,8 @@ export function GalleryScene3D({
       for (const t of texDisposables) t.dispose();
       heldBooklet.geometry.dispose();
       heldBookletMat.dispose();
-      scene.remove(heldBooklet);
+      camera.remove(heldBooklet);
+      scene.remove(camera);
       renderer.dispose();
       if (renderer.domElement.parentElement === mount) {
         mount.removeChild(renderer.domElement);
