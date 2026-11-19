@@ -76,6 +76,18 @@ describe("resolveExhibitionQAction", () => {
     );
   });
 
+  it("when not owned, selectedArtworkId covers View/fullscreen with frozen look-at", () => {
+    assert.deepEqual(
+      resolveExhibitionQAction({
+        focusedArtworkId: null,
+        selectedArtworkId: "loop-study",
+        owned: false,
+        nearPedestal: false,
+      }),
+      { kind: "art-booklet", artworkId: "loop-study" },
+    );
+  });
+
   it("when not owned and no art focused, pedestal pickup or ignore", () => {
     assert.deepEqual(
       resolveExhibitionQAction({

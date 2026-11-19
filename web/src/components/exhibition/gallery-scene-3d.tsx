@@ -69,6 +69,8 @@ type Props = {
   mapPageIndex?: number;
   /** When true, look-at must not clear / swap the current artwork selection. */
   freezeLookSelection?: boolean;
+  /** Selected painting id (chrome / View); Q fallback when look-at is frozen. */
+  selectedArtworkId?: string | null;
   onSelect: (art: Artwork | null) => void;
   onOpenImage: (url: string) => void;
   onOpenVideo: (url: string, poster?: string) => void;
@@ -90,6 +92,7 @@ export function GalleryScene3D({
   mapPages = [],
   mapPageIndex = 0,
   freezeLookSelection = false,
+  selectedArtworkId = null,
   onSelect,
   onOpenImage,
   onOpenVideo,
@@ -117,6 +120,8 @@ export function GalleryScene3D({
   localeRef.current = locale;
   const freezeLookRef = useRef(freezeLookSelection);
   freezeLookRef.current = freezeLookSelection;
+  const selectedArtworkIdRef = useRef(selectedArtworkId);
+  selectedArtworkIdRef.current = selectedArtworkId;
 
   const callbacks = useRef({
     onSelect,
@@ -415,8 +420,10 @@ export function GalleryScene3D({
         callbacks.current.onOpenFullscreen(art ?? null);
       }
       if (e.code === "KeyQ") {
+        // freezeLook only pauses look-at swaps — never blocks booklet raise/toggle.
         const q = resolveExhibitionQAction({
           focusedArtworkId: lookFocusedId,
+          selectedArtworkId: selectedArtworkIdRef.current,
           owned: bookletOwnedRef.current,
           nearPedestal: nearPedestal(),
         });

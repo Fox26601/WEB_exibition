@@ -33,19 +33,24 @@ export type ExhibitionQAction =
 /**
  * Exact Q rule:
  * 1) bookletOwned → Minecraft FP map raise/lower (never art HUD modal).
- * 2) !bookletOwned + art focused → compact bottom-sheet HUD (keep).
+ * 2) !bookletOwned + art focused (look-at or selected) → compact bottom-sheet HUD.
  * 3) Else pedestal pickup when near.
+ *
+ * `selectedArtworkId` covers View/fullscreen where look-at sync is frozen but
+ * the painting chrome still has a selected piece.
  */
 export function resolveExhibitionQAction(opts: {
   focusedArtworkId: string | null;
+  selectedArtworkId?: string | null;
   owned: boolean;
   nearPedestal: boolean;
 }): ExhibitionQAction | null {
   if (opts.owned) {
     return { kind: "entrance", action: "toggle" };
   }
-  if (opts.focusedArtworkId) {
-    return { kind: "art-booklet", artworkId: opts.focusedArtworkId };
+  const artId = opts.focusedArtworkId || opts.selectedArtworkId || null;
+  if (artId) {
+    return { kind: "art-booklet", artworkId: artId };
   }
   const action = resolveBookletKeyAction({
     owned: false,
