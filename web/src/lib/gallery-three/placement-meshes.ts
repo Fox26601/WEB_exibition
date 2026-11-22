@@ -9,13 +9,14 @@ import {
   orientGalleryPosterTexture,
   flipGalleryPosterTextureV,
 } from "./texture-load";
-import { CANVAS_Z_OFFSET } from "./constants";
+import { CANVAS_Z_OFFSET, GALLERY_FLOOR_RAISE } from "./constants";
 import { ARTWORK_PICK_SIZE, SCULPTURE_PICK_SIZE } from "./artwork-interact";
 import {
   posterCanvasOrientation,
   posterCanvasOrientationForPlacement,
 } from "./poster-canvas-orientation";
 import { paintingPoseFromPlacement, sculpturePoseFromPlacement } from "./painting-pose";
+import { coerceSculptureFloorPlacement } from "./sculpture-seed";
 
 const FRAME_COLORS: Record<string, number> = {
   thin: 0x1a140f,
@@ -51,26 +52,32 @@ export function addPlacementsToScene(
     const art = byId.get(placement.artworkId);
     if (!art) continue;
 
-    if (placement.kind === "painting") {
-      const pose = paintingPoseFromPlacement(placement, layout);
-      if (!pose) continue;
-      const group = buildPaintingGroup(
-        art,
-        placement,
-        pose,
-        layout,
-        loader,
-        disposables,
-      );
-      scene.add(group);
-      pickRoots.push(group);
-    } else if (placement.kind === "sculpture") {
-      const pose = sculpturePoseFromPlacement(placement);
+    // type=model is always a floor volume — never the painting canvas path,
+    // even if a legacy catalog row still says kind=painting + wallEdge.
+    const asSculpture = art.type === "model" || placement.kind === "sculpture";
+    if (asSculpture) {
+      const floorPlacement = coerceSculptureFloorPlacement(placement, layout);
+      const pose = sculpturePoseFromPlacement(floorPlacement);
       if (!pose) continue;
       const group = buildSculptureGroup(art, pose, disposables);
       scene.add(group);
       pickRoots.push(group);
+      continue;
     }
+
+    if (placement.kind !== "painting") continue;
+    const pose = paintingPoseFromPlacement(placement, layout);
+    if (!pose) continue;
+    const group = buildPaintingGroup(
+      art,
+      placement,
+      pose,
+      layout,
+      loader,
+      disposables,
+    );
+    scene.add(group);
+    pickRoots.push(group);
   }
 
   return {
@@ -266,7 +273,25 @@ export function addCorridorArtworks(
 ): PlacementMeshesResult {
   const pickRoots: THREE.Object3D[] = [];
   const disposables: Array<THREE.Material | THREE.Texture> = [];
+  let sculptureSlot = 0;
   artworks.forEach((art, index) => {
+    // Models are floor volumes on the raised gallery — never wall canvases.
+    if (art.type === "model") {
+      const pose = {
+        position: {
+          x: (sculptureSlot % 2 === 0 ? -0.9 : 0.9),
+          y: GALLERY_FLOOR_RAISE,
+          z: sculptureSlot * 1.6,
+        },
+        yawDeg: 20,
+      };
+      sculptureSlot += 1;
+      const group = buildSculptureGroup(art, pose, disposables);
+      scene.add(group);
+      pickRoots.push(group);
+      return;
+    }
+
     const pose = slotPose(index);
     const group = new THREE.Group();
     group.position.set(pose.x, 1.55, pose.z);
