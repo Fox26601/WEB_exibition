@@ -7,6 +7,8 @@ import {
   WALL_THICKNESS,
   gallerySurfaceY,
   galleryWallBottomY,
+  galleryWallClearHeight,
+  galleryWallTopY,
 } from "./constants";
 import { makeFloorMaterial, makeWallMaterial } from "./layout-builder";
 
@@ -32,7 +34,8 @@ export function buildLegacyCorridor(artworkCount: number): CorridorBuildResult {
   root.add(floor);
 
   const bottomY = galleryWallBottomY();
-  const wallH = Math.max(0.18, ROOM.height - bottomY);
+  const wallH = galleryWallClearHeight();
+  const wallTop = galleryWallTopY();
   const wallMidY = bottomY + wallH * 0.5;
   const mkWall = (w: number, h: number, d: number, x: number, y: number, z: number) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
@@ -48,8 +51,8 @@ export function buildLegacyCorridor(artworkCount: number): CorridorBuildResult {
   if (side > 0.05) {
     mkWall(side, wallH, WALL_THICKNESS, -(doorW * 0.5 + side * 0.5), wallMidY, 0);
     mkWall(side, wallH, WALL_THICKNESS, doorW * 0.5 + side * 0.5, wallMidY, 0);
-    const lintelBottom = bottomY + DOOR_CLEAR_HEIGHT;
-    const lintelH = Math.max(0.2, ROOM.height - lintelBottom);
+    const lintelBottom = Math.min(bottomY + DOOR_CLEAR_HEIGHT, wallTop - 0.2);
+    const lintelH = Math.max(0.2, wallTop - lintelBottom);
     mkWall(doorW, lintelH, WALL_THICKNESS, 0, lintelBottom + lintelH * 0.5, 0);
   }
 

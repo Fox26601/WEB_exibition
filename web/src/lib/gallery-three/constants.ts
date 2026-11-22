@@ -20,8 +20,8 @@ export const FLOOR_SURFACE_Y = FLOOR_Y + FLOOR_THICKNESS * 0.5;
 /** World-space UV meters per repeat — keeps foyer + room tiling density aligned. */
 export const FLOOR_UV_METERS = 4;
 
-/** Foyer stair count into the raised gallery. */
-export const STEP_COUNT = 3;
+/** Foyer stair count into the raised gallery (6 × STEP_RISE = 2× original rise). */
+export const STEP_COUNT = 6;
 /** Vertical rise per stair tread (meters). */
 export const STEP_RISE = 0.18;
 /** Horizontal depth per stair tread along entrance local −Z (meters). */
@@ -56,6 +56,16 @@ export function galleryFloorCenterY(): number {
 /** Wall slab bottom Y for raised gallery rooms. */
 export function galleryWallBottomY(): number {
   return FLOOR_Y + GALLERY_FLOOR_RAISE;
+}
+
+/** Gallery wall clear height from raised floor (matches unraised room height). */
+export function galleryWallClearHeight(): number {
+  return Math.max(0.18, GALLERY_HEIGHT - FLOOR_Y);
+}
+
+/** Absolute Y of gallery wall tops (rises with GALLERY_FLOOR_RAISE). */
+export function galleryWallTopY(): number {
+  return galleryWallBottomY() + galleryWallClearHeight();
 }
 
 /** Inter-room passage width (overrides narrow catalog connection values). */

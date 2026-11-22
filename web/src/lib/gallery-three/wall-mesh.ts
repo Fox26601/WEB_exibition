@@ -7,11 +7,13 @@ import {
   WALL_PLANE_BIAS,
   WALL_THICKNESS,
   galleryWallBottomY,
+  galleryWallClearHeight,
+  galleryWallTopY,
 } from "./constants";
 import { inwardNormal, lerpVec2, roomCentroid } from "./room-geometry";
 
-function galleryWallHeight(bottomY = galleryWallBottomY()): number {
-  return Math.max(0.18, GALLERY_HEIGHT - bottomY);
+function galleryWallHeight(): number {
+  return galleryWallClearHeight();
 }
 
 export type WallSlabJoins = {
@@ -118,7 +120,8 @@ export function buildWallAlongEdge(
   const joinB = resolveJoin(joins.cornerB, joins.joinB);
 
   const bottomY = galleryWallBottomY();
-  const fullH = galleryWallHeight(bottomY);
+  const fullH = galleryWallHeight();
+  const wallTop = galleryWallTopY();
 
   if (doorwayWidth <= 0.01 || doorwayWidth >= len - 0.2) {
     addWallSlab(parent, a, b, wallMat, centroid, fullH, bottomY, {
@@ -129,8 +132,11 @@ export function buildWallAlongEdge(
   }
 
   const halfRemain = (len - doorwayWidth) * 0.5;
-  const lintelBottom = bottomY + DOOR_CLEAR_HEIGHT;
-  const lintelH = Math.max(0.18, GALLERY_HEIGHT - lintelBottom);
+  const lintelBottom = Math.min(
+    bottomY + DOOR_CLEAR_HEIGHT,
+    wallTop - 0.18,
+  );
+  const lintelH = Math.max(0.18, wallTop - lintelBottom);
   if (halfRemain < 0.05) {
     addWallSlab(
       parent,

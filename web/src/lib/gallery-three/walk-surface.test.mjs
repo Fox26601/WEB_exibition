@@ -10,7 +10,9 @@ import { sampleEyeY, sampleWalkSurfaceY } from "./walk-surface.ts";
 
 describe("gallery raise constants", () => {
   it("GALLERY_FLOOR_RAISE equals STEP_COUNT * STEP_RISE", () => {
-    assert.equal(STEP_COUNT, 3);
+    assert.equal(STEP_COUNT, 6);
+    assert.equal(STEP_RISE, 0.18);
+    assert.equal(GALLERY_FLOOR_RAISE, 1.08);
     assert.equal(GALLERY_FLOOR_RAISE, STEP_COUNT * STEP_RISE);
     assert.ok(STEP_DEPTH > 0);
   });
