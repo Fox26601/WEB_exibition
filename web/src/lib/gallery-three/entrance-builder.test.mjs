@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   buildEntranceModule,
   computeEntrancePose,
+  ENTRANCE_ARCH_HEIGHT,
   ENTRANCE_ARCH_WIDTH,
   ENTRANCE_SCHEMATIC_DEPTH,
   ENTRANCE_WORLD_DEPTH,
@@ -10,9 +11,12 @@ import {
   unionWalkBounds,
 } from "./entrance-builder.ts";
 import {
+  DOOR_CLEAR_HEIGHT,
   GALLERY_FLOOR_RAISE,
   STEP_COUNT,
   STEP_RISE,
+  galleryWallClearHeight,
+  galleryWallTopY,
 } from "./constants.ts";
 import { ENTRANCE_WIDTH } from "../layout-geometry.ts";
 
@@ -54,7 +58,7 @@ describe("unionWalkBounds", () => {
 });
 
 describe("buildEntranceModule stairs", () => {
-  it("always emits 3 steps and climbBands; landing only when layout empty", () => {
+  it("always emits STEP_COUNT steps and climbBands; landing only when layout empty", () => {
     const catalog = { settings: {}, artworks: [] };
     const empty = buildEntranceModule(null, catalog, {
       entrancePose: { x: 0, z: -ENTRANCE_SCHEMATIC_DEPTH * 0.5, rotation: 0 },
@@ -107,5 +111,13 @@ describe("buildEntranceModule stairs", () => {
     const aabb = localRectToWorldAabb({ x: 0, z: 0 }, 0, -1, 1, -0.35, 0);
     assert.ok(aabb.minX <= -1 && aabb.maxX >= 1);
     assert.ok(aabb.minZ <= -0.35 && aabb.maxZ >= 0);
+  });
+
+  it("keeps arch and wall clear height usable at doubled raise", () => {
+    assert.equal(GALLERY_FLOOR_RAISE, 1.08);
+    assert.ok(Math.abs(ENTRANCE_ARCH_HEIGHT - (GALLERY_FLOOR_RAISE + 2.06)) < 1e-9);
+    assert.ok(ENTRANCE_ARCH_HEIGHT - GALLERY_FLOOR_RAISE > 2);
+    assert.ok(galleryWallClearHeight() > DOOR_CLEAR_HEIGHT);
+    assert.ok(galleryWallTopY() > GALLERY_FLOOR_RAISE + DOOR_CLEAR_HEIGHT);
   });
 });

@@ -28,7 +28,8 @@ import type { ClimbBand } from "./walk-surface";
 /** World corridor depth. */
 export const ENTRANCE_WORLD_DEPTH = 6;
 export const ENTRANCE_ARCH_WIDTH = 2.4;
-export const ENTRANCE_ARCH_HEIGHT = 2.6;
+/** Arch height from foyer floor; keeps ~2.06 m clear above the raised gallery. */
+export const ENTRANCE_ARCH_HEIGHT = GALLERY_FLOOR_RAISE + 2.06;
 export const ENTRANCE_ARCH_THICKNESS = 0.35;
 /** Schematic footprint depth used for portal offset from entrance center. */
 export const ENTRANCE_SCHEMATIC_DEPTH = 3;
