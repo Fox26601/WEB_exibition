@@ -36,6 +36,10 @@ Without `BLOB_READ_WRITE_TOKEN`, catalog and media are stored under `web/.data/`
 | `BLOB_READ_WRITE_TOKEN` | prod | Vercel Blob read/write token |
 | `CATALOG_SIGNING_SECRET` | recommended | Signs draft preview tokens (falls back to `AUTH_SECRET`) |
 | `AUTH_URL` | prod | Public site URL for Auth.js |
+| `NEXT_PUBLIC_PHOTON_APP_ID` | presence | Photon Realtime AppId (free 20 CCU); omit → solo exhibition |
+| `NEXT_PUBLIC_PHOTON_REGION` | presence | Photon region (default `eu`) |
+| `UPSTASH_REDIS_REST_URL` | presence (prod) | Upstash Redis REST URL for the 20-slot gate + FIFO queue |
+| `UPSTASH_REDIS_REST_TOKEN` | presence (prod) | Upstash Redis REST token |
 
 ### Key routes
 
