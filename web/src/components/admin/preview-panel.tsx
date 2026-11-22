@@ -83,10 +83,11 @@ export function PreviewPanel() {
     return [...catalog.artworks].sort((a, b) => a.sort - b.sort);
   }, [catalog]);
 
+  // adminBuild=1 keeps Photon/queue presence off in admin 3D previews.
   const planPreviewSrc = token
-    ? `/exhibition?catalog=draft&token=${encodeURIComponent(token)}&lang=${locale}&_=${encodeURIComponent(catalog?.updatedAt || "draft")}`
+    ? `/exhibition?catalog=draft&token=${encodeURIComponent(token)}&lang=${locale}&adminBuild=1&_=${encodeURIComponent(catalog?.updatedAt || "draft")}`
     : "";
-  const liveExhibitionSrc = `/exhibition?lang=${locale}&_=${encodeURIComponent(liveUpdatedAt || "live")}`;
+  const liveExhibitionSrc = `/exhibition?lang=${locale}&adminBuild=1&_=${encodeURIComponent(liveUpdatedAt || "live")}`;
 
   const persistLayout = useCallback(async (layout: GalleryLayout) => {
     setSaveStatus("saving");
