@@ -1,23 +1,23 @@
 import type { ArtworkPlacement, GalleryLayout, GalleryRoom } from "@/lib/catalog-types";
-import { GALLERY_FLOOR_RAISE, GALLERY_HEIGHT, WALL_INSET } from "./constants";
 import {
-  edgePoints,
-  roomWorldVertices,
-  type Vec2,
-} from "@/lib/layout-geometry";
-import { placementWorldPoint, resolvedWallHeightT } from "@/lib/placement-eval";
+  placementWorldPoint,
+  placementWorldPose,
+  resolvedWallHeightT,
+} from "@/lib/placement-pose";
+import { roomWorldVertices, type Vec2 } from "@/lib/layout-geometry";
 import {
   layoutOverlapRooms,
   wallSpansForEdge,
   type WallSpan,
 } from "@/lib/room-overlap-clip";
-import { inwardNormal, lerpVec2, roomCentroid } from "./room-geometry";
 
 export type PaintingPose3D = {
   position: { x: number; y: number; z: number };
   /** Y-axis rotation in radians (faces into room). */
   yawRad: number;
 };
+
+export { placementWorldPoint, resolvedWallHeightT };
 
 /** Snap hang point to a wall span that actually exists after overlap clip. */
 export function resolveTAlongWallSpan(
@@ -49,34 +49,19 @@ function nearestTOnSpans(t: number, spans: WallSpan[]): number {
   return bestT;
 }
 
+/**
+ * 3D hang pose from saved Place fields (shared pipeline with admin markers).
+ * Does not re-snap tAlongEdge into clipped doorway spans — Place is source of truth.
+ */
 export function paintingPoseFromPlacement(
   placement: ArtworkPlacement,
   layout: GalleryLayout,
 ): PaintingPose3D | null {
-  if (placement.kind !== "painting") return null;
-  const room = layout.rooms.find((r) => r.id === placement.roomId);
-  if (!room) return null;
-  const verts = roomWorldVertices(room);
-  if (verts.length < 2) return null;
-  const edgeIdx =
-    ((placement.wallEdgeIndex ?? 0) % verts.length + verts.length) %
-    verts.length;
-  const [a, b] = edgePoints(verts, edgeIdx);
-  const centroid = roomCentroid(verts) ?? lerpVec2(a, b, 0.5);
-  const along = placementWorldPoint(placement, layout);
-  if (!along) return null;
-  const inward = inwardNormal(a, b, centroid);
-  // Hang height stays relative to the raised gallery floor.
-  const hangY =
-    GALLERY_FLOOR_RAISE + GALLERY_HEIGHT * resolvedWallHeightT(placement);
-  const yawRad = Math.atan2(inward.x, inward.z);
+  const pose = placementWorldPose(placement, layout);
+  if (!pose || pose.kind !== "painting") return null;
   return {
-    position: {
-      x: along.x + inward.x * WALL_INSET,
-      y: hangY,
-      z: along.z + inward.z * WALL_INSET,
-    },
-    yawRad,
+    position: pose.position,
+    yawRad: pose.yawRad,
   };
 }
 
@@ -93,14 +78,17 @@ export function sculpturePoseFromPlacement(
   ) {
     return null;
   }
+  // Same Y as placementWorldPose (gallery floor raise) — no layout needed for floor XY.
+  const pose = placementWorldPose(placement, {
+    rooms: [],
+    connections: [],
+    placements: [],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+  if (!pose) return null;
   return {
-    position: {
-      x: placement.floorX,
-      // Feet on raised gallery walk surface (never wall hang Y).
-      y: GALLERY_FLOOR_RAISE,
-      z: placement.floorZ,
-    },
-    yawDeg: placement.yaw ?? 0,
+    position: pose.position,
+    yawDeg: pose.yawDeg,
   };
 }
 

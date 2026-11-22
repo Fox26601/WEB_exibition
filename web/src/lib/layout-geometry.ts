@@ -457,10 +457,20 @@ function squarePolyEdgeAssist(
     const targetRoom = roomById(others, te.roomId);
     if (!isPolygonSnapTarget(targetRoom)) continue;
     const theta = edgeAzimuthDeg(te.a, te.b);
-    for (const rot of [normDeg(theta), normDeg(theta - 90)]) {
+    // Same parallel candidates as squareRotationParallelToEdge (θ and θ−90).
+    const parallelRots = [
+      squareRotationParallelToEdge(baseR, theta),
+      normDeg(theta),
+      normDeg(theta - 90),
+    ];
+    const seenRot = new Set<number>();
+    for (const rot of parallelRots) {
+      const r = normDeg(rot);
+      if (seenRot.has(r)) continue;
+      seenRot.add(r);
       const candidate: GalleryRoom = {
         ...room,
-        transform: { ...room.transform, rotation: rot },
+        transform: { ...room.transform, rotation: r },
         vertices: undefined,
       };
       const snapped = softSnapRoomTranslate(candidate, others, {

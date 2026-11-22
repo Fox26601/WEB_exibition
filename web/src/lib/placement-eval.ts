@@ -5,11 +5,7 @@ import type {
   GalleryLayout,
   GalleryRoom,
 } from "./catalog-types";
-import {
-  DEFAULT_WALL_HEIGHT_T,
-  MAX_WALL_HEIGHT_T,
-  MIN_WALL_HEIGHT_T,
-} from "./catalog-types";
+import { DEFAULT_WALL_HEIGHT_T } from "./catalog-types";
 import {
   findRoomAtPoint,
   nearestWall,
@@ -21,17 +17,16 @@ import {
   yawFromEdge,
   type Vec2,
 } from "./layout-geometry";
+import {
+  placementWorldPoint,
+  resolvedWallHeightT,
+} from "./placement-pose";
+
+export { placementWorldPoint, resolvedWallHeightT };
 
 export const MAX_WALL_SNAP_DIST = 1.2;
 const T_ALONG_MIN = 0.12;
 const T_ALONG_MAX = 0.88;
-
-export function resolvedWallHeightT(p: ArtworkPlacement): number {
-  if (p.kind !== "painting") return DEFAULT_WALL_HEIGHT_T;
-  const t = p.wallHeightT;
-  if (t == null || !Number.isFinite(t) || t <= 0) return DEFAULT_WALL_HEIGHT_T;
-  return Math.max(MIN_WALL_HEIGHT_T, Math.min(MAX_WALL_HEIGHT_T, t));
-}
 
 export type PlacementDropResult =
   | { ok: true; placement: ArtworkPlacement; world: Vec2 }
@@ -168,33 +163,4 @@ export function syncPaintingYaws(layout: GalleryLayout): GalleryLayout {
     return { ...p, yaw };
   });
   return { ...layout, placements };
-}
-
-export function placementWorldPoint(
-  p: ArtworkPlacement,
-  layout: GalleryLayout,
-): Vec2 | null {
-  if (p.kind === "sculpture") {
-    if (p.floorX == null || p.floorZ == null) return null;
-    return { x: p.floorX, z: p.floorZ };
-  }
-
-  if (
-    p.wallEdgeIndex == null ||
-    p.tAlongEdge == null ||
-    !p.roomId
-  ) {
-    return null;
-  }
-
-  const room = layout.rooms.find((r) => r.id === p.roomId);
-  if (!room) return null;
-  const verts = roomWorldVertices(room);
-  const i =
-    ((p.wallEdgeIndex % verts.length) + verts.length) % verts.length;
-  const a = verts[i];
-  const b = verts[(i + 1) % verts.length];
-  if (!a || !b) return null;
-  const t = Math.max(0, Math.min(1, p.tAlongEdge));
-  return pointAlongEdge(a, b, t);
 }

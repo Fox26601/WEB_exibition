@@ -35,6 +35,7 @@ import {
   placementWorldPoint,
   wallSnapPreviewWorld,
 } from "@/lib/placement-eval";
+import { remapPlacementsForRoomChange } from "@/lib/placement-pose";
 import { ArtPlacementPalette } from "./art-placement-palette";
 import {
   ENTRANCE_PORTAL_EDGE,
@@ -563,6 +564,8 @@ export function GalleryRoomEditor({
       return;
     }
 
+    const prevRoom = current.rooms.find((r) => r.id === selectedRoomId);
+    if (!prevRoom) return;
     const rooms = current.rooms.map((r) => {
       if (r.id !== selectedRoomId) return r;
       return {
@@ -585,9 +588,15 @@ export function GalleryRoomEditor({
     if (snapped.snappedTo?.roomId === ENTRANCE_ROOM_ID) {
       entrance = rotateEntranceToAlignPortal(entrance, snapped.snappedTo);
     }
+    const placements = remapPlacementsForRoomChange(
+      current.placements,
+      prevRoom,
+      snapped.room,
+    );
     commit({
       ...current,
       entrance,
+      placements,
       rooms: rooms.map((r) =>
         r.id === selectedRoomId ? snapped.room : r,
       ),
@@ -602,6 +611,9 @@ export function GalleryRoomEditor({
     startClientX: number;
     startClientY: number;
     startTransform: GalleryRoom["transform"];
+    /** Room + placements at pointerdown — remap art through figure changes from this snapshot. */
+    startRoom: GalleryRoom | null;
+    startPlacements: GalleryLayout["placements"];
     startEntrance: GalleryEntrancePose;
     startPan: PanOffset;
     moved: boolean;
@@ -620,6 +632,8 @@ export function GalleryRoomEditor({
       startClientX: e.clientX,
       startClientY: e.clientY,
       startTransform: defaultRoomTransform("square", 0),
+      startRoom: null,
+      startPlacements: normalized.placements,
       startEntrance: { ...normalized.entrance },
       startPan: { ...panLiveRef.current },
       moved: false,
@@ -660,6 +674,8 @@ export function GalleryRoomEditor({
           scaleX: 1,
           scaleZ: 1,
         },
+        startRoom: null,
+        startPlacements: normalized.placements,
         startEntrance: { ...normalized.entrance },
         startPan: { ...panLiveRef.current },
         moved: false,
@@ -685,6 +701,8 @@ export function GalleryRoomEditor({
       startClientX: e.clientX,
       startClientY: e.clientY,
       startTransform: { ...room.transform },
+      startRoom: { ...room, transform: { ...room.transform } },
+      startPlacements: normalized.placements.map((p) => ({ ...p })),
       startEntrance: { ...normalized.entrance },
       startPan: { ...panLiveRef.current },
       moved: false,
@@ -787,9 +805,18 @@ export function GalleryRoomEditor({
       ) {
         entrance = rotateEntranceToAlignPortal(entrance, snapped.snappedTo);
       }
+      const placements =
+        drag.startRoom != null
+          ? remapPlacementsForRoomChange(
+              drag.startPlacements,
+              drag.startRoom,
+              snapped.room,
+            )
+          : current.placements;
       commit({
         ...current,
         entrance,
+        placements,
         rooms: rooms.map((r) =>
           r.id === drag.targetId ? snapped.room : r,
         ),

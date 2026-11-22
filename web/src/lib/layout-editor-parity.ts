@@ -5,9 +5,9 @@ import {
   edgeMidpoint,
   edgePoints,
   roomWorldVertices,
-  type Vec2,
 } from "./layout-geometry";
 import { placementWorldPoint } from "./placement-eval";
+import { placementWorldPose } from "./placement-pose";
 import {
   editorPlanOrigin,
   editorSvgToWorld,
@@ -18,10 +18,6 @@ import {
   buildLayoutWallPlan,
   wallPlanSpansForEdge,
 } from "./wall-plan";
-import {
-  paintingPoseFromPlacement,
-  sculpturePoseFromPlacement,
-} from "./gallery-three/painting-pose";
 import { WALL_INSET } from "./gallery-three/constants";
 import { inwardNormal, roomCentroid } from "./gallery-three/room-geometry";
 
@@ -87,15 +83,15 @@ export function evaluateLayoutEditorParity(
       continue;
     }
 
+    const pose = placementWorldPose(p, layout);
+    if (!pose) {
+      issues.push({
+        code: "runtime_pose",
+        detail: `no 3D pose for ${p.artworkId}`,
+      });
+      continue;
+    }
     if (p.kind === "sculpture") {
-      const pose = sculpturePoseFromPlacement(p);
-      if (!pose) {
-        issues.push({
-          code: "runtime_pose",
-          detail: `no 3D pose for ${p.artworkId}`,
-        });
-        continue;
-      }
       const drift = Math.hypot(
         pose.position.x - editorPt.x,
         pose.position.z - editorPt.z,
@@ -109,14 +105,6 @@ export function evaluateLayoutEditorParity(
       continue;
     }
 
-    const pose = paintingPoseFromPlacement(p, layout);
-    if (!pose) {
-      issues.push({
-        code: "runtime_pose",
-        detail: `no 3D pose for ${p.artworkId}`,
-      });
-      continue;
-    }
     const room = layout.rooms.find((r) => r.id === p.roomId);
     if (!room) continue;
     const verts = roomWorldVertices(room);
