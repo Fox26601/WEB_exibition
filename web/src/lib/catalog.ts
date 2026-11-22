@@ -10,7 +10,10 @@ import {
 } from "./catalog-types";
 import { readBlobText, writeBlobText } from "./blob-store";
 import { syncPaintingYaws } from "./placement-eval";
-import { ensureTestSculpturePlacement } from "./gallery-three/sculpture-seed";
+import {
+  ensureTestSculpturePlacement,
+  normalizeSculpturePlacements,
+} from "./gallery-three/sculpture-seed";
 
 const LIVE_KEY = "catalog-live.json";
 const DRAFT_KEY = "catalog-draft.json";
@@ -188,6 +191,7 @@ export async function updateSettings(
 export async function saveDraftLayout(layout: GalleryLayout): Promise<Catalog> {
   const draft = await loadCatalog("draft");
   draft.layout = syncPaintingYaws(normalizeLayout(layout));
+  normalizeSculpturePlacements(draft);
   await saveCatalog("draft", draft);
   return draft;
 }
@@ -197,6 +201,7 @@ export async function saveDraftCatalog(catalog: Catalog): Promise<Catalog> {
     ...catalog,
     layout: normalizeLayout(catalog.layout ?? emptyLayout()),
   };
+  normalizeSculpturePlacements(next);
   await saveCatalog("draft", next);
   return next;
 }
