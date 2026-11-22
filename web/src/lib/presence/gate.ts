@@ -31,6 +31,37 @@ export type ClaimResponse =
   | ClaimQueuedResponse
   | ClaimUnavailableResponse;
 
+export type PresencePhotonConfig =
+  | { appId: string; region: string }
+  | { disabled: true };
+
+/** Fetch Photon AppId/region from the server (no NEXT_PUBLIC_*). */
+export async function fetchPresencePhotonConfig(): Promise<PresencePhotonConfig> {
+  try {
+    const res = await fetch("/api/presence/config", {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!res.ok) return { disabled: true };
+    const data = (await res.json()) as Partial<PresencePhotonConfig> & {
+      appId?: string;
+      region?: string;
+      disabled?: boolean;
+    };
+    if (data.disabled === true) return { disabled: true };
+    const appId = typeof data.appId === "string" ? data.appId.trim() : "";
+    if (!appId) return { disabled: true };
+    const region =
+      typeof data.region === "string" && data.region.trim()
+        ? data.region.trim().toLowerCase()
+        : "eu";
+    return { appId, region };
+  } catch {
+    return { disabled: true };
+  }
+}
+
 export function readPresenceMode(): "offline" | "online" | null {
   if (typeof window === "undefined") return null;
   try {

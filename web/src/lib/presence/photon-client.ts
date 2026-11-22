@@ -22,28 +22,23 @@ export type PhotonPresenceHandlers = {
   onFailed?: (reason: string) => void;
 };
 
-function photonEnv(): { appId: string; region: string } | null {
-  const appId = process.env.NEXT_PUBLIC_PHOTON_APP_ID?.trim() || "";
-  const region = (
-    process.env.NEXT_PUBLIC_PHOTON_REGION?.trim() || "eu"
-  ).toLowerCase();
-  if (!appId) return null;
-  return { appId, region };
-}
-
-export function isPhotonConfigured(): boolean {
-  return photonEnv() !== null;
-}
+export type PhotonRuntimeConfig = {
+  appId: string;
+  region: string;
+};
 
 /**
  * Connect anonymously and joinOrCreate room `exhibition` (MaxPlayers 20).
- * Fail-soft: returns null if SDK/env unavailable.
+ * Fail-soft: returns null if SDK unavailable.
+ * AppId/region come from GET /api/presence/config (server secrets).
  */
 export async function connectPhotonPresence(
+  config: PhotonRuntimeConfig,
   handlers: PhotonPresenceHandlers = {},
 ): Promise<PhotonPresenceClient | null> {
-  const env = photonEnv();
-  if (!env) {
+  const appId = config.appId?.trim() || "";
+  const region = (config.region?.trim() || "eu").toLowerCase();
+  if (!appId) {
     handlers.onFailed?.("photon_env_missing");
     return null;
   }
@@ -69,7 +64,7 @@ export async function connectPhotonPresence(
   const LBC = Photon.LoadBalancing.LoadBalancingClient;
   const client = new LBC(
     Photon.ConnectionProtocol.Wss,
-    env.appId,
+    appId,
     PRESENCE_APP_VERSION,
   );
 
@@ -167,7 +162,7 @@ export async function connectPhotonPresence(
   });
 
   try {
-    const ok = client.connectToRegionMaster(env.region);
+    const ok = client.connectToRegionMaster(region);
     if (!ok) {
       fail("connect_failed");
       return null;

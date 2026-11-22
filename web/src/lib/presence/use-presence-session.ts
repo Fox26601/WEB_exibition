@@ -2,17 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  fetchPresencePhotonConfig,
   leavePresenceQueue,
   readPresenceMode,
   setPresenceModeOffline,
   startPresenceGateSession,
+  type PresencePhotonConfig,
 } from "./gate";
 import {
   connectPhotonPresence,
-  isPhotonConfigured,
   type PhotonPresenceClient,
 } from "./photon-client";
 import type { PresencePose, RemotePresencePose } from "./types";
+
+function isPhotonConfigReady(
+  config: PresencePhotonConfig,
+): config is { appId: string; region: string } {
+  return !("disabled" in config && config.disabled);
+}
 
 export type PresenceUiState =
   | { phase: "idle" }
@@ -68,72 +75,83 @@ export function usePresenceSession(options: Options = {}): {
       return;
     }
 
-    // No Photon AppId → solo, no overlay spam.
-    if (!isPhotonConfigured()) {
-      setUi({ phase: "solo", reason: "photon_env_missing" });
-      return;
-    }
-
     setUi({ phase: "connecting" });
     let cancelled = false;
+    let stopGate: (() => void) | null = null;
 
-    const stop = startPresenceGateSession({
-      onOnline: () => {
-        if (cancelled) return;
-        setUi({ phase: "online" });
-        if (photonRef.current?.isJoined()) return;
-        disconnectPhoton();
-        void connectPhotonPresence({
-          onRemotePose: (pose) => {
-            const list = remotesRef.current.filter(
-              (r) => r.actorNr !== pose.actorNr,
-            );
-            list.push(pose);
-            remotesRef.current = list;
-          },
-          onRemoteLeave: (actorNr) => {
-            remotesRef.current = remotesRef.current.filter(
-              (r) => r.actorNr !== actorNr,
-            );
-          },
-          onFailed: (reason) => {
-            if (cancelled) return;
-            disconnectPhoton();
-            // Room full / CCU — fail-soft solo so the exhibition stays usable.
-            setUi({ phase: "solo", reason });
-          },
-          onJoined: () => {
-            if (cancelled) return;
-            setUi({ phase: "online" });
-          },
-        }).then((client) => {
-          if (cancelled) {
-            client?.disconnect();
-            return;
-          }
-          if (!client) {
-            setUi({ phase: "solo", reason: "photon_connect_failed" });
-            return;
-          }
-          photonRef.current = client;
-        });
-      },
-      onQueued: (position) => {
-        if (cancelled) return;
-        disconnectPhoton();
-        setUi({ phase: "queued", position });
-      },
-      onSolo: (reason) => {
-        if (cancelled) return;
-        disconnectPhoton();
-        setUi({ phase: "solo", reason });
-      },
-    });
-    stopGateRef.current = stop;
+    void (async () => {
+      const config = await fetchPresencePhotonConfig();
+      if (cancelled) return;
+
+      // No Photon AppId on the server → solo, no overlay spam.
+      if (!isPhotonConfigReady(config)) {
+        setUi({ phase: "solo", reason: "photon_env_missing" });
+        return;
+      }
+
+      const stop = startPresenceGateSession({
+        onOnline: () => {
+          if (cancelled) return;
+          setUi({ phase: "online" });
+          if (photonRef.current?.isJoined()) return;
+          disconnectPhoton();
+          void connectPhotonPresence(config, {
+            onRemotePose: (pose) => {
+              const list = remotesRef.current.filter(
+                (r) => r.actorNr !== pose.actorNr,
+              );
+              list.push(pose);
+              remotesRef.current = list;
+            },
+            onRemoteLeave: (actorNr) => {
+              remotesRef.current = remotesRef.current.filter(
+                (r) => r.actorNr !== actorNr,
+              );
+            },
+            onFailed: (reason) => {
+              if (cancelled) return;
+              disconnectPhoton();
+              // Room full / CCU — fail-soft solo so the exhibition stays usable.
+              setUi({ phase: "solo", reason });
+            },
+            onJoined: () => {
+              if (cancelled) return;
+              setUi({ phase: "online" });
+            },
+          }).then((client) => {
+            if (cancelled) {
+              client?.disconnect();
+              return;
+            }
+            if (!client) {
+              setUi({ phase: "solo", reason: "photon_connect_failed" });
+              return;
+            }
+            photonRef.current = client;
+          });
+        },
+        onQueued: (position) => {
+          if (cancelled) return;
+          disconnectPhoton();
+          setUi({ phase: "queued", position });
+        },
+        onSolo: (reason) => {
+          if (cancelled) return;
+          disconnectPhoton();
+          setUi({ phase: "solo", reason });
+        },
+      });
+      if (cancelled) {
+        stop();
+        return;
+      }
+      stopGate = stop;
+      stopGateRef.current = stop;
+    })();
 
     return () => {
       cancelled = true;
-      stop();
+      stopGate?.();
       stopGateRef.current = null;
       disconnectPhoton();
     };
