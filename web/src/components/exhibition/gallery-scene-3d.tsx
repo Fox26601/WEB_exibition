@@ -269,6 +269,9 @@ export function GalleryScene3D({
       }
     }
 
+    // Entrance spawn / scene remount: clear look selection + art booklet (not refetch itself).
+    callbacks.current.onSelect(null);
+
     if (bookletMesh) {
       bookletMesh.visible = !bookletOwnedRef.current;
     }

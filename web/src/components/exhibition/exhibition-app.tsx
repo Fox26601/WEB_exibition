@@ -199,9 +199,20 @@ export function ExhibitionApp() {
   const copy = UI[locale];
   const settings = catalog ? normalizeSettings(catalog.settings) : null;
 
+  /** Look-away / Escape / spawn: drop art focus and art sheet; held map stays entrance pages. */
+  function onSelectArtwork(art: Artwork | null) {
+    setSelected(art);
+    if (!art) {
+      setArtBookletOpen(false);
+      setArtBookletId(null);
+      setArtBookletPage(0);
+    }
+  }
+
   function onBookletInteract(action: "pickup" | "toggle") {
     setArtBookletOpen(false);
     setArtBookletId(null);
+    setArtBookletPage(0);
     if (action === "pickup") {
       setBookletOwned(true);
       setBookletPage(0);
@@ -405,10 +416,10 @@ export function ExhibitionApp() {
         bookletRaised={bookletOpen}
         mapPages={settings.entrance.booklet}
         mapPageIndex={bookletPage}
-        freezeLookSelection={artBookletOpen || mediaOpen}
+        freezeLookSelection={mediaOpen}
         compositeHeldMapOverMedia={compositeHeldMapOverMedia}
         selectedArtworkId={selected?.id ?? null}
-        onSelect={setSelected}
+        onSelect={onSelectArtwork}
         onOpenImage={(url) => setImageOverlay(url)}
         onOpenVideo={(url, poster) => setVideoOverlay({ url, poster })}
         onOpenFullscreen={onToggleFullscreen}
