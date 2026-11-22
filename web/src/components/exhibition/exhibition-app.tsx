@@ -14,8 +14,10 @@ import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
 import { shouldCompositeHeldMapOverMedia } from "@/lib/gallery-three/booklet-interact";
+import { usePresenceSession } from "@/lib/presence/use-presence-session";
 import { GalleryScene3D } from "./gallery-scene-3d";
 import { BookletOverlay } from "./booklet-overlay";
+import { BusyQueueOverlay } from "./busy-queue-overlay";
 import { ModelViewOverlay } from "./model-view-overlay";
 
 type InfoModal = "artist" | "curator" | "donate" | "links" | null;
@@ -66,6 +68,14 @@ export function ExhibitionApp() {
   const [reviewEmail, setReviewEmail] = useState("");
   const [reviewMessage, setReviewMessage] = useState("");
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("idle");
+  const [adminBuild, setAdminBuild] = useState(false);
+
+  // Presence starts after catalog is ready; admin/build preview stays solo.
+  const { ui: presenceUi, sceneApi: presenceScene, enterOffline } =
+    usePresenceSession({
+      adminBuild: adminBuild || previewLite,
+      enabled: !!catalog,
+    });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -73,6 +83,12 @@ export function ExhibitionApp() {
     const tok = params.get("token");
     const mode = params.get("mode");
     setPreviewLite(mode === "preview-lite");
+    // Admin schematic / build preview — no Photon, no queue overlay.
+    setAdminBuild(
+      mode === "preview-lite" ||
+        mode === "admin" ||
+        params.get("adminBuild") === "1",
+    );
 
     let cancelled = false;
 
@@ -418,6 +434,7 @@ export function ExhibitionApp() {
         locale={locale}
         emptyLabel={copy.emptyRoom}
         previewLite={previewLite}
+        presence={presenceScene}
         bookletOwned={bookletOwned}
         bookletRaised={bookletOpen}
         mapPages={settings.entrance.booklet}
@@ -432,6 +449,13 @@ export function ExhibitionApp() {
         onOpenArtBooklet={onOpenArtBooklet}
         onBookletInteract={onBookletInteract}
       />
+
+      {presenceUi.phase === "queued" ? (
+        <BusyQueueOverlay
+          position={presenceUi.position}
+          onEnterOffline={enterOffline}
+        />
+      ) : null}
 
       {infoModal ? (
         <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">

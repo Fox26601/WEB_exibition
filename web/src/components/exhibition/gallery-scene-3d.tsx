@@ -52,6 +52,15 @@ import { ROOM } from "@/lib/room";
 import { createGalleryTextureLoader } from "@/lib/gallery-three/texture-load";
 import { applySkyToScene, loadNightSky } from "@/lib/gallery-three/sky";
 import { roomLength } from "@/lib/room";
+import { PRESENCE_POSE_HZ } from "@/lib/presence/constants";
+import type { PresenceSceneApi } from "@/lib/presence/use-presence-session";
+import {
+  clearRemoteAvatars,
+  syncRemoteAvatarMap,
+  tickRemoteAvatars,
+  yawFromCamera,
+  type RemoteAvatarHandle,
+} from "@/lib/presence/remote-avatars";
 
 type BookletAction = "pickup" | "toggle";
 
@@ -61,6 +70,8 @@ type Props = {
   locale: Locale;
   emptyLabel: string;
   previewLite?: boolean;
+  /** Photon presence bridge — publish local pose + draw remote capsules. */
+  presence?: PresenceSceneApi;
   bookletOwned?: boolean;
   /** True while the held map is raised in first-person hands. */
   bookletRaised?: boolean;
@@ -92,6 +103,7 @@ export function GalleryScene3D({
   locale,
   emptyLabel,
   previewLite = false,
+  presence,
   bookletOwned = false,
   bookletRaised = false,
   mapPages = [],
@@ -130,6 +142,8 @@ export function GalleryScene3D({
   freezeLookRef.current = freezeLookSelection;
   const selectedArtworkIdRef = useRef(selectedArtworkId);
   selectedArtworkIdRef.current = selectedArtworkId;
+  const presenceRef = useRef(presence);
+  presenceRef.current = presence;
 
   const callbacks = useRef({
     onSelect,
@@ -718,6 +732,9 @@ export function GalleryScene3D({
     const clock = new THREE.Clock();
     const forward = new THREE.Vector3();
     const right = new THREE.Vector3();
+    const remoteAvatars = new Map<number, RemoteAvatarHandle>();
+    let poseAccum = 0;
+    const poseInterval = 1 / PRESENCE_POSE_HZ;
 
     const qaMode =
       typeof window !== "undefined" &&
@@ -826,6 +843,25 @@ export function GalleryScene3D({
         hint.style.opacity = show ? "1" : "0";
       }
 
+      // Presence: publish local camera pose ~10 Hz; lerp remote capsules.
+      const presenceApi = presenceRef.current;
+      if (presenceApi?.online) {
+        poseAccum += dt;
+        if (poseAccum >= poseInterval) {
+          poseAccum = 0;
+          presenceApi.publishPose({
+            x: camera.position.x,
+            y: camera.position.y,
+            z: camera.position.z,
+            yaw: yawFromCamera(camera, euler),
+          });
+        }
+        syncRemoteAvatarMap(scene, remoteAvatars, presenceApi.getRemotes());
+        tickRemoteAvatars(remoteAvatars, dt);
+      } else if (remoteAvatars.size > 0) {
+        clearRemoteAvatars(remoteAvatars);
+      }
+
       // Owned + View: transparent canvas above the HTML modal, held map only.
       const composite =
         compositeHeldMapRef.current && bookletOwnedRef.current;
@@ -849,6 +885,7 @@ export function GalleryScene3D({
 
     return () => {
       cancelAnimationFrame(raf);
+      clearRemoteAvatars(remoteAvatars);
       unbindJoy();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
