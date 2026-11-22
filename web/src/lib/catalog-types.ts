@@ -162,6 +162,14 @@ export interface Catalog {
   layout?: GalleryLayout;
 }
 
+/** True when both sides share the same publish revision (version + updatedAt). */
+export function sameCatalogRevision(
+  a: Pick<Catalog, "version" | "updatedAt"> | null | undefined,
+  b: Pick<Catalog, "version" | "updatedAt">,
+): boolean {
+  return !!a && a.version === b.version && a.updatedAt === b.updatedAt;
+}
+
 export function emptyLocalized(fallback = ""): LocalizedString {
   return { en: fallback, ru: fallback, uk: fallback, he: fallback };
 }
