@@ -70,7 +70,7 @@ type Props = {
   locale: Locale;
   emptyLabel: string;
   previewLite?: boolean;
-  /** Photon presence bridge — publish local pose + draw remote capsules. */
+  /** Photon presence bridge — publish local pose + draw remote wisp avatars. */
   presence?: PresenceSceneApi;
   bookletOwned?: boolean;
   /** True while the held map is raised in first-person hands. */
@@ -843,7 +843,7 @@ export function GalleryScene3D({
         hint.style.opacity = show ? "1" : "0";
       }
 
-      // Presence: publish local camera pose ~10 Hz; lerp remote capsules.
+      // Presence: publish local camera pose ~10 Hz; lerp remote wisp avatars.
       const presenceApi = presenceRef.current;
       if (presenceApi?.online) {
         poseAccum += dt;
