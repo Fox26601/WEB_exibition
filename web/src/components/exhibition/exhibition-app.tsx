@@ -8,6 +8,7 @@ import {
   normalizeArtwork,
   normalizeArtworkBooklet,
   normalizeSettings,
+  sameCatalogRevision,
 } from "@/lib/catalog-types";
 import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
@@ -86,11 +87,16 @@ export function ExhibitionApp() {
         })
         .then((data: Catalog) => {
           if (cancelled) return;
-          setCatalog({
+          const next: Catalog = {
             ...data,
             settings: normalizeSettings(data.settings),
             artworks: (data.artworks || []).map((a) => normalizeArtwork(a)),
-          });
+          };
+          // Focus/visibility refetch must not replace catalog identity when the
+          // revision is unchanged — that remounts GalleryScene3D and snaps spawn.
+          setCatalog((prev) =>
+            sameCatalogRevision(prev, next) ? prev : next,
+          );
           setError("");
         })
         .catch((e) => {

@@ -874,7 +874,10 @@ export function GalleryScene3D({
         delete (window as Win).__galleryBookletDebug;
       }
     };
-  }, [catalog, artworks, emptyLabel, previewLite]);
+    // Rebuild only when catalog revision (or lite/empty chrome) changes.
+    // Object-identity churn from focus refetch must not wipe walk / camera.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- catalog/artworks read at effect start; refs cover live reads
+  }, [catalog.version, catalog.updatedAt, emptyLabel, previewLite]);
 
   return (
     <div
