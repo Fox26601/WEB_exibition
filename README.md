@@ -1,12 +1,32 @@
 # Web Art Gallery + Exhibition Site
 
-Landing site, Google-allowlist admin CMS, catalog API (Vercel Blob), and a Three.js WebGL exhibition (`/exhibition`).
+Public landing site, Google-allowlist admin CMS, catalog API (Vercel Blob), and a Three.js WebGL walkable exhibition.
+
+**Live:** [https://webgalerey.app](https://webgalerey.app)
+
+## Screenshots
+
+![Landing — Atelier sample exhibition](docs/screenshots/landing.png)
+
+![Exhibition foyer / gallery walk](docs/screenshots/exhibition-foyer.png)
+
+![Exhibition — wall-mounted art](docs/screenshots/exhibition-art.png)
+
+![Admin login (Google allowlist)](docs/screenshots/admin-login.png)
+
+## Features
+
+- **Three.js exhibition** (`/exhibition`) — first-person walk through rooms defined by the admin layout; paintings, sculptures, booklet pedestal, open sky.
+- **Admin Place as source of truth** — 2D schematic editor (`/admin/preview` and layout APIs) drives room geometry, wall placements, and catalog publish; gallery uses the same layout formulas.
+- **Photon presence** — anonymous Realtime room (free 20 CCU); remote visitors appear as floating wisp avatars. When slots are full, a FIFO queue overlay (Upstash Redis) offers wait position or **Enter offline** solo play. Without Photon/Redis env, exhibition runs solo.
+- **Landing + CMS** — poster landing, multi-locale bio (EN/RU/UK/HE), artwork CRUD, media upload to Blob, draft/live catalog publish.
 
 ## Repo layout
 
 | Path | Purpose |
 |------|---------|
 | `web/` | Next.js App Router (landing, admin, API, exhibition) |
+| `docs/screenshots/` | Production screenshots for this README |
 | `Exibition/` | Optional Unity Editor project (not used by the web product) |
 
 ## Local development
