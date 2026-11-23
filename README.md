@@ -12,8 +12,6 @@ Public landing site, Google-allowlist admin CMS, catalog API (Vercel Blob), and 
 
 ![Exhibition — wall-mounted art](docs/screenshots/exhibition-art.png)
 
-![Admin login (Google allowlist)](docs/screenshots/admin-login.png)
-
 ## Features
 
 - **Three.js exhibition** (`/exhibition`) — first-person walk through rooms defined by the admin layout; paintings, sculptures, booklet pedestal, open sky.
