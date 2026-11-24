@@ -6,6 +6,7 @@ import type { BookletPage, Catalog, CatalogSettings } from "@/lib/catalog-types"
 import {
   LOCALES,
   emptyBookletPage,
+  nextBookletPageKey,
   normalizeSettings,
 } from "@/lib/catalog-types";
 import { readAdminJson } from "@/lib/admin-api";
@@ -136,8 +137,7 @@ export function SettingsForm() {
   function addBookletPage() {
     setSettings((prev) => {
       if (!prev) return prev;
-      const n = prev.entrance.booklet.length;
-      const key = n === 0 ? "intro" : `hall-${n}`;
+      const key = nextBookletPageKey(prev.entrance.booklet);
       const next = {
         ...prev,
         entrance: {
@@ -158,7 +158,9 @@ export function SettingsForm() {
         ...prev,
         entrance: {
           ...prev.entrance,
-          booklet: booklet.length ? booklet : [emptyBookletPage("intro")],
+          booklet: booklet.length
+            ? booklet
+            : [emptyBookletPage(nextBookletPageKey([]))],
         },
       };
       pendingSettings.current = next;
@@ -333,13 +335,12 @@ export function SettingsForm() {
             >
               <div className="mb-3 flex flex-wrap items-end gap-3">
                 <div className="min-w-[10rem] flex-1">
-                  <label>Page key</label>
+                  <label>Page key (auto id)</label>
                   <input
                     value={page.key}
-                    onChange={(e) =>
-                      updateBookletPage(index, { ...page, key: e.target.value })
-                    }
-                    placeholder="intro / hall-1 / room id"
+                    readOnly
+                    aria-readonly="true"
+                    title="Assigned automatically on create"
                   />
                 </div>
                 {settings.entrance.booklet.length > 1 ? (

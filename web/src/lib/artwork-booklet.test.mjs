@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   advanceBookletPageIndex,
   emptyLocalized,
+  nextBookletPageKey,
   normalizeArtwork,
   normalizeArtworkBooklet,
 } from "./catalog-types.ts";
@@ -95,5 +96,20 @@ describe("advanceBookletPageIndex", () => {
     assert.equal(advanceBookletPageIndex(2, 1, 3), 2);
     assert.equal(advanceBookletPageIndex(1, -1, 3), 0);
     assert.equal(advanceBookletPageIndex(0, 1, 0), 0);
+  });
+});
+
+describe("nextBookletPageKey", () => {
+  it("starts at 1 when no numeric keys exist", () => {
+    assert.equal(nextBookletPageKey([]), "1");
+    assert.equal(nextBookletPageKey([{ key: "main" }, { key: "intro" }]), "1");
+  });
+
+  it("increments past the highest numeric key", () => {
+    assert.equal(
+      nextBookletPageKey([{ key: "main" }, { key: "2" }, { key: "9" }]),
+      "10",
+    );
+    assert.equal(nextBookletPageKey([{ key: "1" }, { key: "3" }]), "4");
   });
 });

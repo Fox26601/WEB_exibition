@@ -126,7 +126,10 @@ export interface GalleryLayout {
 }
 
 export interface BookletPage {
-  /** "intro", layout room id, or "hall-1"… for rect fallback. */
+  /**
+   * Stable page id. New pages use a unique decimal string ("1", "2", …).
+   * Legacy catalogs may still use "main", "intro", "hall-1", room ids, etc.
+   */
   key: string;
   title: LocalizedString;
   body: LocalizedString;
@@ -174,10 +177,27 @@ export function emptyLocalized(fallback = ""): LocalizedString {
   return { en: fallback, ru: fallback, uk: fallback, he: fallback };
 }
 
+/**
+ * Next unique numeric booklet page key (decimal string).
+ * Legacy non-numeric keys ("main", "intro", …) are ignored for sequencing.
+ */
+export function nextBookletPageKey(
+  pages: Iterable<{ key?: string | null }>,
+): string {
+  let max = 0;
+  for (const page of pages) {
+    const raw = typeof page?.key === "string" ? page.key.trim() : "";
+    if (!/^\d+$/.test(raw)) continue;
+    const n = Number(raw);
+    if (Number.isSafeInteger(n) && n > max) max = n;
+  }
+  return String(max + 1);
+}
+
 export function emptyBookletPage(key: string): BookletPage {
   return {
     key,
-    title: emptyLocalized(key === "intro" ? "Exhibition" : key),
+    title: emptyLocalized(key === "intro" ? "Exhibition" : ""),
     body: emptyLocalized(),
   };
 }
@@ -190,6 +210,7 @@ export function normalizeArtworkBooklet(
   const booklet = raw
     .filter((page) => page && typeof page === "object")
     .map((page, i) => ({
+      // Preserve legacy string keys; only invent "main"/page-N when key missing.
       key: page.key || (i === 0 ? "main" : `page-${i + 1}`),
       title: normalizeLocalized(page.title),
       body: normalizeLocalized(page.body),
@@ -240,7 +261,7 @@ export function advanceBookletPageIndex(
 export function emptyEntrance(): EntranceSettings {
   return {
     posterUrl: "",
-    booklet: [emptyBookletPage("intro")],
+    booklet: [emptyBookletPage(nextBookletPageKey([]))],
   };
 }
 
@@ -270,7 +291,9 @@ export function normalizeEntrance(
         body: normalizeLocalized(page?.body),
       }))
     : [];
-  if (booklet.length === 0) booklet.push(emptyBookletPage("intro"));
+  if (booklet.length === 0) {
+    booklet.push(emptyBookletPage(nextBookletPageKey([])));
+  }
   return {
     posterUrl: entrance?.posterUrl ?? "",
     booklet,
