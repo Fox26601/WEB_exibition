@@ -592,7 +592,7 @@ export function createDefaultCatalog(): Catalog {
         urlWall: "",
         urlFull: "",
         urlVideo: "",
-        urlPoster: "",
+        urlPoster: s.modelUrl.replace(/\.glb$/i, ".webp"),
         modelUrl: s.modelUrl,
         frameId: "none" as const,
       })),

@@ -26,7 +26,7 @@ const artworkSchema = z.object({
   id: z.string().optional(),
   type: z.enum(["image", "video", "model"]),
   sort: z.number().optional(),
-  published: z.boolean().default(false),
+  published: z.boolean().default(true),
   title: localizedSchema.optional(),
   text: localizedSchema.optional(),
   booklet: z.array(bookletPageSchema).optional(),
@@ -82,8 +82,13 @@ export async function POST(req: NextRequest) {
     { syncTitleTextFromBooklet: true },
   );
 
-  const catalog = await upsertArtwork(artwork);
-  return NextResponse.json({ artwork, catalog });
+  try {
+    const catalog = await upsertArtwork(artwork);
+    return NextResponse.json({ artwork, catalog });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Save failed";
+    return NextResponse.json({ error: message }, { status: 503 });
+  }
 }
 
 export async function DELETE(req: NextRequest) {
@@ -95,6 +100,11 @@ export async function DELETE(req: NextRequest) {
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
   }
-  const catalog = await deleteArtwork(id);
-  return NextResponse.json({ catalog });
+  try {
+    const catalog = await deleteArtwork(id);
+    return NextResponse.json({ catalog });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Delete failed";
+    return NextResponse.json({ error: message }, { status: 503 });
+  }
 }

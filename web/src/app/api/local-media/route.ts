@@ -2,15 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
+import { getLocalDataDir } from "@/lib/blob-store";
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+const DATA_DIR = getLocalDataDir();
 
 const MIME: Record<string, string> = {
   ".webp": "image/webp",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".png": "image/png",
+  ".gif": "image/gif",
   ".mp4": "video/mp4",
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
   ".json": "application/json",
 };
 

@@ -31,7 +31,9 @@ import {
   processArtworkImage,
   uploadArtworkBinary,
 } from "@/lib/artwork-upload-client";
+import { formatAdminApiError, readAdminJson } from "@/lib/admin-api";
 import { GalleryRoomEditor, ensureLayout } from "./gallery-room-editor";
+import { ArtworkThumb } from "./artwork-thumb";
 
 const AUTOSAVE_MS = 400;
 
@@ -61,7 +63,18 @@ export function PreviewPanel() {
       fetch("/api/admin/preview-token", { method: "POST" }),
       fetch("/api/admin/layout"),
     ]);
-    if (!catRes.ok || !tokRes.ok) throw new Error("Failed to load preview");
+    if (!catRes.ok) {
+      const body = await catRes.json().catch(() => null);
+      throw new Error(
+        formatAdminApiError(body, `Catalog load failed (${catRes.status})`),
+      );
+    }
+    if (!tokRes.ok) {
+      const body = await tokRes.json().catch(() => null);
+      throw new Error(
+        formatAdminApiError(body, `Preview token failed (${tokRes.status})`),
+      );
+    }
     const cat = (await catRes.json()) as Catalog;
     const tok = await tokRes.json();
     setCatalog({ ...cat, layout: ensureLayout(cat.layout) });
@@ -71,6 +84,10 @@ export function PreviewPanel() {
       const meta = await layoutMeta.json();
       setDirty(Boolean(meta.dirty));
       setLiveUpdatedAt(meta.liveUpdatedAt || "");
+    } else {
+      setMessage(
+        `Layout meta failed (${layoutMeta.status}) — dirty state may be stale`,
+      );
     }
   }, []);
 
@@ -105,8 +122,11 @@ export function PreviewPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(layout),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(JSON.stringify(data.error) || "Save failed");
+      const data = await readAdminJson<{
+        catalog: Catalog;
+        layout: GalleryLayout;
+        dirty?: boolean;
+      }>(res, "Layout save failed");
       setCatalog((prev) =>
         prev
           ? { ...data.catalog, layout: ensureLayout(data.catalog.layout) }
@@ -154,8 +174,10 @@ export function PreviewPanel() {
         pendingLayout.current = null;
       }
       const res = await fetch("/api/admin/publish", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Publish failed");
+      const data = await readAdminJson<{ catalog: Catalog }>(
+        res,
+        "Publish failed",
+      );
       setCatalog({
         ...data.catalog,
         layout: ensureLayout(data.catalog.layout),
@@ -163,6 +185,7 @@ export function PreviewPanel() {
       setDirty(false);
       setLiveUpdatedAt(data.catalog.updatedAt || "");
       setMessage("Published to live site");
+      await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -179,8 +202,10 @@ export function PreviewPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Reorder failed");
+      const data = await readAdminJson<{ catalog: Catalog }>(
+        res,
+        "Reorder failed",
+      );
       setCatalog({
         ...data.catalog,
         layout: ensureLayout(data.catalog.layout ?? catalog?.layout),
@@ -215,8 +240,7 @@ export function PreviewPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(JSON.stringify(data.error) || "Save failed");
+      const data = await readAdminJson<{ catalog: Catalog }>(res, "Save failed");
       setCatalog({
         ...data.catalog,
         layout: ensureLayout(data.catalog.layout ?? catalog?.layout),
@@ -224,6 +248,7 @@ export function PreviewPanel() {
       setDirty(true);
       setEditing(null);
       setMessage("Saved");
+      await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -234,19 +259,20 @@ export function PreviewPanel() {
   async function removeArtwork(id: string) {
     if (!confirm("Delete this artwork?")) return;
     setBusy(true);
+    setMessage("");
     try {
       const res = await fetch(`/api/admin/artworks/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Delete failed");
-      const nextLayout = ensureLayout(catalog?.layout);
-      nextLayout.placements = nextLayout.placements.filter(
-        (p) => p.artworkId !== id,
+      const data = await readAdminJson<{ catalog: Catalog }>(
+        res,
+        "Delete failed",
       );
       setCatalog({
         ...data.catalog,
-        layout: nextLayout,
+        layout: ensureLayout(data.catalog.layout ?? catalog?.layout),
       });
-      scheduleLayoutSave(nextLayout);
+      setDirty(true);
+      setMessage("Deleted");
+      await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -322,10 +348,20 @@ export function PreviewPanel() {
             )
           : ""}
         {dirty ? adminT.unpublishedDraft : adminT.liveMatchesDraft}
+        {adminT.publishLiveHint}
       </p>
 
       {message ? (
-        <p className="mb-4 text-sm text-[var(--amber-bright)]">{message}</p>
+        <p
+          className={`mb-4 border px-3 py-2 text-sm ${
+            /failed|error|403|4\d\d|5\d\d/i.test(message)
+              ? "border-[#e08a7a]/50 bg-[#2a1612] text-[#e08a7a]"
+              : "border-[var(--line)] text-[var(--amber-bright)]"
+          }`}
+          role="status"
+        >
+          {message}
+        </p>
       ) : null}
 
       <div className="mb-8">
@@ -335,7 +371,7 @@ export function PreviewPanel() {
           saveStatus={saveStatus}
           saveError={saveError}
           onRetrySave={retrySave}
-          artworks={publishedArts}
+          artworks={allArts}
           locale={locale}
         />
         <p className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -385,20 +421,7 @@ export function PreviewPanel() {
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center border border-[var(--line)] font-[family-name:var(--font-ui)] text-sm">
                   {slotNum ?? "—"}
                 </span>
-                <div className="h-14 w-14 shrink-0 overflow-hidden bg-[#0e0c0a]">
-                  {art.type === "model" ? (
-                    <div className="flex h-full items-center justify-center text-[0.65rem] text-[var(--paper-dim)]">
-                      GLB
-                    </div>
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={art.urlWall || art.urlPoster || ""}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  )}
-                </div>
+                <ArtworkThumb art={art} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">
                     {art.title[locale] || art.title.en || "(untitled)"}{" "}
@@ -581,7 +604,11 @@ function PreviewArtworkEditor({
         onMessage("Uploading video…");
         const blob = await uploadArtworkBinary(file, validated);
         setDraft((d) =>
-          applyTypeDefaults("video", { ...d, urlVideo: blob.url }),
+          applyTypeDefaults("video", {
+            ...d,
+            urlVideo: blob.url,
+            urlPoster: blob.urlPoster || d.urlPoster,
+          }),
         );
         onMessage("Video uploaded");
         return;
@@ -589,7 +616,11 @@ function PreviewArtworkEditor({
       onMessage("Uploading 3D model…");
       const blob = await uploadArtworkBinary(file, validated);
       setDraft((d) =>
-        applyTypeDefaults("model", { ...d, modelUrl: blob.url }),
+        applyTypeDefaults("model", {
+          ...d,
+          modelUrl: blob.url,
+          urlPoster: blob.urlPoster || d.urlPoster,
+        }),
       );
       onMessage("3D model uploaded");
     } catch (e) {

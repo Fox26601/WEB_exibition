@@ -8,12 +8,10 @@ import {
   type CatalogSettings,
   type GalleryLayout,
 } from "./catalog-types";
-import { readBlobText, writeBlobText } from "./blob-store";
+import { deleteBlob, readBlobText, writeBlobText } from "./blob-store";
+import { artworkMediaPathnames } from "./blob-pathname";
 import { syncPaintingYaws } from "./placement-eval";
-import {
-  ensureTestSculpturePlacement,
-  normalizeSculpturePlacements,
-} from "./gallery-three/sculpture-seed";
+import { normalizeSculpturePlacements } from "./gallery-three/sculpture-seed";
 
 const LIVE_KEY = "catalog-live.json";
 const DRAFT_KEY = "catalog-draft.json";
@@ -33,7 +31,7 @@ export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
         const live = await readBlobText(LIVE_KEY);
         if (live) {
           try {
-            return ensureSampleMedia(JSON.parse(live) as Catalog);
+            return normalizeLoadedCatalog(JSON.parse(live) as Catalog);
           } catch {
             /* fall through */
           }
@@ -43,7 +41,7 @@ export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
       return empty;
     }
     try {
-      return ensureSampleMedia(JSON.parse(raw) as Catalog);
+      return normalizeLoadedCatalog(JSON.parse(raw) as Catalog);
     } catch {
       return createDefaultCatalog();
     }
@@ -59,11 +57,16 @@ async function saveCatalogBestEffort(
   try {
     await saveCatalog(kind, catalog);
   } catch {
+    /* first-boot seed may fail on read-only FS; caller still gets in-memory catalog */
   }
 }
 
-/** Fill empty sample media URLs from defaults (in-memory) so seed catalogs texture in 3D. */
-function ensureSampleMedia(catalog: Catalog): Catalog {
+/**
+ * Normalize layout/settings and backfill empty media URLs for sample artworks
+ * that still exist. Does NOT re-inject deleted sample sculptures or auto-place
+ * Stub Box — those only appear via createDefaultCatalog on first empty create.
+ */
+export function normalizeLoadedCatalog(catalog: Catalog): Catalog {
   const defaults = createDefaultCatalog();
   catalog.layout = syncPaintingYaws(normalizeLayout(catalog.layout));
   catalog.settings = normalizeSettings(catalog.settings);
@@ -77,29 +80,26 @@ function ensureSampleMedia(catalog: Catalog): Catalog {
     if (!art.modelUrl && sample.modelUrl) art.modelUrl = sample.modelUrl;
     if (!art.frameId && sample.frameId) art.frameId = sample.frameId;
   }
-  // Ensure sculpture stubs exist in older catalogs for admin testing.
-  for (const sample of defaults.artworks) {
-    if (sample.type !== "model") continue;
-    if (catalog.artworks.some((a) => a.id === sample.id)) continue;
-    catalog.artworks.push({
-      ...sample,
-      sort:
-        catalog.artworks.length === 0
-          ? sample.sort
-          : Math.max(...catalog.artworks.map((a) => a.sort)) + 1,
-    });
-  }
   catalog.artworks.sort((a, b) => a.sort - b.sort);
-  // Floor test sculpture so visitor look-at / View / Booklet match paintings.
-  return ensureTestSculpturePlacement(catalog);
+  normalizeSculpturePlacements(catalog);
+  return catalog;
 }
+
+/** @deprecated Use normalizeLoadedCatalog — kept for any lingering imports. */
+export const ensureSampleMedia = normalizeLoadedCatalog;
 
 export async function saveCatalog(
   kind: CatalogKind,
   catalog: Catalog,
 ): Promise<void> {
   catalog.updatedAt = new Date().toISOString();
-  await writeBlobText(keyFor(kind), JSON.stringify(catalog, null, 2));
+  const written = await writeBlobText(
+    keyFor(kind),
+    JSON.stringify(catalog, null, 2),
+  );
+  if (!written) {
+    throw new Error(`Failed to persist ${keyFor(kind)}`);
+  }
 }
 
 export async function publishDraft(): Promise<Catalog> {
@@ -111,18 +111,19 @@ export async function publishDraft(): Promise<Catalog> {
     version: nextVersion,
     updatedAt: new Date().toISOString(),
   };
-  await writeBlobText(
+  const archive = await writeBlobText(
     `catalog-v${live.version || 1}.json`,
     JSON.stringify(live, null, 2),
   );
+  if (!archive) {
+    throw new Error("Failed to archive previous live catalog");
+  }
   await saveCatalog("live", published);
   await saveCatalog("draft", published);
   return published;
 }
 
-export async function upsertArtwork(
-  artwork: Artwork,
-): Promise<Catalog> {
+export async function upsertArtwork(artwork: Artwork): Promise<Catalog> {
   const draft = await loadCatalog("draft");
   const idx = draft.artworks.findIndex((a) => a.id === artwork.id);
   if (idx >= 0) {
@@ -141,6 +142,7 @@ export async function upsertArtwork(
 
 export async function deleteArtwork(id: string): Promise<Catalog> {
   const draft = await loadCatalog("draft");
+  const removed = draft.artworks.find((a) => a.id === id);
   draft.artworks = draft.artworks.filter((a) => a.id !== id);
   draft.artworks.forEach((a, i) => {
     a.sort = i;
@@ -154,7 +156,24 @@ export async function deleteArtwork(id: string): Promise<Catalog> {
     };
   }
   await saveCatalog("draft", draft);
+  if (removed) {
+    await deleteArtworkMediaBestEffort(removed);
+  }
   return draft;
+}
+
+/** Best-effort blob cleanup for artwork media URLs (ignores static /samples). */
+async function deleteArtworkMediaBestEffort(art: Artwork): Promise<void> {
+  const paths = artworkMediaPathnames(art);
+  await Promise.all(
+    paths.map(async (pathname) => {
+      try {
+        await deleteBlob(pathname);
+      } catch {
+        /* best-effort */
+      }
+    }),
+  );
 }
 
 export async function reorderArtworks(ids: string[]): Promise<Catalog> {

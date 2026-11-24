@@ -39,12 +39,17 @@ export async function PUT(req: NextRequest) {
   }
 
   const layout = normalizeLayout(parsed.layout);
-  const catalog = await saveDraftLayout(layout);
-  const live = await loadCatalog("live");
-  return NextResponse.json({
-    catalog,
-    layout: catalog.layout,
-    dirty: catalogsDifferForPublish(catalog, live),
-    message: "Draft layout saved",
-  });
+  try {
+    const catalog = await saveDraftLayout(layout);
+    const live = await loadCatalog("live");
+    return NextResponse.json({
+      catalog,
+      layout: catalog.layout,
+      dirty: catalogsDifferForPublish(catalog, live),
+      message: "Draft layout saved",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Save failed";
+    return NextResponse.json({ error: message }, { status: 503 });
+  }
 }

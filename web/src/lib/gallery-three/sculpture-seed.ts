@@ -120,9 +120,11 @@ function hasFloorSculpture(placements: ArtworkPlacement[]): boolean {
 }
 
 /**
- * Normalize all model/sculpture rows to floorX/floorZ, then when a layout has
- * rooms but still no floor sculpture, place the sample box at the preferred
- * room centroid so look-at / View / Booklet can be exercised.
+ * Normalize model/sculpture rows to floorX/floorZ, then when a layout has rooms
+ * but still no floor sculpture, place the sample box at the preferred room
+ * centroid (for unit tests / explicit callers only).
+ *
+ * Not used on catalog load — auto-seeding resurrected Stub Box after Remove.
  */
 export function ensureTestSculpturePlacement(catalog: Catalog): Catalog {
   normalizeSculpturePlacements(catalog);
