@@ -120,37 +120,54 @@ export function SettingsForm() {
   }
 
   function updateBookletPage(index: number, page: BookletPage) {
-    if (!settings) return;
-    const booklet = settings.entrance.booklet.slice();
-    booklet[index] = page;
-    patch({ entrance: { ...settings.entrance, booklet } });
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const booklet = prev.entrance.booklet.slice();
+      booklet[index] = page;
+      const next = {
+        ...prev,
+        entrance: { ...prev.entrance, booklet },
+      };
+      pendingSettings.current = next;
+      return next;
+    });
   }
 
   function addBookletPage() {
-    if (!settings) return;
-    const n = settings.entrance.booklet.length;
-    const key = n === 0 ? "intro" : `hall-${n}`;
-    patch({
-      entrance: {
-        ...settings.entrance,
-        booklet: [...settings.entrance.booklet, emptyBookletPage(key)],
-      },
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const n = prev.entrance.booklet.length;
+      const key = n === 0 ? "intro" : `hall-${n}`;
+      const next = {
+        ...prev,
+        entrance: {
+          ...prev.entrance,
+          booklet: [...prev.entrance.booklet, emptyBookletPage(key)],
+        },
+      };
+      pendingSettings.current = next;
+      return next;
     });
   }
 
   function removeBookletPage(index: number) {
-    if (!settings) return;
-    const booklet = settings.entrance.booklet.filter((_, i) => i !== index);
-    patch({
-      entrance: {
-        ...settings.entrance,
-        booklet: booklet.length ? booklet : [emptyBookletPage("intro")],
-      },
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const booklet = prev.entrance.booklet.filter((_, i) => i !== index);
+      const next = {
+        ...prev,
+        entrance: {
+          ...prev.entrance,
+          booklet: booklet.length ? booklet : [emptyBookletPage("intro")],
+        },
+      };
+      pendingSettings.current = next;
+      return next;
     });
   }
 
   async function onPosterFile(file: File | null) {
-    if (!file || !settings) return;
+    if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
       setMessage("Poster exceeds 8MB");
       return;
@@ -164,13 +181,19 @@ export function SettingsForm() {
         method: "POST",
         body: form,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Process failed");
-      patch({
-        entrance: {
-          ...settings.entrance,
-          posterUrl: data.urlFull || data.urlWall,
-        },
+      const data = await readAdminJson<{
+        urlFull?: string;
+        urlWall?: string;
+      }>(res, "Process failed");
+      const posterUrl = data.urlFull || data.urlWall || "";
+      setSettings((prev) => {
+        if (!prev) return prev;
+        const next = {
+          ...prev,
+          entrance: { ...prev.entrance, posterUrl },
+        };
+        pendingSettings.current = next;
+        return next;
       });
       setMessage("Entrance poster set (draft).");
     } catch (e) {
