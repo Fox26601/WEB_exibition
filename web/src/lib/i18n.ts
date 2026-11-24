@@ -276,7 +276,7 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   publishLiveHint: " Live gallery updates only after Publish.",
   uploadArtwork: "+ Upload artwork",
   uploadMediaHint:
-    "Media file — image, MP4 video, or 3D model (GLB/GLTF). Type is detected automatically.",
+    "Media file — image, video (MP4/MOV/M4V/WebM), or 3D model (GLB/GLTF). Type is detected automatically. Wall playback uses the browser decoder (iPhone MOV/HEVC on Safari; prefer H.264 MP4 for widest support).",
 };
 
 const ADMIN_EDITOR_RU: AdminEditorStrings = {
@@ -332,7 +332,7 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   publishLiveHint: " Live обновляется только после Publish.",
   uploadArtwork: "+ Загрузить работу",
   uploadMediaHint:
-    "Файл — изображение, видео MP4 или 3D-модель (GLB/GLTF). Тип определяется автоматически.",
+    "Файл — изображение, видео (MP4/MOV/M4V/WebM) или 3D-модель (GLB/GLTF). Тип определяется автоматически. На стене играет декодер браузера (iPhone MOV/HEVC в Safari; для максимальной совместимости — H.264 MP4).",
 };
 
 export const ADMIN_EDITOR: Record<Locale, AdminEditorStrings> = {

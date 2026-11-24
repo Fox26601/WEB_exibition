@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import Link from "next/link";
 import type { Artwork, Catalog } from "@/lib/catalog-types";
 import {
@@ -10,6 +16,7 @@ import {
   normalizeSettings,
   sameCatalogRevision,
 } from "@/lib/catalog-types";
+import { liveCatalogView } from "@/lib/live-catalog-view";
 import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
@@ -54,6 +61,7 @@ export function ExhibitionApp() {
     url: string;
     poster?: string;
   } | null>(null);
+  const fullscreenVideoRef = useRef<HTMLVideoElement | null>(null);
   const [modelOverlay, setModelOverlay] = useState<string | null>(null);
   const [previewLite, setPreviewLite] = useState(false);
   const [infoModal, setInfoModal] = useState<InfoModal>(null);
@@ -163,6 +171,19 @@ export function ExhibitionApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [artBookletOpen, bookletOpen, imageOverlay, videoOverlay, modelOverlay]);
 
+  // VIEW / fullscreen: always start playback from the beginning.
+  useEffect(() => {
+    if (!videoOverlay) return;
+    const el = fullscreenVideoRef.current;
+    if (!el) return;
+    try {
+      el.currentTime = 0;
+    } catch {
+      /* seek may throw before metadata */
+    }
+    void el.play().catch(() => undefined);
+  }, [videoOverlay]);
+
   // Held map page-turn (no HUD chrome) while raised in hands.
   useEffect(() => {
     if (!bookletOwned || !bookletOpen || artBookletOpen) return;
@@ -214,18 +235,21 @@ export function ExhibitionApp() {
   }
 
   // Draft admin preview must show unpublished placed works (Place palette parity).
-  // Live catalog API already strips unpublished; keep a client filter as belt-and-suspenders.
-  const artworks = useMemo(() => {
-    if (!catalog) return [];
-    const list =
-      catalogKind === "draft"
-        ? catalog.artworks
-        : catalog.artworks.filter((a) => a.published);
-    return [...list].sort((a, b) => a.sort - b.sort);
+  // Live: strip unpublished artworks + placements (API does this; client repeats).
+  const sceneCatalog = useMemo(() => {
+    if (!catalog) return null;
+    return catalogKind === "draft" ? catalog : liveCatalogView(catalog);
   }, [catalog, catalogKind]);
 
+  const artworks = useMemo(() => {
+    if (!sceneCatalog) return [];
+    return [...sceneCatalog.artworks].sort((a, b) => a.sort - b.sort);
+  }, [sceneCatalog]);
+
   const copy = UI[locale];
-  const settings = catalog ? normalizeSettings(catalog.settings) : null;
+  const settings = sceneCatalog
+    ? normalizeSettings(sceneCatalog.settings)
+    : null;
 
   /** Look-away / Escape / spawn: drop art focus and art sheet; held map stays entrance pages. */
   function onSelectArtwork(art: Artwork | null) {
@@ -254,7 +278,7 @@ export function ExhibitionApp() {
   function onOpenArtBooklet(artworkId: string) {
     const art =
       artworks.find((a) => a.id === artworkId) ||
-      catalog?.artworks.find((a) => a.id === artworkId);
+      sceneCatalog?.artworks.find((a) => a.id === artworkId);
     if (!art) return;
     setSelected(art);
     // Lower held map while the art sheet is up (one primary read surface).
@@ -306,10 +330,10 @@ export function ExhibitionApp() {
     if (!artBookletId) return [];
     const art =
       artworks.find((a) => a.id === artBookletId) ||
-      catalog?.artworks.find((a) => a.id === artBookletId);
+      sceneCatalog?.artworks.find((a) => a.id === artBookletId);
     if (!art) return [];
     return normalizeArtworkBooklet(art);
-  }, [artBookletId, artworks, catalog]);
+  }, [artBookletId, artworks, sceneCatalog]);
 
   const mediaOpen = !!imageOverlay || !!videoOverlay || !!modelOverlay;
   /** Owned map = FP mesh only; raise canvas over View (no Map HUD sheet). */
@@ -335,7 +359,7 @@ export function ExhibitionApp() {
     );
   }
 
-  if (!catalog || !settings) {
+  if (!catalog || !sceneCatalog || !settings) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-black text-[var(--paper-dim)]">
         Loading exhibition…
@@ -434,8 +458,8 @@ export function ExhibitionApp() {
       </div>
 
       <GalleryScene3D
-        key={`three-${catalog.version}-${catalog.updatedAt}`}
-        catalog={catalog}
+        key={`three-${sceneCatalog.version}-${sceneCatalog.updatedAt}`}
+        catalog={sceneCatalog}
         artworks={artworks}
         locale={locale}
         emptyLabel={copy.emptyRoom}
@@ -673,12 +697,24 @@ export function ExhibitionApp() {
       {videoOverlay ? (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black p-8 sm:p-12 md:p-16">
           <video
+            key={`${videoOverlay.url}|${videoOverlay.poster ?? ""}`}
+            ref={fullscreenVideoRef}
             src={videoOverlay.url}
             poster={videoOverlay.poster}
             controls
             playsInline
             autoPlay
+            preload="auto"
             className="max-h-[min(78vh,46rem)] max-w-[min(82vw,52rem)]"
+            onLoadedMetadata={(e) => {
+              const el = e.currentTarget;
+              try {
+                el.currentTime = 0;
+              } catch {
+                /* ignore */
+              }
+              void el.play().catch(() => undefined);
+            }}
           />
           <button
             type="button"

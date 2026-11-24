@@ -65,7 +65,10 @@ export function ArtworksManager() {
     }
   }
 
-  async function saveArtwork(artwork: Artwork) {
+  async function saveArtwork(
+    artwork: Artwork,
+    opts?: { successMessage?: string },
+  ): Promise<void> {
     setBusy(true);
     setMessage("");
     try {
@@ -80,7 +83,7 @@ export function ArtworksManager() {
       const data = await readAdminJson<{ catalog: Catalog }>(res, "Save failed");
       setCatalog(data.catalog);
       setEditing(null);
-      setMessage("Saved");
+      setMessage(opts?.successMessage ?? "Saved");
       await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
@@ -110,7 +113,15 @@ export function ArtworksManager() {
   }
 
   async function togglePublished(art: Artwork) {
-    await saveArtwork({ ...art, published: !art.published });
+    const nextPublished = !art.published;
+    await saveArtwork(
+      { ...art, published: nextPublished },
+      {
+        successMessage: nextPublished
+          ? "Marked published in draft — Publish catalog to show on live wall"
+          : "Unpublished in draft — Publish catalog to remove from live wall",
+      },
+    );
   }
 
   async function move(id: string, dir: -1 | 1) {
@@ -199,8 +210,8 @@ export function ArtworksManager() {
       </div>
 
       <p className="mb-4 text-sm text-[var(--paper-dim)]">
-        New uploads default to published. Live gallery updates only after
-        Publish.
+        New uploads default to published. Unpublish marks a draft only — use
+        Publish catalog to remove that work from the live gallery wall.
       </p>
 
       {message ? (
@@ -477,8 +488,10 @@ function ArtworkEditor({
 
         <div className="mb-4">
           <label>
-            Media file — image, MP4 video, or 3D model (GLB/GLTF). Type is
-            detected automatically.
+            Media file — image, video (MP4/MOV/M4V/WebM), or 3D model
+            (GLB/GLTF). Type is detected automatically. Wall playback uses the
+            browser decoder (iPhone MOV/HEVC on Safari; prefer H.264 MP4 for
+            widest support).
           </label>
           <input
             type="file"

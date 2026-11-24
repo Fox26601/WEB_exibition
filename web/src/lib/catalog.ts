@@ -225,11 +225,10 @@ export async function saveDraftCatalog(catalog: Catalog): Promise<Catalog> {
   return next;
 }
 
-export function publicArtworks(catalog: Catalog): Artwork[] {
-  return catalog.artworks
-    .filter((a) => a.published)
-    .sort((a, b) => a.sort - b.sort);
-}
+export {
+  liveCatalogView,
+  publicArtworks,
+} from "./live-catalog-view";
 
 /** True when draft layout or published set differs from live (dirty for Publish). */
 export function catalogsDifferForPublish(draft: Catalog, live: Catalog): boolean {

@@ -4,9 +4,37 @@ export const IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 export const VIDEO_MAX_BYTES = 80 * 1024 * 1024;
 export const MODEL_MAX_BYTES = 40 * 1024 * 1024;
 
+/** Browser-playable video extensions (iPhone MOV/HEVC + common web containers). */
+export const VIDEO_UPLOAD_EXTENSIONS = ["mp4", "mov", "m4v", "webm"] as const;
+
 /** File picker accept list for unified artwork media upload. */
-export const ARTWORK_UPLOAD_ACCEPT =
-  "image/jpeg,image/png,image/webp,image/gif,video/mp4,.mp4,.glb,.gltf,model/gltf-binary,model/gltf+json";
+export const ARTWORK_UPLOAD_ACCEPT = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-m4v",
+  ".mp4",
+  ".mov",
+  ".m4v",
+  ".webm",
+  ".glb",
+  ".gltf",
+  "model/gltf-binary",
+  "model/gltf+json",
+].join(",");
+
+/** Content types allowed for Vercel Blob video tokens. */
+export const VIDEO_UPLOAD_CONTENT_TYPES = [
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-m4v",
+  "application/octet-stream",
+] as const;
 
 export type ArtworkUploadKind = ArtworkType;
 
@@ -30,6 +58,22 @@ function extensionOf(name: string): string {
   const base = basename(name).toLowerCase();
   const dot = base.lastIndexOf(".");
   return dot >= 0 ? base.slice(dot + 1) : "";
+}
+
+function isAllowedVideoExt(ext: string): boolean {
+  return (VIDEO_UPLOAD_EXTENSIONS as readonly string[]).includes(ext);
+}
+
+function isAllowedVideoMime(mime: string): boolean {
+  return (
+    mime === "video/mp4" ||
+    mime === "video/quicktime" ||
+    mime === "video/webm" ||
+    mime === "video/x-m4v" ||
+    mime.includes("mp4") ||
+    mime.includes("quicktime") ||
+    mime.includes("webm")
+  );
 }
 
 /**
@@ -58,7 +102,7 @@ export function detectArtworkUploadKind(
     return "model";
   }
 
-  if (ext === "mp4" || mime === "video/mp4" || mime.includes("mp4")) {
+  if (isAllowedVideoExt(ext) || (!mimeIsGeneric && isAllowedVideoMime(mime))) {
     return "video";
   }
 
@@ -74,7 +118,7 @@ export function detectArtworkUploadKind(
   }
 
   if (!mimeIsGeneric && mime.startsWith("video/")) {
-    // Only MP4 is accepted by the gallery pipeline.
+    // Reject containers we cannot serve for gallery playback.
     return null;
   }
 
@@ -95,7 +139,13 @@ export function contentTypeForKind(
   const mime = (mimeType || "").toLowerCase().trim();
   const ext = extensionOf(fileName);
 
-  if (kind === "video") return "video/mp4";
+  if (kind === "video") {
+    if (mime.startsWith("video/")) return mime;
+    if (ext === "mov") return "video/quicktime";
+    if (ext === "webm") return "video/webm";
+    if (ext === "m4v") return "video/x-m4v";
+    return "video/mp4";
+  }
   if (kind === "model") {
     if (ext === "gltf" || mime.includes("gltf+json")) return "model/gltf+json";
     return "model/gltf-binary";
@@ -115,7 +165,13 @@ export function extForKind(
   const mime = (mimeType || "").toLowerCase().trim();
   const ext = extensionOf(fileName);
 
-  if (kind === "video") return "mp4";
+  if (kind === "video") {
+    if (isAllowedVideoExt(ext)) return ext;
+    if (mime.includes("quicktime")) return "mov";
+    if (mime.includes("webm")) return "webm";
+    if (mime.includes("m4v")) return "m4v";
+    return "mp4";
+  }
   if (kind === "model") {
     if (ext === "gltf" || mime.includes("gltf+json")) return "gltf";
     return "glb";
@@ -147,16 +203,19 @@ export function validateArtworkUpload(file: {
     return {
       ok: false,
       error:
-        "Unsupported file. Use an image (JPEG/PNG/WebP/GIF), MP4 video, or 3D model (GLB/GLTF).",
+        "Unsupported file. Use an image (JPEG/PNG/WebP/GIF), video (MP4/MOV/M4V/WebM), or 3D model (GLB/GLTF).",
     };
   }
 
-  // Reject non-MP4 videos even if somehow classified.
   if (kind === "video") {
     const ext = extensionOf(file.name);
     const m = mime.toLowerCase();
-    if (ext !== "mp4" && !m.includes("mp4")) {
-      return { ok: false, error: "Video must be MP4 (H.264)" };
+    if (!isAllowedVideoExt(ext) && !isAllowedVideoMime(m)) {
+      return {
+        ok: false,
+        error:
+          "Video must be MP4, MOV, M4V, or WebM (H.264 / HEVC / VP9 as the browser allows).",
+      };
     }
   }
 
