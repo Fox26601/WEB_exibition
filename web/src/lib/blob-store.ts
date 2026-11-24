@@ -3,10 +3,14 @@ import { mkdir, readFile, writeFile, unlink, readdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
 
-/** On Vercel without Blob token, cwd is read-only — use /tmp. */
-const DATA_DIR = process.env.VERCEL
-  ? path.join("/tmp", "web-exhibition-data")
-  : path.join(process.cwd(), ".data");
+/** On Vercel without Blob token, cwd is read-only — use /tmp. Shared with local-media. */
+export function getLocalDataDir(): string {
+  return process.env.VERCEL
+    ? path.join("/tmp", "web-exhibition-data")
+    : path.join(process.cwd(), ".data");
+}
+
+const DATA_DIR = getLocalDataDir();
 
 function hasBlobToken(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN);

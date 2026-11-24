@@ -7,10 +7,15 @@ export async function POST() {
   if (!session) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const catalog = await publishDraft();
-  return NextResponse.json({
-    catalog,
-    dirty: false,
-    message: "Catalog published to live site",
-  });
+  try {
+    const catalog = await publishDraft();
+    return NextResponse.json({
+      catalog,
+      dirty: false,
+      message: "Catalog published to live site",
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Publish failed";
+    return NextResponse.json({ error: message }, { status: 503 });
+  }
 }

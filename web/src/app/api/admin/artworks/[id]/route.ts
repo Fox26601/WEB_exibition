@@ -22,7 +22,7 @@ const bookletPageSchema = z.object({
 });
 
 const patchSchema = z.object({
-  type: z.enum(["image", "video"]).optional(),
+  type: z.enum(["image", "video", "model"]).optional(),
   sort: z.number().optional(),
   published: z.boolean().optional(),
   title: localizedSchema.optional(),
@@ -32,6 +32,8 @@ const patchSchema = z.object({
   urlFull: z.string().optional(),
   urlVideo: z.string().optional(),
   urlPoster: z.string().optional(),
+  modelUrl: z.string().optional(),
+  frameId: z.enum(["thin", "wood", "metal", "ornate", "none"]).optional(),
 });
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -83,8 +85,13 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     { syncTitleTextFromBooklet: true },
   );
 
-  const catalog = await upsertArtwork(artwork);
-  return NextResponse.json({ artwork, catalog });
+  try {
+    const catalog = await upsertArtwork(artwork);
+    return NextResponse.json({ artwork, catalog });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Save failed";
+    return NextResponse.json({ error: message }, { status: 503 });
+  }
 }
 
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
@@ -93,6 +100,11 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;
-  const catalog = await deleteArtwork(id);
-  return NextResponse.json({ catalog });
+  try {
+    const catalog = await deleteArtwork(id);
+    return NextResponse.json({ catalog });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Delete failed";
+    return NextResponse.json({ error: message }, { status: 503 });
+  }
 }

@@ -10,6 +10,7 @@ import {
 import { resolvedWallHeightT } from "@/lib/placement-eval";
 import { adminEditorStrings, pickLocalized } from "@/lib/i18n";
 import type { Locale } from "@/lib/i18n";
+import { ArtworkThumb } from "./artwork-thumb";
 
 type Props = {
   artworks: Artwork[];
@@ -138,7 +139,7 @@ export function ArtPlacementPalette({
                     className="btn btn-danger !py-0.5 !px-1.5 !text-[0.6rem]"
                     onClick={() => onRemovePlacement(art.id)}
                   >
-                    {t.remove}
+                    {t.removeFromPlan}
                   </button>
                 </div>
               ) : null}
@@ -148,7 +149,7 @@ export function ArtPlacementPalette({
       </ul>
       {artworks.length === 0 ? (
         <p className="p-3 text-sm text-[var(--paper-dim)]">
-          {t.publishArtworksFirst}
+          {t.emptyPlacePalette}
         </p>
       ) : null}
     </aside>
@@ -186,24 +187,16 @@ function PaletteItem({
         <span className="flex h-5 w-5 shrink-0 items-center justify-center bg-[#0e0c0a] text-[0.65rem]">
           {index}
         </span>
-        <div className="h-12 w-12 shrink-0 overflow-hidden bg-[#0e0c0a]">
-          {art.type === "model" ? (
-            <div className="flex h-full items-center justify-center text-[0.65rem] text-[var(--paper-dim)]">
-              GLB
-            </div>
-          ) : (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={art.urlWall || art.urlPoster || ""}
-              alt=""
-              className="pointer-events-none h-full w-full object-cover"
-            />
-          )}
-        </div>
+        <ArtworkThumb art={art} sizeClassName="h-12 w-12" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs">
           {pickLocalized(art.title, locale) || t.untitled}
+          {!art.published ? (
+            <span className="ml-1 text-[0.6rem] uppercase tracking-wide text-[var(--amber)]">
+              {t.unpublishedBadge}
+            </span>
+          ) : null}
         </p>
         <p className="text-[0.65rem] text-[var(--paper-dim)]">
           {art.type === "model" ? t.sculpture : t.painting}

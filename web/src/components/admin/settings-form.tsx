@@ -5,9 +5,6 @@ import type { BookletPage, CatalogSettings } from "@/lib/catalog-types";
 import {
   LOCALES,
   emptyBookletPage,
-  emptyDonate,
-  emptyEntrance,
-  emptyLocalized,
   normalizeSettings,
 } from "@/lib/catalog-types";
 
@@ -23,25 +20,22 @@ export function SettingsForm() {
 
   useEffect(() => {
     fetch("/api/admin/settings")
-      .then((r) => r.json())
-      .then((data) => {
+      .then(async (r) => {
+        const data = await r.json().catch(() => null);
+        if (!r.ok) {
+          throw new Error(
+            typeof data?.error === "string"
+              ? `${r.status}: ${data.error}`
+              : `Settings load failed (${r.status})`,
+          );
+        }
         setSettings(normalizeSettings(data));
         skipAutosave.current = true;
       })
-      .catch(() =>
-        setSettings(
-          normalizeSettings({
-            poster: emptyLocalized(),
-            instagram: "",
-            email: "",
-            bio: emptyLocalized(),
-            entrance: emptyEntrance(),
-            aboutArtist: emptyLocalized(),
-            aboutCurator: emptyLocalized(),
-            donate: emptyDonate(),
-          }),
-        ),
-      );
+      .catch((e) => {
+        setMessage(e instanceof Error ? e.message : "Failed to load settings");
+        setSettings(null);
+      });
   }, []);
 
   const persist = useCallback(async (next: CatalogSettings, label: string) => {
@@ -145,7 +139,15 @@ export function SettingsForm() {
   }
 
   if (!settings) {
-    return <p className="text-[var(--paper-dim)]">Loading…</p>;
+    return (
+      <p className="text-[var(--paper-dim)]">
+        {message ? (
+          <span className="text-[#e08a7a]">{message}</span>
+        ) : (
+          "Loading…"
+        )}
+      </p>
+    );
   }
 
   return (

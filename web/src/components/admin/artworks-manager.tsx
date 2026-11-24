@@ -26,6 +26,8 @@ import {
   processArtworkImage,
   uploadArtworkBinary,
 } from "@/lib/artwork-upload-client";
+import { readAdminJson } from "@/lib/admin-api";
+import { ArtworkThumb } from "./artwork-thumb";
 
 export function ArtworksManager() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -35,12 +37,12 @@ export function ArtworksManager() {
 
   const refresh = useCallback(async () => {
     const res = await fetch("/api/admin/artworks");
-    if (!res.ok) throw new Error("Failed to load");
-    setCatalog(await res.json());
+    const data = await readAdminJson<Catalog>(res, "Failed to load artworks");
+    setCatalog(data);
   }, []);
 
   useEffect(() => {
-    refresh().catch((e) => setMessage(String(e)));
+    refresh().catch((e) => setMessage(e instanceof Error ? e.message : String(e)));
   }, [refresh]);
 
   async function publishCatalog() {
@@ -49,10 +51,13 @@ export function ArtworksManager() {
     setMessage("");
     try {
       const res = await fetch("/api/admin/publish", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Publish failed");
+      const data = await readAdminJson<{ catalog: Catalog }>(
+        res,
+        "Publish failed",
+      );
       setCatalog(data.catalog);
       setMessage(`Published v${data.catalog.version}`);
+      await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -72,11 +77,11 @@ export function ArtworksManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(JSON.stringify(data.error) || "Save failed");
+      const data = await readAdminJson<{ catalog: Catalog }>(res, "Save failed");
       setCatalog(data.catalog);
       setEditing(null);
       setMessage("Saved");
+      await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -87,11 +92,16 @@ export function ArtworksManager() {
   async function removeArtwork(id: string) {
     if (!confirm("Delete this artwork?")) return;
     setBusy(true);
+    setMessage("");
     try {
       const res = await fetch(`/api/admin/artworks/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Delete failed");
+      const data = await readAdminJson<{ catalog: Catalog }>(
+        res,
+        "Delete failed",
+      );
       setCatalog(data.catalog);
+      setMessage("Deleted");
+      await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -117,8 +127,10 @@ export function ArtworksManager() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Reorder failed");
+      const data = await readAdminJson<{ catalog: Catalog }>(
+        res,
+        "Reorder failed",
+      );
       setCatalog(data.catalog);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
@@ -133,7 +145,7 @@ export function ArtworksManager() {
         id: crypto.randomUUID(),
         type: "image",
         sort: catalog?.artworks.length ?? 0,
-        published: false,
+        published: true,
         title: emptyLocalized(),
         text: emptyLocalized(),
         booklet: [emptyBookletPage("main")],
@@ -148,7 +160,15 @@ export function ArtworksManager() {
   }
 
   if (!catalog) {
-    return <p className="text-[var(--paper-dim)]">Loading…</p>;
+    return (
+      <p className="text-[var(--paper-dim)]">
+        {message ? (
+          <span className="text-[#e08a7a]">{message}</span>
+        ) : (
+          "Loading…"
+        )}
+      </p>
+    );
   }
 
   return (
@@ -171,14 +191,29 @@ export function ArtworksManager() {
             className="btn btn-solid"
             disabled={busy}
             onClick={publishCatalog}
+            title="Live gallery updates only after Publish"
           >
             Publish catalog
           </button>
         </div>
       </div>
 
+      <p className="mb-4 text-sm text-[var(--paper-dim)]">
+        New uploads default to published. Live gallery updates only after
+        Publish.
+      </p>
+
       {message ? (
-        <p className="mb-4 text-sm text-[var(--amber-bright)]">{message}</p>
+        <p
+          className={`mb-4 border px-3 py-2 text-sm ${
+            /failed|error|403|4\d\d|5\d\d/i.test(message)
+              ? "border-[#e08a7a]/50 bg-[#2a1612] text-[#e08a7a]"
+              : "border-[var(--line)] text-[var(--amber-bright)]"
+          }`}
+          role="status"
+        >
+          {message}
+        </p>
       ) : null}
 
       <ul className="space-y-3">
@@ -187,20 +222,7 @@ export function ArtworksManager() {
             key={art.id}
             className="flex flex-wrap items-center gap-3 border border-[var(--line)] bg-[#1a1612] p-4"
           >
-            <div className="h-14 w-14 shrink-0 overflow-hidden bg-[#0e0c0a]">
-              {art.type === "model" ? (
-                <div className="flex h-full items-center justify-center text-[0.65rem] text-[var(--paper-dim)]">
-                  3D
-                </div>
-              ) : (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={art.urlWall || art.urlPoster || ""}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              )}
-            </div>
+            <ArtworkThumb art={art} />
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">
                 {art.title.en || "(untitled)"}{" "}
@@ -365,6 +387,7 @@ function ArtworkEditor({
           applyTypeDefaults("video", {
             ...d,
             urlVideo: blob.url,
+            urlPoster: blob.urlPoster || d.urlPoster,
           }),
         );
         onMessage("Video uploaded");
@@ -377,6 +400,7 @@ function ArtworkEditor({
         applyTypeDefaults("model", {
           ...d,
           modelUrl: blob.url,
+          urlPoster: blob.urlPoster || d.urlPoster,
         }),
       );
       onMessage("3D model uploaded");

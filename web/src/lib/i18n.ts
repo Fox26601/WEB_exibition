@@ -204,9 +204,12 @@ export type AdminEditorStrings = {
   placeInstructions: string;
   frame: string;
   remove: string;
+  removeFromPlan: string;
   painting: string;
   sculpture: string;
   publishArtworksFirst: string;
+  emptyPlacePalette: string;
+  unpublishedBadge: string;
   untitled: string;
   publishToLive: string;
   openDraft3d: string;
@@ -216,6 +219,7 @@ export type AdminEditorStrings = {
   lastLivePublish: string;
   unpublishedDraft: string;
   liveMatchesDraft: string;
+  publishLiveHint: string;
   uploadArtwork: string;
   uploadMediaHint: string;
 };
@@ -253,19 +257,23 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
     "Paintings go on walls; sculptures on the floor. Green ghost = you can drop.",
   frame: "Frame",
   remove: "Remove",
+  removeFromPlan: "Remove from plan",
   painting: "painting",
   sculpture: "sculpture",
   publishArtworksFirst: "Publish artworks first, then place them on the plan.",
+  emptyPlacePalette: "No artworks yet. Upload on this page or Artworks, then place them here.",
+  unpublishedBadge: "draft",
   untitled: "(untitled)",
   publishToLive: "Publish to live site",
   openDraft3d: "Open draft in 3D",
   openLive3d: "Open live exhibition in 3D",
   artworksPlaceHint:
-    "Upload and publish here. Place published works on the room plan in Place mode.",
+    "Upload here, then place works on the room plan in Place mode. Live gallery updates only after Publish.",
   draftAutosaveIntro: "Draft autosaves on every layout change.",
   lastLivePublish: " Last live publish: {date}.",
   unpublishedDraft: " Unpublished draft changes.",
   liveMatchesDraft: " Live matches draft.",
+  publishLiveHint: " Live gallery updates only after Publish.",
   uploadArtwork: "+ Upload artwork",
   uploadMediaHint:
     "Media file — image, MP4 video, or 3D model (GLB/GLTF). Type is detected automatically.",
@@ -304,19 +312,24 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
     "Картину — на стену; скульптуру — на пол. Зелёный призрак = можно отпустить.",
   frame: "Рама",
   remove: "Убрать",
+  removeFromPlan: "Убрать с плана",
   painting: "картина",
   sculpture: "скульптура",
   publishArtworksFirst: "Сначала опубликуйте работы, затем расставьте на плане.",
+  emptyPlacePalette:
+    "Нет работ. Загрузите здесь или во вкладке Artworks, затем расставьте на плане.",
+  unpublishedBadge: "черновик",
   untitled: "(без названия)",
   publishToLive: "Опубликовать на сайт",
   openDraft3d: "Открыть черновик в 3D",
   openLive3d: "Открыть live-выставку в 3D",
   artworksPlaceHint:
-    "Загружайте и публикуйте здесь. На плане расставляйте опубликованные работы в режиме Place.",
+    "Загружайте здесь, затем расставляйте на плане в режиме Place. Live обновляется только после Publish.",
   draftAutosaveIntro: "Черновик сохраняется при каждом изменении плана.",
   lastLivePublish: " Последняя публикация: {date}.",
   unpublishedDraft: " Есть неопубликованные изменения.",
   liveMatchesDraft: " Live совпадает с черновиком.",
+  publishLiveHint: " Live обновляется только после Publish.",
   uploadArtwork: "+ Загрузить работу",
   uploadMediaHint:
     "Файл — изображение, видео MP4 или 3D-модель (GLB/GLTF). Тип определяется автоматически.",
