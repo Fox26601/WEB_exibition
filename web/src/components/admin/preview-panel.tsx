@@ -15,6 +15,7 @@ import {
   emptyLocalized,
   LOCALES,
   emptyLayout,
+  nextBookletPageKey,
   normalizeArtwork,
   normalizeArtworkBooklet,
 } from "@/lib/catalog-types";
@@ -311,7 +312,7 @@ export function PreviewPanel() {
         published: true,
         title: emptyLocalized(),
         text: emptyLocalized(),
-        booklet: [emptyBookletPage("main")],
+        booklet: [emptyBookletPage(nextBookletPageKey([]))],
         urlWall: "",
         urlFull: "",
         urlVideo: "",
@@ -579,13 +580,17 @@ function PreviewArtworkEditor({
   }
 
   function addBookletPage() {
-    const n = bookletPages.length;
-    setBooklet([...bookletPages, emptyBookletPage(`page-${n + 1}`)]);
+    setBooklet([
+      ...bookletPages,
+      emptyBookletPage(nextBookletPageKey(bookletPages)),
+    ]);
   }
 
   function removeBookletPage(index: number) {
     const next = bookletPages.filter((_, i) => i !== index);
-    setBooklet(next.length ? next : [emptyBookletPage("main")]);
+    setBooklet(
+      next.length ? next : [emptyBookletPage(nextBookletPageKey([]))],
+    );
   }
 
   function applyTypeDefaults(kind: ArtworkType, prev: Artwork): Artwork {
@@ -789,15 +794,12 @@ function PreviewArtworkEditor({
                 >
                   <div className="mb-3 flex flex-wrap items-end gap-3">
                     <div className="min-w-[10rem] flex-1">
-                      <label>Page key</label>
+                      <label>Page key (auto id)</label>
                       <input
                         value={page.key}
-                        onChange={(e) =>
-                          updateBookletPage(index, {
-                            ...page,
-                            key: e.target.value,
-                          })
-                        }
+                        readOnly
+                        aria-readonly="true"
+                        title="Assigned automatically on create"
                       />
                     </div>
                     {bookletPages.length > 1 ? (
