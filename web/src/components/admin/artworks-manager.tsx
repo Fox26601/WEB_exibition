@@ -7,7 +7,6 @@ import type {
   BookletPage,
   Catalog,
   Locale,
-  LocalizedString,
 } from "@/lib/catalog-types";
 import {
   emptyBookletPage,
@@ -29,6 +28,7 @@ import {
 } from "@/lib/artwork-upload-client";
 import { readAdminJson } from "@/lib/admin-api";
 import { ArtworkThumb } from "./artwork-thumb";
+import { LocalizedAutoFields } from "./localized-auto-fields";
 
 export function ArtworksManager() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -328,17 +328,6 @@ function ArtworkEditor({
   const [previewPage, setPreviewPage] = useState(0);
   const bookletPages = normalizeArtworkBooklet(draft);
 
-  function setLocalized(
-    field: "title" | "text",
-    locale: keyof LocalizedString,
-    value: string,
-  ) {
-    setDraft((d) => ({
-      ...d,
-      [field]: { ...d[field], [locale]: value },
-    }));
-  }
-
   function setBooklet(pages: BookletPage[]) {
     setDraft((d) => ({ ...d, booklet: pages }));
     setPreviewPage((p) => Math.min(p, Math.max(0, pages.length - 1)));
@@ -464,17 +453,14 @@ function ArtworkEditor({
           Edit {draft.type}
         </h2>
 
-        <div className="mb-4 grid gap-3 sm:grid-cols-2">
-          {LOCALES.map((locale) => (
-            <div key={`title-${locale}`}>
-              <label>Title ({locale})</label>
-              <input
-                value={draft.title[locale]}
-                onChange={(e) => setLocalized("title", locale, e.target.value)}
-              />
-            </div>
-          ))}
-        </div>
+        <LocalizedAutoFields
+          label="Title"
+          values={draft.title}
+          onChange={(title) => setDraft((d) => ({ ...d, title }))}
+          onApplyTranslations={(merge) =>
+            setDraft((d) => ({ ...d, title: merge(d.title) }))
+          }
+        />
 
         <div className="mb-4 flex items-center gap-2">
           <input
@@ -594,45 +580,47 @@ function ArtworkEditor({
                       </button>
                     ) : null}
                   </div>
-                  <div className="mb-3 grid gap-3 sm:grid-cols-2">
-                    {LOCALES.map((locale) => (
-                      <div key={`bt-${index}-${locale}`}>
-                        <label>Title ({locale})</label>
-                        <input
-                          value={page.title[locale]}
-                          onChange={(e) =>
-                            updateBookletPage(index, {
-                              ...page,
-                              title: {
-                                ...page.title,
-                                [locale]: e.target.value,
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                    ))}
+                  <div className="mb-3">
+                    <LocalizedAutoFields
+                      label="Title"
+                      values={page.title}
+                      onChange={(title) =>
+                        updateBookletPage(index, { ...page, title })
+                      }
+                      onApplyTranslations={(merge) =>
+                        setDraft((d) => {
+                          const pages = normalizeArtworkBooklet(d).slice();
+                          const current = pages[index];
+                          if (!current) return d;
+                          pages[index] = {
+                            ...current,
+                            title: merge(current.title),
+                          };
+                          return { ...d, booklet: pages };
+                        })
+                      }
+                    />
                   </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {LOCALES.map((locale) => (
-                      <div key={`bb-${index}-${locale}`}>
-                        <label>Body ({locale})</label>
-                        <textarea
-                          rows={4}
-                          value={page.body[locale]}
-                          onChange={(e) =>
-                            updateBookletPage(index, {
-                              ...page,
-                              body: {
-                                ...page.body,
-                                [locale]: e.target.value,
-                              },
-                            })
-                          }
-                        />
-                      </div>
-                    ))}
-                  </div>
+                  <LocalizedAutoFields
+                    label="Body"
+                    multiline
+                    values={page.body}
+                    onChange={(body) =>
+                      updateBookletPage(index, { ...page, body })
+                    }
+                    onApplyTranslations={(merge) =>
+                      setDraft((d) => {
+                        const pages = normalizeArtworkBooklet(d).slice();
+                        const current = pages[index];
+                        if (!current) return d;
+                        pages[index] = {
+                          ...current,
+                          body: merge(current.body),
+                        };
+                        return { ...d, booklet: pages };
+                      })
+                    }
+                  />
                 </div>
               ))}
             </div>
