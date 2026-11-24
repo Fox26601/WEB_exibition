@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type {
   Artwork,
+  ArtworkType,
   BookletPage,
   Catalog,
   Locale,
@@ -16,9 +17,15 @@ import {
   normalizeArtworkBooklet,
 } from "@/lib/catalog-types";
 import { BookletOverlay } from "@/components/exhibition/booklet-overlay";
-
-const IMAGE_MAX = 8 * 1024 * 1024;
-const VIDEO_MAX = 80 * 1024 * 1024;
+import {
+  ARTWORK_UPLOAD_ACCEPT,
+  IMAGE_MAX_BYTES,
+  validateArtworkUpload,
+} from "@/lib/artwork-upload";
+import {
+  processArtworkImage,
+  uploadArtworkBinary,
+} from "@/lib/artwork-upload-client";
 
 export function ArtworksManager() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -120,11 +127,11 @@ export function ArtworksManager() {
     }
   }
 
-  function startNew(type: "image" | "video") {
+  function startNew() {
     setEditing(
       normalizeArtwork({
         id: crypto.randomUUID(),
-        type,
+        type: "image",
         sort: catalog?.artworks.length ?? 0,
         published: false,
         title: emptyLocalized(),
@@ -134,6 +141,8 @@ export function ArtworksManager() {
         urlFull: "",
         urlVideo: "",
         urlPoster: "",
+        modelUrl: "",
+        frameId: "wood",
       }),
     );
   }
@@ -153,17 +162,9 @@ export function ArtworksManager() {
             type="button"
             className="btn"
             disabled={busy}
-            onClick={() => startNew("image")}
+            onClick={() => startNew()}
           >
-            + Image
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={busy}
-            onClick={() => startNew("video")}
-          >
-            + Video
+            + Upload artwork
           </button>
           <button
             type="button"
@@ -187,12 +188,18 @@ export function ArtworksManager() {
             className="flex flex-wrap items-center gap-3 border border-[var(--line)] bg-[#1a1612] p-4"
           >
             <div className="h-14 w-14 shrink-0 overflow-hidden bg-[#0e0c0a]">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={art.urlWall || art.urlPoster || ""}
-                alt=""
-                className="h-full w-full object-cover"
-              />
+              {art.type === "model" ? (
+                <div className="flex h-full items-center justify-center text-[0.65rem] text-[var(--paper-dim)]">
+                  3D
+                </div>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={art.urlWall || art.urlPoster || ""}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate font-medium">
@@ -203,6 +210,7 @@ export function ArtworksManager() {
               </p>
               <p className="text-xs text-[var(--paper-dim)]">
                 {art.published ? "published" : "draft"} · sort {art.sort}
+                {art.modelUrl ? " · has model" : ""}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -248,7 +256,7 @@ export function ArtworksManager() {
 
       {catalog.artworks.length === 0 ? (
         <p className="mt-6 text-[var(--paper-dim)]">
-          No artworks yet. Add an image or video to grow the room.
+          No artworks yet. Upload an image, video, or 3D sculpture (GLB/GLTF).
         </p>
       ) : null}
 
@@ -318,75 +326,60 @@ function ArtworkEditor({
     setBooklet(next.length ? next : [emptyBookletPage("main")]);
   }
 
-  async function onImageFile(file: File | null) {
-    if (!file) return;
-    if (file.size > IMAGE_MAX) {
-      onMessage("Image exceeds 8MB");
-      return;
-    }
-    onBusy(true);
-    onMessage("Processing image…");
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/admin/process-image", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Process failed");
-      setDraft((d) => ({
-        ...d,
-        urlWall: data.urlWall,
-        urlFull: data.urlFull,
-      }));
-      onMessage("Image processed");
-    } catch (e) {
-      onMessage(e instanceof Error ? e.message : "Error");
-    } finally {
-      onBusy(false);
-    }
+  function applyTypeDefaults(kind: ArtworkType, prev: Artwork): Artwork {
+    return {
+      ...prev,
+      type: kind,
+      frameId: kind === "model" ? "none" : prev.frameId || "wood",
+    };
   }
 
-  async function onVideoFile(file: File | null) {
+  async function onMediaFile(file: File | null) {
     if (!file) return;
-    if (file.size > VIDEO_MAX) {
-      onMessage("Video exceeds 80MB");
+    const validated = validateArtworkUpload(file);
+    if (!validated.ok) {
+      onMessage(validated.error);
       return;
     }
-    if (!file.type.includes("mp4") && !file.name.endsWith(".mp4")) {
-      onMessage("Video must be MP4 (H.264)");
-      return;
-    }
+
     onBusy(true);
-    onMessage("Uploading video…");
     try {
-      // Prefer direct Blob client upload; fall back to local multipart.
-      try {
-        const { upload } = await import("@vercel/blob/client");
-        const pathname = `uploads/video/${crypto.randomUUID()}.mp4`;
-        const blob = await upload(pathname, file, {
-          access: "public",
-          handleUploadUrl: "/api/admin/upload-token",
-          contentType: "video/mp4",
-        });
-        setDraft((d) => ({ ...d, urlVideo: blob.url }));
+      if (validated.kind === "image") {
+        onMessage("Processing image…");
+        const data = await processArtworkImage(file);
+        setDraft((d) =>
+          applyTypeDefaults("image", {
+            ...d,
+            urlWall: data.urlWall,
+            urlFull: data.urlFull,
+          }),
+        );
+        onMessage("Image processed");
+        return;
+      }
+
+      if (validated.kind === "video") {
+        onMessage("Uploading video…");
+        const blob = await uploadArtworkBinary(file, validated);
+        setDraft((d) =>
+          applyTypeDefaults("video", {
+            ...d,
+            urlVideo: blob.url,
+          }),
+        );
         onMessage("Video uploaded");
         return;
-      } catch {
-        /* local fallback */
       }
-      const form = new FormData();
-      form.append("file", file);
-      form.append("kind", "video");
-      const res = await fetch("/api/admin/upload-token", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      setDraft((d) => ({ ...d, urlVideo: data.url }));
-      onMessage("Video uploaded");
+
+      onMessage("Uploading 3D model…");
+      const blob = await uploadArtworkBinary(file, validated);
+      setDraft((d) =>
+        applyTypeDefaults("model", {
+          ...d,
+          modelUrl: blob.url,
+        }),
+      );
+      onMessage("3D model uploaded");
     } catch (e) {
       onMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -396,20 +389,13 @@ function ArtworkEditor({
 
   async function onPosterFile(file: File | null) {
     if (!file) return;
-    if (file.size > IMAGE_MAX) {
+    if (file.size > IMAGE_MAX_BYTES) {
       onMessage("Poster exceeds 8MB");
       return;
     }
     onBusy(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/admin/process-image", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Process failed");
+      const data = await processArtworkImage(file);
       setDraft((d) => ({
         ...d,
         urlPoster: data.urlWall,
@@ -423,6 +409,13 @@ function ArtworkEditor({
       onBusy(false);
     }
   }
+
+  const mediaSummary =
+    draft.type === "model"
+      ? draft.modelUrl
+      : draft.type === "video"
+        ? draft.urlVideo
+        : draft.urlWall;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
@@ -458,45 +451,33 @@ function ArtworkEditor({
           </label>
         </div>
 
-        {draft.type === "image" ? (
+        <div className="mb-4">
+          <label>
+            Media file — image, MP4 video, or 3D model (GLB/GLTF). Type is
+            detected automatically.
+          </label>
+          <input
+            type="file"
+            accept={ARTWORK_UPLOAD_ACCEPT}
+            onChange={(e) => onMediaFile(e.target.files?.[0] || null)}
+          />
+          {mediaSummary ? (
+            <p className="mt-2 truncate text-xs text-[var(--paper-dim)]">
+              {draft.type}: {mediaSummary}
+            </p>
+          ) : null}
+        </div>
+
+        {draft.type === "video" ? (
           <div className="mb-4">
-            <label>Image (max 8MB → wall 1024 + full 2048 WebP)</label>
+            <label>Poster image (optional)</label>
             <input
               type="file"
               accept="image/*"
-              onChange={(e) => onImageFile(e.target.files?.[0] || null)}
+              onChange={(e) => onPosterFile(e.target.files?.[0] || null)}
             />
-            {draft.urlWall ? (
-              <p className="mt-2 truncate text-xs text-[var(--paper-dim)]">
-                wall: {draft.urlWall}
-              </p>
-            ) : null}
           </div>
-        ) : (
-          <>
-            <div className="mb-4">
-              <label>Video MP4 (max 80MB)</label>
-              <input
-                type="file"
-                accept="video/mp4,.mp4"
-                onChange={(e) => onVideoFile(e.target.files?.[0] || null)}
-              />
-              {draft.urlVideo ? (
-                <p className="mt-2 truncate text-xs text-[var(--paper-dim)]">
-                  {draft.urlVideo}
-                </p>
-              ) : null}
-            </div>
-            <div className="mb-4">
-              <label>Poster image</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => onPosterFile(e.target.files?.[0] || null)}
-              />
-            </div>
-          </>
-        )}
+        ) : null}
 
         <section className="mb-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
