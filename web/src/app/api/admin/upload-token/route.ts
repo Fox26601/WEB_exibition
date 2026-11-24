@@ -3,26 +3,24 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import { requireAdmin } from "@/lib/auth";
 import { usingLocalBlobFallback, writeBlobBinary } from "@/lib/blob-store";
 import { randomUUID } from "crypto";
+import {
+  artworkUploadPathname,
+  contentTypeForKind,
+  maxBytesForKind,
+  validateArtworkUpload,
+  type ArtworkUploadKind,
+} from "@/lib/artwork-upload";
 
-const IMAGE_MAX = 8 * 1024 * 1024;
-const VIDEO_MAX = 80 * 1024 * 1024;
-const MODEL_MAX = 40 * 1024 * 1024;
-
-function maxForKind(kind: string): number {
-  if (kind === "video") return VIDEO_MAX;
-  if (kind === "model") return MODEL_MAX;
-  return IMAGE_MAX;
-}
-
-function extFor(kind: string, type: string, name: string): string {
-  if (kind === "video") return "mp4";
-  if (kind === "model") {
-    if (name.endsWith(".gltf") || type.includes("gltf+json")) return "gltf";
-    return "glb";
+function kindFromPathname(pathname: string): ArtworkUploadKind {
+  if (pathname.includes("/video/") || pathname.endsWith(".mp4")) return "video";
+  if (
+    pathname.includes("/model/") ||
+    pathname.endsWith(".glb") ||
+    pathname.endsWith(".gltf")
+  ) {
+    return "model";
   }
-  if (type.includes("png")) return "png";
-  if (type.includes("webp")) return "webp";
-  return "jpg";
+  return "image";
 }
 
 export async function POST(req: NextRequest) {
@@ -35,31 +33,35 @@ export async function POST(req: NextRequest) {
     const form = await req.formData().catch(() => null);
     if (form) {
       const file = form.get("file");
-      const kind = String(form.get("kind") || "image");
+      const kindHint = String(form.get("kind") || "");
       if (!(file instanceof File)) {
         return NextResponse.json({ error: "file required" }, { status: 400 });
       }
-      const max = maxForKind(kind);
-      if (file.size > max) {
+
+      const validated = validateArtworkUpload(file);
+      if (!validated.ok) {
+        const status = validated.error.includes("exceeds") ? 413 : 400;
+        return NextResponse.json({ error: validated.error }, { status });
+      }
+
+      if (
+        kindHint &&
+        kindHint !== validated.kind &&
+        (kindHint === "image" || kindHint === "video" || kindHint === "model")
+      ) {
         return NextResponse.json(
           {
-            error: `File exceeds ${
-              kind === "video" ? "80MB" : kind === "model" ? "40MB" : "8MB"
-            } limit`,
+            error: `File looks like ${validated.kind}, not ${kindHint}`,
           },
-          { status: 413 },
+          { status: 400 },
         );
       }
+
+      const kind = validated.kind;
       const buf = Buffer.from(await file.arrayBuffer());
-      const ext = extFor(kind, file.type, file.name || "");
-      const pathname = `uploads/${kind}/${randomUUID()}.${ext}`;
+      const pathname = artworkUploadPathname(kind, validated.ext, randomUUID());
       const contentType =
-        file.type ||
-        (kind === "video"
-          ? "video/mp4"
-          : kind === "model"
-            ? "model/gltf-binary"
-            : "image/jpeg");
+        file.type || contentTypeForKind(kind, file.name, file.type);
       const written = await writeBlobBinary(pathname, buf, contentType);
       if (!written) {
         return NextResponse.json(
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         url: written.url,
         pathname,
+        kind,
         local: true,
       });
     }
@@ -87,27 +90,19 @@ export async function POST(req: NextRequest) {
       body,
       request: req,
       onBeforeGenerateToken: async (pathname) => {
-        const isVideo =
-          pathname.endsWith(".mp4") || pathname.includes("/video/");
-        const isModel =
-          pathname.endsWith(".glb") ||
-          pathname.endsWith(".gltf") ||
-          pathname.includes("/model/");
+        const kind = kindFromPathname(pathname);
         return {
-          allowedContentTypes: isVideo
-            ? ["video/mp4"]
-            : isModel
-              ? [
-                  "model/gltf-binary",
-                  "model/gltf+json",
-                  "application/octet-stream",
-                ]
-              : ["image/jpeg", "image/png", "image/webp", "image/gif"],
-          maximumSizeInBytes: isVideo
-            ? VIDEO_MAX
-            : isModel
-              ? MODEL_MAX
-              : IMAGE_MAX,
+          allowedContentTypes:
+            kind === "video"
+              ? ["video/mp4"]
+              : kind === "model"
+                ? [
+                    "model/gltf-binary",
+                    "model/gltf+json",
+                    "application/octet-stream",
+                  ]
+                : ["image/jpeg", "image/png", "image/webp", "image/gif"],
+          maximumSizeInBytes: maxBytesForKind(kind),
           tokenPayload: JSON.stringify({ email: session.user?.email }),
         };
       },

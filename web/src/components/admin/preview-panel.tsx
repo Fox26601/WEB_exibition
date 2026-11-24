@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Artwork,
+  ArtworkType,
   BookletPage,
   Catalog,
   GalleryLayout,
@@ -21,11 +22,17 @@ import { LangSwitcher } from "@/components/lang-switcher";
 import { BookletOverlay } from "@/components/exhibition/booklet-overlay";
 import { adminEditorStrings } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
+import {
+  ARTWORK_UPLOAD_ACCEPT,
+  IMAGE_MAX_BYTES,
+  validateArtworkUpload,
+} from "@/lib/artwork-upload";
+import {
+  processArtworkImage,
+  uploadArtworkBinary,
+} from "@/lib/artwork-upload-client";
 import { GalleryRoomEditor, ensureLayout } from "./gallery-room-editor";
 
-const IMAGE_MAX = 8 * 1024 * 1024;
-const VIDEO_MAX = 80 * 1024 * 1024;
-const MODEL_MAX = 40 * 1024 * 1024;
 const AUTOSAVE_MS = 400;
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -251,11 +258,11 @@ export function PreviewPanel() {
     await saveArtwork({ ...art, published: !art.published });
   }
 
-  function startNew(type: Artwork["type"]) {
+  function startNew() {
     setEditing(
       normalizeArtwork({
         id: crypto.randomUUID(),
-        type,
+        type: "image",
         sort: catalog?.artworks.length ?? 0,
         published: true,
         title: emptyLocalized(),
@@ -266,7 +273,7 @@ export function PreviewPanel() {
         urlVideo: "",
         urlPoster: "",
         modelUrl: "",
-        frameId: type === "model" ? "none" : "wood",
+        frameId: "wood",
       }),
     );
   }
@@ -289,25 +296,9 @@ export function PreviewPanel() {
             type="button"
             className="btn"
             disabled={busy}
-            onClick={() => startNew("image")}
+            onClick={() => startNew()}
           >
-            + Image
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={busy}
-            onClick={() => startNew("video")}
-          >
-            + Video
-          </button>
-          <button
-            type="button"
-            className="btn"
-            disabled={busy}
-            onClick={() => startNew("model")}
-          >
-            + Sculpture
+            {adminT.uploadArtwork}
           </button>
           <button
             type="button"
@@ -491,6 +482,7 @@ export function PreviewPanel() {
         <PreviewArtworkEditor
           artwork={editing}
           busy={busy}
+          mediaHint={adminT.uploadMediaHint}
           onCancel={() => setEditing(null)}
           onSave={saveArtwork}
           onBusy={setBusy}
@@ -504,6 +496,7 @@ export function PreviewPanel() {
 function PreviewArtworkEditor({
   artwork,
   busy,
+  mediaHint,
   onCancel,
   onSave,
   onBusy,
@@ -511,6 +504,7 @@ function PreviewArtworkEditor({
 }: {
   artwork: Artwork;
   busy: boolean;
+  mediaHint: string;
   onCancel: () => void;
   onSave: (a: Artwork) => Promise<void>;
   onBusy: (v: boolean) => void;
@@ -553,111 +547,51 @@ function PreviewArtworkEditor({
     setBooklet(next.length ? next : [emptyBookletPage("main")]);
   }
 
-  async function onImageFile(file: File | null) {
-    if (!file) return;
-    if (file.size > IMAGE_MAX) {
-      onMessage("Image exceeds 8MB");
-      return;
-    }
-    onBusy(true);
-    onMessage("Processing image…");
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/admin/process-image", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Process failed");
-      setDraft((d) => ({
-        ...d,
-        urlWall: data.urlWall,
-        urlFull: data.urlFull,
-      }));
-      onMessage("Image processed");
-    } catch (e) {
-      onMessage(e instanceof Error ? e.message : "Error");
-    } finally {
-      onBusy(false);
-    }
+  function applyTypeDefaults(kind: ArtworkType, prev: Artwork): Artwork {
+    return {
+      ...prev,
+      type: kind,
+      frameId: kind === "model" ? "none" : prev.frameId || "wood",
+    };
   }
 
-  async function onVideoFile(file: File | null) {
+  async function onMediaFile(file: File | null) {
     if (!file) return;
-    if (file.size > VIDEO_MAX) {
-      onMessage("Video exceeds 80MB");
+    const validated = validateArtworkUpload(file);
+    if (!validated.ok) {
+      onMessage(validated.error);
       return;
     }
     onBusy(true);
-    onMessage("Uploading video…");
     try {
-      try {
-        const { upload } = await import("@vercel/blob/client");
-        const pathname = `uploads/video/${crypto.randomUUID()}.mp4`;
-        const blob = await upload(pathname, file, {
-          access: "public",
-          handleUploadUrl: "/api/admin/upload-token",
-          contentType: "video/mp4",
-        });
-        setDraft((d) => ({ ...d, urlVideo: blob.url }));
+      if (validated.kind === "image") {
+        onMessage("Processing image…");
+        const data = await processArtworkImage(file);
+        setDraft((d) =>
+          applyTypeDefaults("image", {
+            ...d,
+            urlWall: data.urlWall,
+            urlFull: data.urlFull,
+          }),
+        );
+        onMessage("Image processed");
+        return;
+      }
+      if (validated.kind === "video") {
+        onMessage("Uploading video…");
+        const blob = await uploadArtworkBinary(file, validated);
+        setDraft((d) =>
+          applyTypeDefaults("video", { ...d, urlVideo: blob.url }),
+        );
         onMessage("Video uploaded");
         return;
-      } catch {
-        /* local fallback */
       }
-      const form = new FormData();
-      form.append("file", file);
-      form.append("kind", "video");
-      const res = await fetch("/api/admin/upload-token", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      setDraft((d) => ({ ...d, urlVideo: data.url }));
-      onMessage("Video uploaded");
-    } catch (e) {
-      onMessage(e instanceof Error ? e.message : "Error");
-    } finally {
-      onBusy(false);
-    }
-  }
-
-  async function onModelFile(file: File | null) {
-    if (!file) return;
-    if (file.size > MODEL_MAX) {
-      onMessage("GLB exceeds 40MB");
-      return;
-    }
-    onBusy(true);
-    onMessage("Uploading sculpture GLB…");
-    try {
-      try {
-        const { upload } = await import("@vercel/blob/client");
-        const pathname = `uploads/model/${crypto.randomUUID()}.glb`;
-        const blob = await upload(pathname, file, {
-          access: "public",
-          handleUploadUrl: "/api/admin/upload-token",
-          contentType: "model/gltf-binary",
-        });
-        setDraft((d) => ({ ...d, type: "model", modelUrl: blob.url }));
-        onMessage("GLB uploaded");
-        return;
-      } catch {
-        /* local fallback */
-      }
-      const form = new FormData();
-      form.append("file", file);
-      form.append("kind", "model");
-      const res = await fetch("/api/admin/upload-token", {
-        method: "POST",
-        body: form,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      setDraft((d) => ({ ...d, type: "model", modelUrl: data.url }));
-      onMessage("GLB uploaded");
+      onMessage("Uploading 3D model…");
+      const blob = await uploadArtworkBinary(file, validated);
+      setDraft((d) =>
+        applyTypeDefaults("model", { ...d, modelUrl: blob.url }),
+      );
+      onMessage("3D model uploaded");
     } catch (e) {
       onMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -667,17 +601,13 @@ function PreviewArtworkEditor({
 
   async function onPosterFile(file: File | null) {
     if (!file) return;
-    if (file.size > IMAGE_MAX) {
+    if (file.size > IMAGE_MAX_BYTES) {
       onMessage("Poster exceeds 8MB");
       return;
     }
     onBusy(true);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const data = await (
-        await fetch("/api/admin/process-image", { method: "POST", body: form })
-      ).json();
+      const data = await processArtworkImage(file);
       setDraft((d) => ({
         ...d,
         urlPoster: data.urlWall,
@@ -726,49 +656,39 @@ function PreviewArtworkEditor({
             Published in catalog
           </label>
         </div>
-        {draft.type === "image" ? (
+        <div className="mb-4">
+          <label>{mediaHint}</label>
+          <input
+            type="file"
+            accept={ARTWORK_UPLOAD_ACCEPT}
+            onChange={(e) => onMediaFile(e.target.files?.[0] || null)}
+          />
+          {draft.type === "model" && draft.modelUrl ? (
+            <p className="mt-2 truncate text-xs text-[var(--paper-dim)]">
+              model: {draft.modelUrl}
+            </p>
+          ) : null}
+          {draft.type === "video" && draft.urlVideo ? (
+            <p className="mt-2 truncate text-xs text-[var(--paper-dim)]">
+              video: {draft.urlVideo}
+            </p>
+          ) : null}
+          {draft.type === "image" && draft.urlWall ? (
+            <p className="mt-2 truncate text-xs text-[var(--paper-dim)]">
+              wall: {draft.urlWall}
+            </p>
+          ) : null}
+        </div>
+        {draft.type === "video" ? (
           <div className="mb-4">
-            <label>Image (max 8MB)</label>
+            <label>Poster</label>
             <input
               type="file"
               accept="image/*"
-              onChange={(e) => onImageFile(e.target.files?.[0] || null)}
+              onChange={(e) => onPosterFile(e.target.files?.[0] || null)}
             />
           </div>
-        ) : draft.type === "video" ? (
-          <>
-            <div className="mb-4">
-              <label>Video MP4</label>
-              <input
-                type="file"
-                accept="video/mp4,.mp4"
-                onChange={(e) => onVideoFile(e.target.files?.[0] || null)}
-              />
-            </div>
-            <div className="mb-4">
-              <label>Poster</label>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => onPosterFile(e.target.files?.[0] || null)}
-              />
-            </div>
-          </>
-        ) : (
-          <div className="mb-4">
-            <label>Sculpture GLB (max 40MB)</label>
-            <input
-              type="file"
-              accept=".glb,model/gltf-binary"
-              onChange={(e) => onModelFile(e.target.files?.[0] || null)}
-            />
-            {draft.modelUrl ? (
-              <p className="mt-2 truncate text-xs text-[var(--paper-dim)]">
-                {draft.modelUrl}
-              </p>
-            ) : null}
-          </div>
-        )}
+        ) : null}
 
         <section className="mb-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

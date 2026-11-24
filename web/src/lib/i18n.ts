@@ -216,6 +216,8 @@ export type AdminEditorStrings = {
   lastLivePublish: string;
   unpublishedDraft: string;
   liveMatchesDraft: string;
+  uploadArtwork: string;
+  uploadMediaHint: string;
 };
 
 const ADMIN_EDITOR_EN: AdminEditorStrings = {
@@ -264,6 +266,9 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   lastLivePublish: " Last live publish: {date}.",
   unpublishedDraft: " Unpublished draft changes.",
   liveMatchesDraft: " Live matches draft.",
+  uploadArtwork: "+ Upload artwork",
+  uploadMediaHint:
+    "Media file — image, MP4 video, or 3D model (GLB/GLTF). Type is detected automatically.",
 };
 
 const ADMIN_EDITOR_RU: AdminEditorStrings = {
@@ -312,6 +317,9 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   lastLivePublish: " Последняя публикация: {date}.",
   unpublishedDraft: " Есть неопубликованные изменения.",
   liveMatchesDraft: " Live совпадает с черновиком.",
+  uploadArtwork: "+ Загрузить работу",
+  uploadMediaHint:
+    "Файл — изображение, видео MP4 или 3D-модель (GLB/GLTF). Тип определяется автоматически.",
 };
 
 export const ADMIN_EDITOR: Record<Locale, AdminEditorStrings> = {
