@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { loadCatalog } from "@/lib/catalog";
-import { roomLength } from "@/lib/room";
+import { normalizeLayout } from "@/lib/catalog-types";
 
 export default async function AdminDashboard() {
   const session = await requireAdmin();
@@ -14,7 +14,9 @@ export default async function AdminDashboard() {
   ]);
 
   const publishedCount = draft.artworks.filter((a) => a.published).length;
-  const length = roomLength(publishedCount);
+  const draftLayout = normalizeLayout(draft.layout);
+  const placedCount = draftLayout.placements.length;
+  const roomCount = draftLayout.rooms.length;
 
   return (
     <div>
@@ -27,8 +29,14 @@ export default async function AdminDashboard() {
         <Stat label="Live version" value={`v${live.version}`} />
       </div>
       <p className="mt-6 text-sm text-[var(--paper-dim)]">
-        Room length at N={publishedCount}:{" "}
-        <strong className="text-[var(--paper)]">{length.toFixed(1)} m</strong>
+        Draft layout:{" "}
+        <strong className="text-[var(--paper)]">
+          {roomCount} room{roomCount === 1 ? "" : "s"}
+        </strong>
+        ,{" "}
+        <strong className="text-[var(--paper)]">
+          {placedCount} placement{placedCount === 1 ? "" : "s"}
+        </strong>
       </p>
       <div className="mt-8 flex flex-wrap gap-3">
         <Link href="/admin/artworks" className="btn btn-solid">

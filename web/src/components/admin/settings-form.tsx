@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BookletPage, CatalogSettings } from "@/lib/catalog-types";
+import type { BookletPage, Catalog, CatalogSettings } from "@/lib/catalog-types";
 import {
   LOCALES,
   emptyBookletPage,
   normalizeSettings,
 } from "@/lib/catalog-types";
+import { readAdminJson } from "@/lib/admin-api";
 
 const AUTOSAVE_MS = 700;
 
@@ -17,18 +19,15 @@ export function SettingsForm() {
   const [posterBusy, setPosterBusy] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipAutosave = useRef(true);
+  const pendingSettings = useRef<CatalogSettings | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/settings")
       .then(async (r) => {
-        const data = await r.json().catch(() => null);
-        if (!r.ok) {
-          throw new Error(
-            typeof data?.error === "string"
-              ? `${r.status}: ${data.error}`
-              : `Settings load failed (${r.status})`,
-          );
-        }
+        const data = await readAdminJson<CatalogSettings>(
+          r,
+          "Settings load failed",
+        );
         setSettings(normalizeSettings(data));
         skipAutosave.current = true;
       })
@@ -47,8 +46,10 @@ export function SettingsForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(normalizeSettings(next)),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(JSON.stringify(data.error));
+      const data = await readAdminJson<{ settings: CatalogSettings }>(
+        res,
+        "Settings save failed",
+      );
       setSettings(normalizeSettings(data.settings));
       setMessage(label);
     } catch (e) {
@@ -57,6 +58,42 @@ export function SettingsForm() {
       setBusy(false);
     }
   }, []);
+
+  async function publishCatalog() {
+    if (!confirm("Publish draft catalog (including settings) to live?")) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      const pending = pendingSettings.current ?? settings;
+      if (pending) {
+        const saveRes = await fetch("/api/admin/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(normalizeSettings(pending)),
+        });
+        await readAdminJson(saveRes, "Settings save failed");
+        pendingSettings.current = null;
+      }
+      const res = await fetch("/api/admin/publish", { method: "POST" });
+      const data = await readAdminJson<{ catalog: Catalog }>(
+        res,
+        "Publish failed",
+      );
+      if (data.catalog?.settings) {
+        setSettings(normalizeSettings(data.catalog.settings));
+        skipAutosave.current = true;
+      }
+      setMessage(`Published v${data.catalog.version} to live`);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!settings) return;
@@ -74,41 +111,63 @@ export function SettingsForm() {
   }, [settings, persist]);
 
   function patch(partial: Partial<CatalogSettings>) {
-    setSettings((prev) => (prev ? { ...prev, ...partial } : prev));
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...partial };
+      pendingSettings.current = next;
+      return next;
+    });
   }
 
   function updateBookletPage(index: number, page: BookletPage) {
-    if (!settings) return;
-    const booklet = settings.entrance.booklet.slice();
-    booklet[index] = page;
-    patch({ entrance: { ...settings.entrance, booklet } });
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const booklet = prev.entrance.booklet.slice();
+      booklet[index] = page;
+      const next = {
+        ...prev,
+        entrance: { ...prev.entrance, booklet },
+      };
+      pendingSettings.current = next;
+      return next;
+    });
   }
 
   function addBookletPage() {
-    if (!settings) return;
-    const n = settings.entrance.booklet.length;
-    const key = n === 0 ? "intro" : `hall-${n}`;
-    patch({
-      entrance: {
-        ...settings.entrance,
-        booklet: [...settings.entrance.booklet, emptyBookletPage(key)],
-      },
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const n = prev.entrance.booklet.length;
+      const key = n === 0 ? "intro" : `hall-${n}`;
+      const next = {
+        ...prev,
+        entrance: {
+          ...prev.entrance,
+          booklet: [...prev.entrance.booklet, emptyBookletPage(key)],
+        },
+      };
+      pendingSettings.current = next;
+      return next;
     });
   }
 
   function removeBookletPage(index: number) {
-    if (!settings) return;
-    const booklet = settings.entrance.booklet.filter((_, i) => i !== index);
-    patch({
-      entrance: {
-        ...settings.entrance,
-        booklet: booklet.length ? booklet : [emptyBookletPage("intro")],
-      },
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const booklet = prev.entrance.booklet.filter((_, i) => i !== index);
+      const next = {
+        ...prev,
+        entrance: {
+          ...prev.entrance,
+          booklet: booklet.length ? booklet : [emptyBookletPage("intro")],
+        },
+      };
+      pendingSettings.current = next;
+      return next;
     });
   }
 
   async function onPosterFile(file: File | null) {
-    if (!file || !settings) return;
+    if (!file) return;
     if (file.size > 8 * 1024 * 1024) {
       setMessage("Poster exceeds 8MB");
       return;
@@ -122,13 +181,19 @@ export function SettingsForm() {
         method: "POST",
         body: form,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Process failed");
-      patch({
-        entrance: {
-          ...settings.entrance,
-          posterUrl: data.urlFull || data.urlWall,
-        },
+      const data = await readAdminJson<{
+        urlFull?: string;
+        urlWall?: string;
+      }>(res, "Process failed");
+      const posterUrl = data.urlFull || data.urlWall || "";
+      setSettings((prev) => {
+        if (!prev) return prev;
+        const next = {
+          ...prev,
+          entrance: { ...prev.entrance, posterUrl },
+        };
+        pendingSettings.current = next;
+        return next;
       });
       setMessage("Entrance poster set (draft).");
     } catch (e) {
@@ -421,22 +486,47 @@ export function SettingsForm() {
       </section>
 
       {message ? (
-        <p className="mb-4 text-sm text-[var(--amber-bright)]">{message}</p>
+        <p
+          className={`mb-4 border px-3 py-2 text-sm ${
+            /failed|error|403|4\d\d|5\d\d/i.test(message)
+              ? "border-[#e08a7a]/50 bg-[#2a1612] text-[#e08a7a]"
+              : "border-[var(--line)] text-[var(--amber-bright)]"
+          }`}
+          role="status"
+        >
+          {message}
+        </p>
       ) : null}
 
-      <button
-        type="button"
-        className="btn btn-solid"
-        disabled={busy}
-        onClick={() =>
-          void persist(
-            settings,
-            "Settings saved (draft). Publish catalog to push live.",
-          )
-        }
-      >
-        Save settings
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className="btn btn-solid"
+          disabled={busy}
+          onClick={() =>
+            void persist(
+              settings,
+              "Settings saved (draft). Publish catalog to push live.",
+            )
+          }
+        >
+          Save settings
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          onClick={() => void publishCatalog()}
+        >
+          Publish to live
+        </button>
+        <Link
+          href="/admin/preview"
+          className="text-sm text-[var(--amber-bright)] underline-offset-2 hover:underline"
+        >
+          Open Layout
+        </Link>
+      </div>
     </div>
   );
 }

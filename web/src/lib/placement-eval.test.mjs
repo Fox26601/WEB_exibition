@@ -66,6 +66,75 @@ test("evaluateArtworkDrop snaps painting to nearest wall within range", () => {
   assert.equal(miss.reason, "no_snap");
 });
 
+test("evaluateArtworkDrop snaps painting from room center to nearest wall", () => {
+  const layout = normalizeLayout({
+    rooms: [squareRoom("r1", 0, 4)],
+    connections: [],
+    placements: [],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+
+  const art = {
+    id: "a-center",
+    type: "image",
+    sort: 0,
+    published: true,
+    title: { en: "", ru: "", uk: "", he: "" },
+    text: { en: "", ru: "", uk: "", he: "" },
+    urlWall: "",
+    urlFull: "",
+    urlVideo: "",
+    urlPoster: "",
+    frameId: "wood",
+  };
+
+  const center = { x: 0, z: 4 };
+  const drop = evaluateArtworkDrop(art, center, layout, "wood");
+  assert.equal(drop.ok, true, "room-center drop must snap to a wall");
+  if (!drop.ok) return;
+  assert.equal(drop.placement.kind, "painting");
+  assert.equal(drop.placement.roomId, "r1");
+  assert.ok(drop.placement.wallEdgeIndex != null);
+});
+
+test("evaluateArtworkDrop places sculpture on floor inside room", () => {
+  const layout = normalizeLayout({
+    rooms: [squareRoom("r1", 0, 4)],
+    connections: [],
+    placements: [],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+
+  const art = {
+    id: "s1",
+    type: "model",
+    sort: 0,
+    published: true,
+    title: { en: "", ru: "", uk: "", he: "" },
+    text: { en: "", ru: "", uk: "", he: "" },
+    urlWall: "",
+    urlFull: "",
+    urlVideo: "",
+    urlPoster: "",
+    modelUrl: "/samples/sculptures/box.glb",
+    frameId: "none",
+  };
+
+  const floor = { x: 0.5, z: 4.2 };
+  const drop = evaluateArtworkDrop(art, floor, layout, "none");
+  assert.equal(drop.ok, true);
+  if (!drop.ok) return;
+  assert.equal(drop.placement.kind, "sculpture");
+  assert.equal(drop.placement.floorX, floor.x);
+  assert.equal(drop.placement.floorZ, floor.z);
+
+  const outside = { x: 50, z: 50 };
+  const miss = evaluateArtworkDrop(art, outside, layout, "none");
+  assert.equal(miss.ok, false);
+  if (miss.ok) return;
+  assert.equal(miss.reason, "no_room");
+});
+
 test("evaluateArtworkDrop detects painting conflicts on same wall segment", () => {
   const layout = normalizeLayout({
     rooms: [squareRoom("r1", 0, 4)],

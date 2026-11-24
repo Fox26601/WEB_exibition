@@ -69,6 +69,7 @@ export function ExhibitionApp() {
   const [reviewMessage, setReviewMessage] = useState("");
   const [reviewStatus, setReviewStatus] = useState<ReviewStatus>("idle");
   const [adminBuild, setAdminBuild] = useState(false);
+  const [catalogKind, setCatalogKind] = useState<"live" | "draft">("live");
 
   // Presence starts after catalog is ready; admin/build preview stays solo.
   const { ui: presenceUi, sceneApi: presenceScene, enterOffline } =
@@ -80,6 +81,7 @@ export function ExhibitionApp() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const kind = params.get("catalog") === "draft" ? "draft" : "live";
+    setCatalogKind(kind);
     const tok = params.get("token");
     const mode = params.get("mode");
     setPreviewLite(mode === "preview-lite");
@@ -211,12 +213,16 @@ export function ExhibitionApp() {
     }
   }
 
+  // Draft admin preview must show unpublished placed works (Place palette parity).
+  // Live catalog API already strips unpublished; keep a client filter as belt-and-suspenders.
   const artworks = useMemo(() => {
     if (!catalog) return [];
-    return catalog.artworks
-      .filter((a) => a.published)
-      .sort((a, b) => a.sort - b.sort);
-  }, [catalog]);
+    const list =
+      catalogKind === "draft"
+        ? catalog.artworks
+        : catalog.artworks.filter((a) => a.published);
+    return [...list].sort((a, b) => a.sort - b.sort);
+  }, [catalog, catalogKind]);
 
   const copy = UI[locale];
   const settings = catalog ? normalizeSettings(catalog.settings) : null;
