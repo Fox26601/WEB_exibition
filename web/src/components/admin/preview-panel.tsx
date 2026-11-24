@@ -235,7 +235,10 @@ export function PreviewPanel() {
     await reorder(ids);
   }
 
-  async function saveArtwork(artwork: Artwork) {
+  async function saveArtwork(
+    artwork: Artwork,
+    opts?: { successMessage?: string },
+  ): Promise<void> {
     setBusy(true);
     setMessage("");
     try {
@@ -254,7 +257,7 @@ export function PreviewPanel() {
       });
       setDirty(true);
       setEditing(null);
-      setMessage("Saved");
+      setMessage(opts?.successMessage ?? "Saved");
       await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
@@ -288,7 +291,15 @@ export function PreviewPanel() {
   }
 
   async function togglePublished(art: Artwork) {
-    await saveArtwork({ ...art, published: !art.published });
+    const nextPublished = !art.published;
+    await saveArtwork(
+      { ...art, published: nextPublished },
+      {
+        successMessage: nextPublished
+          ? "Marked published in draft — Publish to live site to show on wall"
+          : "Unpublished in draft — Publish to live site to remove from wall",
+      },
+    );
   }
 
   function startNew() {

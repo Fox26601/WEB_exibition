@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
-import { loadCatalog, publicArtworks, type CatalogKind } from "@/lib/catalog";
+import { loadCatalog, type CatalogKind } from "@/lib/catalog";
+import { liveCatalogView } from "@/lib/live-catalog-view";
 import { verifyPreviewToken } from "@/lib/preview-token";
 
 export async function GET(req: NextRequest) {
@@ -17,22 +18,9 @@ export async function GET(req: NextRequest) {
   }
 
   const catalog = await loadCatalog(kind);
-  const payload =
-    kind === "live"
-      ? (() => {
-          const arts = publicArtworks(catalog);
-          const pubIds = new Set(arts.map((a) => a.id));
-          const layout = catalog.layout
-            ? {
-                ...catalog.layout,
-                placements: (catalog.layout.placements || []).filter((p) =>
-                  pubIds.has(p.artworkId),
-                ),
-              }
-            : catalog.layout;
-          return { ...catalog, artworks: arts, layout };
-        })()
-      : catalog;
+  // Live: strip unpublished artworks + their wall/floor placements so Unpublish
+  // + Publish catalog actually clears them from the exhibition wall.
+  const payload = kind === "live" ? liveCatalogView(catalog) : catalog;
 
   return NextResponse.json(payload, {
     headers: {

@@ -14,9 +14,15 @@ import { ARTWORK_PICK_SIZE, SCULPTURE_PICK_SIZE } from "./artwork-interact";
 import {
   posterCanvasOrientation,
   posterCanvasOrientationForPlacement,
+  type PosterCanvasOrientation,
 } from "./poster-canvas-orientation";
 import { paintingPoseFromPlacement, sculpturePoseFromPlacement } from "./painting-pose";
 import { coerceSculptureFloorPlacement } from "./sculpture-seed";
+import {
+  createWallVideoTexture,
+  wallVideoHasFrame,
+  type WallVideoHandle,
+} from "./wall-video";
 
 const FRAME_COLORS: Record<string, number> = {
   thin: 0x1a140f,
@@ -26,10 +32,74 @@ const FRAME_COLORS: Record<string, number> = {
   none: 0x111111,
 };
 
+type MeshDisposable =
+  | THREE.Material
+  | THREE.Texture
+  | WallVideoHandle
+  | { dispose: () => void };
+
 export type PlacementMeshesResult = {
   pickRoots: THREE.Object3D[];
   dispose: () => void;
 };
+
+function disposeMeshResources(list: MeshDisposable[]): void {
+  for (const d of list) {
+    if ("dispose" in d && typeof d.dispose === "function") d.dispose();
+  }
+}
+
+function orientCanvasTexture(
+  tex: THREE.Texture,
+  orient: PosterCanvasOrientation,
+): void {
+  if (orient.flipV) flipGalleryPosterTextureV(tex);
+  else if (orient.textureMirror) orientGalleryPosterTexture(tex);
+}
+
+/**
+ * Still poster first (avoids grey frame), then muted looping VideoTexture once a frame is ready.
+ */
+function bindPaintingCanvasMedia(
+  art: Artwork,
+  canvasMat: THREE.MeshBasicMaterial,
+  orient: PosterCanvasOrientation,
+  disposables: MeshDisposable[],
+): void {
+  const posterUrl =
+    art.type === "video"
+      ? art.urlPoster || art.urlWall || art.urlFull
+      : art.urlWall || art.urlFull || art.urlPoster;
+  let videoApplied = false;
+
+  if (posterUrl) {
+    void loadColorTexture(posterUrl).then((tex) => {
+      if (!tex || videoApplied) return;
+      orientCanvasTexture(tex, orient);
+      applyTextureToMaterial(canvasMat, tex);
+      disposables.push(tex);
+    });
+  }
+
+  if (art.type !== "video" || !art.urlVideo?.trim()) return;
+
+  const handle = createWallVideoTexture(art.urlVideo.trim());
+  if (!handle) return;
+  disposables.push(handle);
+
+  const applyVideo = () => {
+    if (videoApplied) return;
+    videoApplied = true;
+    orientCanvasTexture(handle.texture, orient);
+    applyTextureToMaterial(canvasMat, handle.texture);
+  };
+
+  if (wallVideoHasFrame(handle.video)) {
+    applyVideo();
+  } else {
+    handle.video.addEventListener("loadeddata", applyVideo, { once: true });
+  }
+}
 
 export function addPlacementsToScene(
   scene: THREE.Scene,
@@ -40,7 +110,7 @@ export function addPlacementsToScene(
   const layout = catalog.layout;
   const placements = layout?.placements ?? [];
   const pickRoots: THREE.Object3D[] = [];
-  const disposables: Array<THREE.Material | THREE.Texture> = [];
+  const disposables: MeshDisposable[] = [];
   const byId = new Map(artworks.map((a) => [a.id, a]));
 
   if (!layout || placements.length === 0) {
@@ -82,11 +152,7 @@ export function addPlacementsToScene(
 
   return {
     pickRoots,
-    dispose: () => {
-      for (const d of disposables) {
-        if ("dispose" in d && typeof d.dispose === "function") d.dispose();
-      }
-    },
+    dispose: () => disposeMeshResources(disposables),
   };
 }
 
@@ -96,7 +162,7 @@ function buildPaintingGroup(
   pose: NonNullable<ReturnType<typeof paintingPoseFromPlacement>>,
   layout: GalleryLayout,
   _loader: THREE.TextureLoader,
-  disposables: Array<THREE.Material | THREE.Texture>,
+  disposables: MeshDisposable[],
 ): THREE.Group {
   const group = new THREE.Group();
   group.position.set(pose.position.x, pose.position.y, pose.position.z);
@@ -154,16 +220,7 @@ function buildPaintingGroup(
   canvas.userData.isCanvas = true;
   group.add(canvas);
 
-  const texUrl = art.urlWall || art.urlFull || art.urlPoster;
-  if (texUrl) {
-    void loadColorTexture(texUrl).then((tex) => {
-      if (!tex) return;
-      if (orient.flipV) flipGalleryPosterTextureV(tex);
-      else if (orient.textureMirror) orientGalleryPosterTexture(tex);
-      applyTextureToMaterial(canvasMat, tex);
-      disposables.push(tex);
-    });
-  }
+  bindPaintingCanvasMedia(art, canvasMat, orient, disposables);
 
   if (art.type === "video") {
     const hp = new THREE.Mesh(
@@ -182,7 +239,7 @@ function buildPaintingGroup(
 function buildSculptureGroup(
   art: Artwork,
   pose: NonNullable<ReturnType<typeof sculpturePoseFromPlacement>>,
-  disposables: Array<THREE.Material | THREE.Texture>,
+  disposables: MeshDisposable[],
 ): THREE.Group {
   const group = new THREE.Group();
   // Feet on raised gallery floor (same surface visitors walk on).
@@ -272,7 +329,7 @@ export function addCorridorArtworks(
   loader: THREE.TextureLoader,
 ): PlacementMeshesResult {
   const pickRoots: THREE.Object3D[] = [];
-  const disposables: Array<THREE.Material | THREE.Texture> = [];
+  const disposables: MeshDisposable[] = [];
   let sculptureSlot = 0;
   artworks.forEach((art, index) => {
     // Models are floor volumes on the raised gallery — never wall canvases.
@@ -334,16 +391,12 @@ export function addCorridorArtworks(
     canvas.userData.isCanvas = true;
     group.add(canvas);
 
-    const texUrl = art.urlWall || art.urlFull || art.urlPoster;
-    if (texUrl) {
-      void loadColorTexture(texUrl).then((tex) => {
-        if (!tex) return;
-        const orient = posterCanvasOrientation(art.id);
-        if (orient.textureMirror) orientGalleryPosterTexture(tex);
-        applyTextureToMaterial(canvasMat, tex);
-        disposables.push(tex);
-      });
-    }
+    bindPaintingCanvasMedia(
+      art,
+      canvasMat,
+      posterCanvasOrientation(art.id),
+      disposables,
+    );
 
     if (art.type === "video") {
       const hp = new THREE.Mesh(
@@ -362,8 +415,6 @@ export function addCorridorArtworks(
 
   return {
     pickRoots,
-    dispose: () => {
-      for (const d of disposables) d.dispose();
-    },
+    dispose: () => disposeMeshResources(disposables),
   };
 }

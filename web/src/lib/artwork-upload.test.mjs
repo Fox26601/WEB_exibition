@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   ARTWORK_UPLOAD_ACCEPT,
+  VIDEO_UPLOAD_CONTENT_TYPES,
   detectArtworkUploadKind,
   describeUploadLimit,
   extForKind,
+  contentTypeForKind,
   maxBytesForKind,
   validateArtworkUpload,
   IMAGE_MAX_BYTES,
@@ -20,11 +22,22 @@ describe("detectArtworkUploadKind", () => {
     assert.equal(detectArtworkUploadKind("x.gif", "image/gif"), "image");
   });
 
-  it("detects MP4 video from MIME or extension", () => {
+  it("detects MP4 and iPhone/browser video containers", () => {
     assert.equal(detectArtworkUploadKind("clip.mp4", "video/mp4"), "video");
     assert.equal(detectArtworkUploadKind("clip.MP4", ""), "video");
     assert.equal(
       detectArtworkUploadKind("mystery.bin", "video/mp4"),
+      "video",
+    );
+    assert.equal(
+      detectArtworkUploadKind("IMG_1234.MOV", "video/quicktime"),
+      "video",
+    );
+    assert.equal(detectArtworkUploadKind("clip.mov", ""), "video");
+    assert.equal(detectArtworkUploadKind("clip.m4v", "video/x-m4v"), "video");
+    assert.equal(detectArtworkUploadKind("clip.webm", "video/webm"), "video");
+    assert.equal(
+      detectArtworkUploadKind("phone.mov", "application/octet-stream"),
       "video",
     );
   });
@@ -45,7 +58,8 @@ describe("detectArtworkUploadKind", () => {
   });
 
   it("rejects unsupported video containers and unknown types", () => {
-    assert.equal(detectArtworkUploadKind("clip.webm", "video/webm"), null);
+    assert.equal(detectArtworkUploadKind("clip.avi", "video/x-msvideo"), null);
+    assert.equal(detectArtworkUploadKind("clip.mkv", "video/x-matroska"), null);
     assert.equal(detectArtworkUploadKind("mesh.obj", ""), null);
     assert.equal(detectArtworkUploadKind("mesh.fbx", "application/octet-stream"), null);
     assert.equal(detectArtworkUploadKind("notes.txt", "text/plain"), null);
@@ -65,6 +79,31 @@ describe("validateArtworkUpload", () => {
       assert.equal(result.ext, "png");
       assert.equal(result.contentType, "image/png");
       assert.equal(result.maxBytes, IMAGE_MAX_BYTES);
+    }
+  });
+
+  it("accepts iPhone MOV and preserves QuickTime content type", () => {
+    const mov = validateArtworkUpload({
+      name: "IMG_0001.MOV",
+      type: "video/quicktime",
+      size: 1024 * 1024,
+    });
+    assert.equal(mov.ok, true);
+    if (mov.ok) {
+      assert.equal(mov.kind, "video");
+      assert.equal(mov.ext, "mov");
+      assert.equal(mov.contentType, "video/quicktime");
+    }
+
+    const webm = validateArtworkUpload({
+      name: "clip.webm",
+      type: "video/webm",
+      size: 2048,
+    });
+    assert.equal(webm.ok, true);
+    if (webm.ok) {
+      assert.equal(webm.ext, "webm");
+      assert.equal(webm.contentType, "video/webm");
     }
   });
 
@@ -132,11 +171,15 @@ describe("validateArtworkUpload", () => {
 });
 
 describe("artwork upload helpers", () => {
-  it("exposes accept list covering image, video, and 3D", () => {
+  it("exposes accept list covering image, iPhone video, and 3D", () => {
     assert.match(ARTWORK_UPLOAD_ACCEPT, /image\/jpeg/);
     assert.match(ARTWORK_UPLOAD_ACCEPT, /video\/mp4/);
+    assert.match(ARTWORK_UPLOAD_ACCEPT, /video\/quicktime/);
+    assert.match(ARTWORK_UPLOAD_ACCEPT, /\.mov/);
+    assert.match(ARTWORK_UPLOAD_ACCEPT, /\.webm/);
     assert.match(ARTWORK_UPLOAD_ACCEPT, /\.glb/);
     assert.match(ARTWORK_UPLOAD_ACCEPT, /\.gltf/);
+    assert.ok(VIDEO_UPLOAD_CONTENT_TYPES.includes("video/quicktime"));
   });
 
   it("maps kind to size limits and extensions", () => {
@@ -146,5 +189,10 @@ describe("artwork upload helpers", () => {
     assert.equal(describeUploadLimit("model"), "40MB");
     assert.equal(extForKind("model", "a.gltf", ""), "gltf");
     assert.equal(extForKind("video", "a.mp4", ""), "mp4");
+    assert.equal(extForKind("video", "a.MOV", "video/quicktime"), "mov");
+    assert.equal(
+      contentTypeForKind("video", "a.mov", "video/quicktime"),
+      "video/quicktime",
+    );
   });
 });

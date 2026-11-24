@@ -78,7 +78,7 @@ Without `BLOB_READ_WRITE_TOKEN`, catalog and media are stored under `web/.data/`
 | Asset | Limit | Output |
 |-------|-------|--------|
 | Image upload | 8 MB raw | wall ≤1024px WebP, full ≤2048px WebP |
-| Video upload | 80 MB | MP4 H.264; poster still on wall |
+| Video upload | 80 MB | MP4 / MOV / M4V / WebM (H.264, HEVC, VP9 as the browser allows); poster still + muted looping VideoTexture on the wall (playsInline for iOS Safari). Prefer H.264 MP4 for cross-browser playback — there is no server-side transcode. |
 | Catalog | small JSON | `catalog-live.json` + `catalog-draft.json`; publish writes `catalog-v{n}.json` |
 
 Uploads use a server-issued Blob token (direct client → Blob). Locally, multipart upload writes into `web/.data/`.

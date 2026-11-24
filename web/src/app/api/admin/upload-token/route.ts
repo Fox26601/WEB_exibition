@@ -8,15 +8,22 @@ import {
   contentTypeForKind,
   maxBytesForKind,
   validateArtworkUpload,
+  VIDEO_UPLOAD_CONTENT_TYPES,
   type ArtworkUploadKind,
 } from "@/lib/artwork-upload";
 
 function kindFromPathname(pathname: string): ArtworkUploadKind {
-  if (pathname.includes("/video/") || pathname.endsWith(".mp4")) return "video";
+  const lower = pathname.toLowerCase();
   if (
-    pathname.includes("/model/") ||
-    pathname.endsWith(".glb") ||
-    pathname.endsWith(".gltf")
+    lower.includes("/video/") ||
+    /\.(mp4|mov|m4v|webm)$/.test(lower)
+  ) {
+    return "video";
+  }
+  if (
+    lower.includes("/model/") ||
+    lower.endsWith(".glb") ||
+    lower.endsWith(".gltf")
   ) {
     return "model";
   }
@@ -94,7 +101,7 @@ export async function POST(req: NextRequest) {
         return {
           allowedContentTypes:
             kind === "video"
-              ? ["video/mp4"]
+              ? [...VIDEO_UPLOAD_CONTENT_TYPES]
               : kind === "model"
                 ? [
                     "model/gltf-binary",
