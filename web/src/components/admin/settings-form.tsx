@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BookletPage, CatalogSettings } from "@/lib/catalog-types";
+import type { BookletPage, Catalog, CatalogSettings } from "@/lib/catalog-types";
 import {
   LOCALES,
   emptyBookletPage,
   normalizeSettings,
 } from "@/lib/catalog-types";
+import { readAdminJson } from "@/lib/admin-api";
 
 const AUTOSAVE_MS = 700;
 
@@ -17,18 +19,15 @@ export function SettingsForm() {
   const [posterBusy, setPosterBusy] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipAutosave = useRef(true);
+  const pendingSettings = useRef<CatalogSettings | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/settings")
       .then(async (r) => {
-        const data = await r.json().catch(() => null);
-        if (!r.ok) {
-          throw new Error(
-            typeof data?.error === "string"
-              ? `${r.status}: ${data.error}`
-              : `Settings load failed (${r.status})`,
-          );
-        }
+        const data = await readAdminJson<CatalogSettings>(
+          r,
+          "Settings load failed",
+        );
         setSettings(normalizeSettings(data));
         skipAutosave.current = true;
       })
@@ -47,8 +46,10 @@ export function SettingsForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(normalizeSettings(next)),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(JSON.stringify(data.error));
+      const data = await readAdminJson<{ settings: CatalogSettings }>(
+        res,
+        "Settings save failed",
+      );
       setSettings(normalizeSettings(data.settings));
       setMessage(label);
     } catch (e) {
@@ -57,6 +58,42 @@ export function SettingsForm() {
       setBusy(false);
     }
   }, []);
+
+  async function publishCatalog() {
+    if (!confirm("Publish draft catalog (including settings) to live?")) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+      const pending = pendingSettings.current ?? settings;
+      if (pending) {
+        const saveRes = await fetch("/api/admin/settings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(normalizeSettings(pending)),
+        });
+        await readAdminJson(saveRes, "Settings save failed");
+        pendingSettings.current = null;
+      }
+      const res = await fetch("/api/admin/publish", { method: "POST" });
+      const data = await readAdminJson<{ catalog: Catalog }>(
+        res,
+        "Publish failed",
+      );
+      if (data.catalog?.settings) {
+        setSettings(normalizeSettings(data.catalog.settings));
+        skipAutosave.current = true;
+      }
+      setMessage(`Published v${data.catalog.version} to live`);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Error");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (!settings) return;
@@ -74,7 +111,12 @@ export function SettingsForm() {
   }, [settings, persist]);
 
   function patch(partial: Partial<CatalogSettings>) {
-    setSettings((prev) => (prev ? { ...prev, ...partial } : prev));
+    setSettings((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...partial };
+      pendingSettings.current = next;
+      return next;
+    });
   }
 
   function updateBookletPage(index: number, page: BookletPage) {
@@ -421,22 +463,47 @@ export function SettingsForm() {
       </section>
 
       {message ? (
-        <p className="mb-4 text-sm text-[var(--amber-bright)]">{message}</p>
+        <p
+          className={`mb-4 border px-3 py-2 text-sm ${
+            /failed|error|403|4\d\d|5\d\d/i.test(message)
+              ? "border-[#e08a7a]/50 bg-[#2a1612] text-[#e08a7a]"
+              : "border-[var(--line)] text-[var(--amber-bright)]"
+          }`}
+          role="status"
+        >
+          {message}
+        </p>
       ) : null}
 
-      <button
-        type="button"
-        className="btn btn-solid"
-        disabled={busy}
-        onClick={() =>
-          void persist(
-            settings,
-            "Settings saved (draft). Publish catalog to push live.",
-          )
-        }
-      >
-        Save settings
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className="btn btn-solid"
+          disabled={busy}
+          onClick={() =>
+            void persist(
+              settings,
+              "Settings saved (draft). Publish catalog to push live.",
+            )
+          }
+        >
+          Save settings
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          onClick={() => void publishCatalog()}
+        >
+          Publish to live
+        </button>
+        <Link
+          href="/admin/preview"
+          className="text-sm text-[var(--amber-bright)] underline-offset-2 hover:underline"
+        >
+          Open Layout
+        </Link>
+      </div>
     </div>
   );
 }

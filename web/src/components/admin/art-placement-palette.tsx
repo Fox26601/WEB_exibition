@@ -172,23 +172,21 @@ function PaletteItem({
   const t = adminEditorStrings(locale);
 
   return (
-    <div className="flex gap-2 select-none">
-      <div
-        className="flex shrink-0 gap-2 touch-none"
-        style={{
-          cursor: dragDisabled ? "not-allowed" : "grab",
-          touchAction: "none",
-        }}
-        onPointerDown={(e: ReactPointerEvent) => {
-          if (dragDisabled || e.button !== 0) return;
-          onBeginDrag(e);
-        }}
-      >
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center bg-[#0e0c0a] text-[0.65rem]">
-          {index}
-        </span>
-        <ArtworkThumb art={art} sizeClassName="h-12 w-12" />
-      </div>
+    <div
+      className="flex gap-2 select-none touch-none"
+      style={{
+        cursor: dragDisabled ? "not-allowed" : "grab",
+        touchAction: "none",
+      }}
+      onPointerDown={(e: ReactPointerEvent) => {
+        if (dragDisabled || e.button !== 0) return;
+        onBeginDrag(e);
+      }}
+    >
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center bg-[#0e0c0a] text-[0.65rem]">
+        {index}
+      </span>
+      <ArtworkThumb art={art} sizeClassName="h-12 w-12" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-xs">
           {pickLocalized(art.title, locale) || t.untitled}

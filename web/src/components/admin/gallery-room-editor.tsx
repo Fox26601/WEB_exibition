@@ -57,8 +57,9 @@ import {
   type Vec2,
 } from "@/lib/layout-geometry";
 import {
-  EDITOR_PLAN_PAD,
-  EDITOR_PLAN_SCALE,
+  EDITOR_PLAN_VIEW_H,
+  EDITOR_PLAN_VIEW_W,
+  clientToEditorWorld,
   editorPlanOrigin,
   worldToEditorSvg,
   type EditorPan,
@@ -78,10 +79,8 @@ type Props = {
   locale?: Locale;
 };
 
-const SCALE = EDITOR_PLAN_SCALE;
-const PAD = EDITOR_PLAN_PAD;
-const VIEW_W = 720;
-const VIEW_H = 520;
+const VIEW_W = EDITOR_PLAN_VIEW_W;
+const VIEW_H = EDITOR_PLAN_VIEW_H;
 const MOVE_GAIN = 0.45;
 const STRETCH_GAIN = 0.25;
 const DRAG_THRESHOLD_PX = 6;
@@ -98,17 +97,8 @@ function svgToWorld(
   svg: SVGSVGElement,
   origin: Vec2,
   pan: PanOffset,
-): Vec2 {
-  const pt = svg.createSVGPoint();
-  pt.x = clientX;
-  pt.y = clientY;
-  const ctm = svg.getScreenCTM();
-  if (!ctm) return { x: origin.x, z: origin.z };
-  const sp = pt.matrixTransform(ctm.inverse());
-  return {
-    x: origin.x + (sp.x - PAD - pan.x) / SCALE,
-    z: origin.z + (sp.y - PAD - pan.y) / SCALE,
-  };
+): Vec2 | null {
+  return clientToEditorWorld(clientX, clientY, svg, origin, pan);
 }
 
 function clientDeltaToSvg(
@@ -246,6 +236,15 @@ export function GalleryRoomEditor({
   layoutLiveRef.current = layout;
   const panLiveRef = useRef(panOffset);
   panLiveRef.current = panOffset;
+  const placeEnabledOnceRef = useRef(false);
+
+  // Catalog loads async: first mount often has artworks=[] so mode stuck on Plan.
+  useEffect(() => {
+    const pe = Boolean(artworks?.length && locale);
+    if (!pe || placeEnabledOnceRef.current) return;
+    placeEnabledOnceRef.current = true;
+    setEditorMode("place");
+  }, [artworks, locale]);
 
   const normalized = useMemo(() => normalizeLayout(layout), [layout]);
   const origin = useMemo(
@@ -328,21 +327,20 @@ export function GalleryRoomEditor({
     [origin],
   );
 
-  const endPlaceDrag = useCallback(
-    (clientX: number, clientY: number) => {
-      const drag = placeDragRef.current;
-      placeDragRef.current = null;
-      setGhost(null);
-      if (!drag) return;
+  const commitDropAtClient = useCallback(
+    (art: Artwork, clientX: number, clientY: number) => {
       const world = resolveWorldAtClient(clientX, clientY);
-      if (!world) return;
+      if (!world) {
+        showPlaceToast(t.dropOutside);
+        return;
+      }
       const current = normalizeLayout(layoutLiveRef.current);
       const result = evaluateArtworkDrop(
-        drag.art,
+        art,
         world,
         current,
         paletteFrame,
-        drag.art.id,
+        art.id,
       );
       if (!result.ok) {
         const msg =
@@ -355,13 +353,51 @@ export function GalleryRoomEditor({
         return;
       }
       let placement = result.placement;
-      const prev = current.placements.find((p) => p.artworkId === drag.art.id);
+      const prev = current.placements.find((p) => p.artworkId === art.id);
       if (prev?.kind === "painting" && prev.wallHeightT != null) {
         placement = { ...placement, wallHeightT: prev.wallHeightT };
       }
       upsertPlacement(placement);
     },
     [paletteFrame, resolveWorldAtClient, showPlaceToast, t, upsertPlacement],
+  );
+
+  const endPlaceDrag = useCallback(
+    (clientX: number, clientY: number) => {
+      const drag = placeDragRef.current;
+      placeDragRef.current = null;
+      setGhost(null);
+      if (!drag) return;
+      commitDropAtClient(drag.art, clientX, clientY);
+    },
+    [commitDropAtClient],
+  );
+
+  const trackPlaceGhost = useCallback(
+    (art: Artwork, clientX: number, clientY: number) => {
+      const world = resolveWorldAtClient(clientX, clientY);
+      if (!world) {
+        setGhost(null);
+        return;
+      }
+      const current = normalizeLayout(layoutLiveRef.current);
+      const result = evaluateArtworkDrop(
+        art,
+        world,
+        current,
+        paletteFrame,
+        art.id,
+      );
+      let ghostWorld = world;
+      if (result.ok) {
+        ghostWorld = result.world;
+      } else if (art.type !== "model") {
+        const hint = wallSnapPreviewWorld(world, current.rooms);
+        if (hint) ghostWorld = hint;
+      }
+      setGhost({ world: ghostWorld, ok: result.ok });
+    },
+    [paletteFrame, resolveWorldAtClient],
   );
 
   const runPlacementDrag = useCallback(
@@ -377,30 +413,6 @@ export function GalleryRoomEditor({
       if (editorMode !== "place") return;
       let dragging = immediate;
 
-      const trackPointer = (clientX: number, clientY: number) => {
-        const world = resolveWorldAtClient(clientX, clientY);
-        if (!world) {
-          setGhost(null);
-          return;
-        }
-        const current = normalizeLayout(layoutLiveRef.current);
-        const result = evaluateArtworkDrop(
-          art,
-          world,
-          current,
-          paletteFrame,
-          art.id,
-        );
-        let ghostWorld = world;
-        if (result.ok) {
-          ghostWorld = result.world;
-        } else if (art.type !== "model") {
-          const hint = wallSnapPreviewWorld(world, current.rooms);
-          if (hint) ghostWorld = hint;
-        }
-        setGhost({ world: ghostWorld, ok: result.ok });
-      };
-
       const onMove = (ev: PointerEvent) => {
         if (!dragging) {
           const dist = Math.hypot(
@@ -410,15 +422,23 @@ export function GalleryRoomEditor({
           if (dist < DRAG_THRESHOLD_PX) return;
           dragging = true;
           placeDragRef.current = { art, source };
-          captureEl.setPointerCapture?.(ev.pointerId);
+          try {
+            captureEl.setPointerCapture?.(ev.pointerId);
+          } catch {
+            /* capture may fail if element left the tree */
+          }
           ev.preventDefault();
         }
-        trackPointer(ev.clientX, ev.clientY);
+        trackPlaceGhost(art, ev.clientX, ev.clientY);
       };
 
       const finish = (clientX: number, clientY: number, ev: PointerEvent) => {
-        if (captureEl.hasPointerCapture(ev.pointerId)) {
-          captureEl.releasePointerCapture(ev.pointerId);
+        try {
+          if (captureEl.hasPointerCapture?.(ev.pointerId)) {
+            captureEl.releasePointerCapture(ev.pointerId);
+          }
+        } catch {
+          /* ignore */
         }
         if (dragging) {
           endPlaceDrag(clientX, clientY);
@@ -435,22 +455,28 @@ export function GalleryRoomEditor({
         finish(ev.clientX, ev.clientY, ev);
       };
 
+      try {
+        captureEl.setPointerCapture?.(pointerId);
+      } catch {
+        /* optional early capture for touch */
+      }
+
       if (immediate) {
         placeDragRef.current = { art, source };
-        captureEl.setPointerCapture?.(pointerId);
-        trackPointer(startClientX, startClientY);
+        trackPlaceGhost(art, startClientX, startClientY);
       }
 
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
       window.addEventListener("pointercancel", onUp);
     },
-    [editorMode, endPlaceDrag, paletteFrame, resolveWorldAtClient],
+    [editorMode, endPlaceDrag, trackPlaceGhost],
   );
 
   const beginPaletteDrag = useCallback(
     (art: Artwork, e: ReactPointerEvent) => {
       if (editorMode !== "place" || e.button !== 0) return;
+      e.preventDefault();
       e.stopPropagation();
       runPlacementDrag(
         art,
@@ -661,6 +687,7 @@ export function GalleryRoomEditor({
         origin,
         panLiveRef.current,
       );
+      if (!world) return;
       dragRef.current = {
         mode: "move",
         targetId: ENTRANCE_ROOM_ID,
@@ -694,6 +721,7 @@ export function GalleryRoomEditor({
       origin,
       panLiveRef.current,
     );
+    if (!world) return;
     dragRef.current = {
       mode,
       targetId,
@@ -745,6 +773,7 @@ export function GalleryRoomEditor({
         origin,
         panLiveRef.current,
       );
+      if (!world) return;
       const dx = (world.x - drag.startWorld.x) * MOVE_GAIN;
       const dz = (world.z - drag.startWorld.z) * MOVE_GAIN;
 

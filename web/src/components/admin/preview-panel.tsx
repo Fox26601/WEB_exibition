@@ -56,6 +56,7 @@ export function PreviewPanel() {
   const layoutRef = useRef<GalleryLayout>(emptyLayout());
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingLayout = useRef<GalleryLayout | null>(null);
+  const saveGeneration = useRef(0);
 
   const refresh = useCallback(async () => {
     const [catRes, tokRes, layoutMeta] = await Promise.all([
@@ -114,6 +115,7 @@ export function PreviewPanel() {
   const liveExhibitionSrc = `/exhibition?lang=${locale}&adminBuild=1&_=${encodeURIComponent(liveUpdatedAt || "live")}`;
 
   const persistLayout = useCallback(async (layout: GalleryLayout) => {
+    const gen = saveGeneration.current;
     setSaveStatus("saving");
     setSaveError("");
     try {
@@ -127,6 +129,8 @@ export function PreviewPanel() {
         layout: GalleryLayout;
         dirty?: boolean;
       }>(res, "Layout save failed");
+      // Ignore stale responses if a newer local edit superseded this PUT.
+      if (gen !== saveGeneration.current) return;
       setCatalog((prev) =>
         prev
           ? { ...data.catalog, layout: ensureLayout(data.catalog.layout) }
@@ -136,6 +140,7 @@ export function PreviewPanel() {
       setDirty(Boolean(data.dirty));
       setSaveStatus("saved");
     } catch (e) {
+      if (gen !== saveGeneration.current) return;
       setSaveStatus("error");
       setSaveError(e instanceof Error ? e.message : "Autosave failed");
     }
@@ -145,6 +150,8 @@ export function PreviewPanel() {
     (layout: GalleryLayout) => {
       pendingLayout.current = layout;
       layoutRef.current = layout;
+      // Bump so an in-flight older PUT cannot overwrite newer local placements.
+      saveGeneration.current += 1;
       setCatalog((prev) => (prev ? { ...prev, layout } : prev));
       setDirty(true);
       if (saveTimer.current) clearTimeout(saveTimer.current);

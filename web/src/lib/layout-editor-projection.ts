@@ -10,6 +10,8 @@ import {
 /** Must match `gallery-room-editor.tsx` plan view. */
 export const EDITOR_PLAN_SCALE = 36;
 export const EDITOR_PLAN_PAD = 40;
+export const EDITOR_PLAN_VIEW_W = 720;
+export const EDITOR_PLAN_VIEW_H = 520;
 
 export type EditorPan = { x: number; y: number };
 
@@ -56,6 +58,39 @@ export function editorSvgToWorld(
     x: origin.x + (sx - EDITOR_PLAN_PAD - pan.x) / EDITOR_PLAN_SCALE,
     z: origin.z + (sy - EDITOR_PLAN_PAD - pan.y) / EDITOR_PLAN_SCALE,
   };
+}
+
+/**
+ * Map viewport client coords → SVG user space via getBoundingClientRect.
+ * Prefer this over createSVGPoint/getScreenCTM (fragile across browsers).
+ */
+export function clientToEditorSvg(
+  clientX: number,
+  clientY: number,
+  svg: Pick<SVGSVGElement, "getBoundingClientRect">,
+  viewW = EDITOR_PLAN_VIEW_W,
+  viewH = EDITOR_PLAN_VIEW_H,
+): { x: number; y: number } | null {
+  const rect = svg.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return null;
+  return {
+    x: ((clientX - rect.left) / rect.width) * viewW,
+    y: ((clientY - rect.top) / rect.height) * viewH,
+  };
+}
+
+export function clientToEditorWorld(
+  clientX: number,
+  clientY: number,
+  svg: Pick<SVGSVGElement, "getBoundingClientRect">,
+  origin: Vec2,
+  pan: EditorPan = { x: 0, y: 0 },
+  viewW = EDITOR_PLAN_VIEW_W,
+  viewH = EDITOR_PLAN_VIEW_H,
+): Vec2 | null {
+  const sp = clientToEditorSvg(clientX, clientY, svg, viewW, viewH);
+  if (!sp) return null;
+  return editorSvgToWorld(sp.x, sp.y, origin, pan);
 }
 
 export function editorRoomPolygons(

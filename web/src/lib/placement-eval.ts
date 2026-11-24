@@ -38,39 +38,60 @@ function paintingFrame(art: Artwork, paletteFrame: FrameId): FrameId {
   return paletteFrame;
 }
 
-export function wallSnapPreviewWorld(
-  world: Vec2,
-  rooms: GalleryRoom[],
-): Vec2 | null {
-  const snap = bestWallSnap(world, rooms);
-  if (!snap) return null;
-  const tAlong = Math.max(T_ALONG_MIN, Math.min(T_ALONG_MAX, snap.t));
-  return pointAlongEdge(snap.a, snap.b, tAlong);
-}
-
-function bestWallSnap(
-  world: Vec2,
-  rooms: GalleryRoom[],
-): {
+type WallSnapHit = {
   room: GalleryRoom;
   edgeIndex: number;
   t: number;
   dist: number;
   a: Vec2;
   b: Vec2;
-} | null {
-  let best: {
-    room: GalleryRoom;
-    edgeIndex: number;
-    t: number;
-    dist: number;
-    a: Vec2;
-    b: Vec2;
-  } | null = null;
+};
+
+export function wallSnapPreviewWorld(
+  world: Vec2,
+  rooms: GalleryRoom[],
+): Vec2 | null {
+  const snap = resolvePaintingWallSnap(world, rooms);
+  if (!snap) return null;
+  const tAlong = Math.max(T_ALONG_MIN, Math.min(T_ALONG_MAX, snap.t));
+  return pointAlongEdge(snap.a, snap.b, tAlong);
+}
+
+/**
+ * Prefer the room containing the pointer (snap to its nearest wall even from
+ * the center). Outside rooms, only snap when within MAX_WALL_SNAP_DIST.
+ */
+function resolvePaintingWallSnap(
+  world: Vec2,
+  rooms: GalleryRoom[],
+): WallSnapHit | null {
+  const containing = findRoomAtPoint(world, rooms);
+  if (containing) {
+    const hit = nearestWall(world, containing);
+    if (hit) {
+      return {
+        room: containing,
+        edgeIndex: hit.edgeIndex,
+        t: hit.t,
+        dist: hit.dist,
+        a: hit.a,
+        b: hit.b,
+      };
+    }
+  }
+  return bestWallSnapWithin(world, rooms, MAX_WALL_SNAP_DIST);
+}
+
+function bestWallSnapWithin(
+  world: Vec2,
+  rooms: GalleryRoom[],
+  maxDist: number,
+): WallSnapHit | null {
+  let best: WallSnapHit | null = null;
 
   for (const room of rooms) {
     const hit = nearestWall(world, room);
-    if (!hit || hit.dist > MAX_WALL_SNAP_DIST) continue;
+    if (!hit || hit.dist > maxDist) continue;
     if (!best || hit.dist < best.dist) {
       best = {
         room,
@@ -118,7 +139,7 @@ export function evaluateArtworkDrop(
     return { ok: true, placement, world };
   }
 
-  const snap = bestWallSnap(world, layout.rooms);
+  const snap = resolvePaintingWallSnap(world, layout.rooms);
   if (!snap) {
     return { ok: false, reason: "no_snap" };
   }
