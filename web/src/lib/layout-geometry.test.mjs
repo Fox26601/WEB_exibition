@@ -105,7 +105,7 @@ test("square drag snap to triangle slant uses 60° not fuzzy 45", () => {
 });
 
 test("entrance portal snap is not overridden by square rotation assist", () => {
-  const entrance = entranceAsRoom({ x: 0, z: -3, rotation: 0 });
+  const entrance = entranceAsRoom({ x: 0, z: -2, rotation: 0 });
   // Fixed moderate scale near portal — covers assist vs foyer, not default span.
   const square = {
     id: "sq",

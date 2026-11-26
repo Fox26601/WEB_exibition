@@ -2,11 +2,12 @@ import * as THREE from "three";
 import type { Catalog, GalleryEntrancePose, GalleryLayout } from "@/lib/catalog-types";
 import { DEFAULT_ENTRANCE_POSE, layoutIsEmpty } from "@/lib/catalog-types";
 import {
+  ENTRANCE_ARCH_WIDTH as LAYOUT_ARCH_WIDTH,
   ENTRANCE_DEPTH,
   ENTRANCE_WIDTH,
 } from "@/lib/layout-geometry";
-import { ROOM } from "@/lib/room";
 import {
+  ENTRANCE_SPAWN_FROM_BACK,
   FLOOR_THICKNESS,
   FLOOR_Y,
   GALLERY_FLOOR_RAISE,
@@ -31,12 +32,18 @@ import type { ClimbBand } from "./walk-surface";
 
 /** World corridor depth — same as plan foyer depth (parity). */
 export const ENTRANCE_WORLD_DEPTH = ENTRANCE_DEPTH;
-export const ENTRANCE_ARCH_WIDTH = ENTRANCE_WIDTH;
+/** Arch / stair clear — shared with layout doorway width. */
+export const ENTRANCE_ARCH_WIDTH = LAYOUT_ARCH_WIDTH;
 /** Arch height from foyer floor; keeps ~2.06 m clear above the raised gallery. */
 export const ENTRANCE_ARCH_HEIGHT = GALLERY_FLOOR_RAISE + 2.06;
-export const ENTRANCE_ARCH_THICKNESS = 0.35;
+export const ENTRANCE_ARCH_THICKNESS = 0.32;
 /** Plan/portal half-depth uses the same constant as the 3D corridor. */
 export const ENTRANCE_SCHEMATIC_DEPTH = ENTRANCE_DEPTH;
+
+/** Human-scale pedestal (museum table) + closed booklet on top. */
+export const PEDESTAL_BASE_SIZE = [0.7, 0.92, 0.55] as const;
+export const PEDESTAL_TOP_SIZE = [0.78, 0.06, 0.62] as const;
+export const BOOKLET_SIZE = [0.3, 0.035, 0.4] as const;
 
 const TRIM_COLOR = 0x59524f;
 const TOP_COLOR = 0x736b61;
@@ -67,9 +74,10 @@ export function computeEntrancePose(
   // Local +Z into gallery; corridor extends toward local −Z.
   const intoCorridorX = -Math.sin(yawRad);
   const intoCorridorZ = -Math.cos(yawRad);
+  const spawnAlong = ENTRANCE_WORLD_DEPTH - ENTRANCE_SPAWN_FROM_BACK;
   const spawn = {
-    x: portal.x + intoCorridorX * (ENTRANCE_WORLD_DEPTH - 1.35),
-    z: portal.z + intoCorridorZ * (ENTRANCE_WORLD_DEPTH - 1.35),
+    x: portal.x + intoCorridorX * spawnAlong,
+    z: portal.z + intoCorridorZ * spawnAlong,
   };
   return { portal, spawn, yawDeg, yawRad };
 }
@@ -174,7 +182,8 @@ export function buildEntranceModule(
   if (ownsWall) mats.push(wallMat);
 
   const midLocalZ = -ENTRANCE_WORLD_DEPTH * 0.5;
-  const w = ROOM.width;
+  /** Corridor width matches plan foyer AABB (not legacy ROOM.width = 8). */
+  const w = ENTRANCE_WIDTH;
   const h = GALLERY_HEIGHT;
 
   root.add(
@@ -212,7 +221,7 @@ export function buildEntranceModule(
 
   // Arch at portal (local z = 0)
   const halfGap = ENTRANCE_ARCH_WIDTH * 0.5;
-  const pillarW = 0.45;
+  const pillarW = 0.32;
   root.add(
     boxMesh(
       "ArchPillarL",
@@ -259,10 +268,10 @@ export function buildEntranceModule(
     );
   }
 
-  // Left wall poster
-  const poster = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 2.2), posterMat);
+  // Left wall poster (~A0-ish at eye line)
+  const poster = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.55), posterMat);
   poster.name = "EntrancePoster";
-  poster.position.set(-w * 0.5 + 0.08, 1.7, -ENTRANCE_WORLD_DEPTH * 0.55);
+  poster.position.set(-w * 0.5 + 0.06, 1.55, -ENTRANCE_WORLD_DEPTH * 0.62);
   poster.rotation.y = Math.PI / 2;
   root.add(poster);
 
@@ -336,23 +345,35 @@ export function buildEntranceModule(
     surfaceY: GALLERY_FLOOR_RAISE,
   });
 
-  // Pedestal nearer arch, left of doorway
-  const pedX = -halfGap - 0.75;
-  const pedZ = -1.05;
+  // Museum table in clear foyer (behind stair run), left of walk path.
+  const stairRun = STEP_COUNT * STEP_DEPTH + STAIR_PORTAL_GAP;
+  const wallClearX = w * 0.5 - PEDESTAL_TOP_SIZE[0] * 0.5 - 0.12;
+  const besideArchX = halfGap + PEDESTAL_TOP_SIZE[0] * 0.35;
+  const pedX = -Math.min(wallClearX, besideArchX);
+  const pedZ = -(stairRun + (ENTRANCE_WORLD_DEPTH - stairRun) * 0.55);
   const pedestalRoot = new THREE.Group();
   pedestalRoot.name = "Pedestal";
   pedestalRoot.userData.isPedestal = true;
   pedestalRoot.position.set(pedX, 0, pedZ);
+  const baseH = PEDESTAL_BASE_SIZE[1];
+  const topH = PEDESTAL_TOP_SIZE[1];
+  const topY = baseH + topH * 0.5;
+  const bookletY = baseH + topH + BOOKLET_SIZE[1] * 0.5 + 0.01;
   pedestalRoot.add(
-    boxMesh("PedestalBase", [0.55, 0.7, 0.55], [0, 0.35, 0], trimMat),
+    boxMesh(
+      "PedestalBase",
+      [...PEDESTAL_BASE_SIZE],
+      [0, baseH * 0.5, 0],
+      trimMat,
+    ),
   );
   pedestalRoot.add(
-    boxMesh("PedestalTop", [0.62, 0.08, 0.62], [0, 0.72, 0], topMat),
+    boxMesh("PedestalTop", [...PEDESTAL_TOP_SIZE], [0, topY, 0], topMat),
   );
   const booklet = boxMesh(
     "PedestalBooklet",
-    [0.42, 0.04, 0.32],
-    [0, 0.82, 0],
+    [...BOOKLET_SIZE],
+    [0, bookletY, 0],
     bookletMat,
   );
   booklet.rotation.y = (18 * Math.PI) / 180;
@@ -360,13 +381,13 @@ export function buildEntranceModule(
   booklet.userData.isBooklet = true;
   pedestalRoot.add(booklet);
 
-  // Invisible pick proxy
+  // Invisible pick proxy (~reach envelope around table height)
   const trigger = new THREE.Mesh(
-    new THREE.BoxGeometry(1.1, 1.6, 1.1),
+    new THREE.BoxGeometry(1.2, 1.7, 1.15),
     new THREE.MeshBasicMaterial({ visible: false }),
   );
   trigger.name = "PedestalTrigger";
-  trigger.position.set(0, 0.9, 0);
+  trigger.position.set(0, 0.95, 0);
   trigger.userData.isPedestal = true;
   pedestalRoot.add(trigger);
   root.add(pedestalRoot);
