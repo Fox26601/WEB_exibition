@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   Artwork,
   ArtworkType,
@@ -23,7 +23,9 @@ import {
   validateArtworkUpload,
 } from "@/lib/artwork-upload";
 import {
+  deleteOrphanUploadUrls,
   processArtworkImage,
+  trackSessionUploadUrls,
   uploadArtworkBinary,
 } from "@/lib/artwork-upload-client";
 import { adminFetch, readAdminJson } from "@/lib/admin-api";
@@ -357,7 +359,15 @@ function ArtworkEditor({
   const [draft, setDraft] = useState<Artwork>(() => normalizeArtwork(artwork));
   const [previewLocale, setPreviewLocale] = useState<Locale>("en");
   const [previewPage, setPreviewPage] = useState(0);
+  const sessionUploads = useRef<Set<string>>(new Set());
   const bookletPages = normalizeArtworkBooklet(draft);
+
+  function handleCancel() {
+    const urls = [...sessionUploads.current];
+    sessionUploads.current.clear();
+    onCancel();
+    if (urls.length) void deleteOrphanUploadUrls(urls);
+  }
 
   function setBooklet(pages: BookletPage[]) {
     setDraft((d) => ({ ...d, booklet: pages }));
@@ -405,6 +415,11 @@ function ArtworkEditor({
       if (validated.kind === "image") {
         onMessage("Processing image…");
         const data = await processArtworkImage(file);
+        trackSessionUploadUrls(
+          sessionUploads.current,
+          data.urlWall,
+          data.urlFull,
+        );
         setDraft((d) =>
           applyTypeDefaults("image", {
             ...d,
@@ -419,6 +434,11 @@ function ArtworkEditor({
       if (validated.kind === "video") {
         onMessage("Uploading video…");
         const blob = await uploadArtworkBinary(file, validated);
+        trackSessionUploadUrls(
+          sessionUploads.current,
+          blob.url,
+          blob.urlPoster,
+        );
         setDraft((d) =>
           applyTypeDefaults("video", {
             ...d,
@@ -432,6 +452,11 @@ function ArtworkEditor({
 
       onMessage("Uploading 3D model…");
       const blob = await uploadArtworkBinary(file, validated);
+      trackSessionUploadUrls(
+        sessionUploads.current,
+        blob.url,
+        blob.urlPoster,
+      );
       setDraft((d) =>
         applyTypeDefaults("model", {
           ...d,
@@ -456,6 +481,11 @@ function ArtworkEditor({
     onBusy(true);
     try {
       const data = await processArtworkImage(file);
+      trackSessionUploadUrls(
+        sessionUploads.current,
+        data.urlWall,
+        data.urlFull,
+      );
       setDraft((d) => ({
         ...d,
         urlPoster: data.urlWall,
@@ -669,7 +699,7 @@ function ArtworkEditor({
             className="btn btn-solid"
             disabled={busy}
             onClick={() =>
-              onSave({
+              void onSave({
                 ...draft,
                 booklet: bookletPages,
                 published: isNew ? false : draft.published,
@@ -678,7 +708,7 @@ function ArtworkEditor({
           >
             Save
           </button>
-          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+          <button type="button" className="btn btn-ghost" onClick={handleCancel}>
             Cancel
           </button>
         </div>

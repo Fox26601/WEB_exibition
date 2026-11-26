@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
-import { loadCatalog, upsertArtwork, deleteArtwork } from "@/lib/catalog";
-import {
-  emptyLocalized,
-  normalizeArtwork,
-  type Artwork,
-} from "@/lib/catalog-types";
+import { loadCatalog, upsertArtwork } from "@/lib/catalog";
+import { emptyLocalized, normalizeArtwork } from "@/lib/catalog-types";
 import { randomUUID } from "crypto";
 
 const localizedSchema = z.object({
@@ -91,24 +87,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ artwork, catalog });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Save failed";
-    return NextResponse.json({ error: message }, { status: 503 });
-  }
-}
-
-export async function DELETE(req: NextRequest) {
-  const session = await requireAdmin();
-  if (!session) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  const id = req.nextUrl.searchParams.get("id");
-  if (!id) {
-    return NextResponse.json({ error: "id required" }, { status: 400 });
-  }
-  try {
-    const catalog = await deleteArtwork(id);
-    return NextResponse.json({ catalog });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Delete failed";
     return NextResponse.json({ error: message }, { status: 503 });
   }
 }

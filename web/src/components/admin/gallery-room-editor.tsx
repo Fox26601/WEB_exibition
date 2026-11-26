@@ -568,6 +568,7 @@ export function GalleryRoomEditor({
 
   function removeRoom(id: string) {
     if (id === ENTRANCE_ROOM_ID) return;
+    if (!confirm(t.deleteRoomConfirm)) return;
     commit({
       ...normalized,
       rooms: normalized.rooms.filter((r) => r.id !== id),
@@ -981,6 +982,11 @@ export function GalleryRoomEditor({
                 value={activeWallColor}
                 onChange={setActiveWallColor}
               />
+              <p className="w-full text-[0.7rem] text-[var(--paper-dim)]">
+                {selectedRoom
+                  ? t.surfaceColorsSelected
+                  : t.surfaceColorsDraft}
+              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[0.7rem] uppercase tracking-wide text-[var(--paper-dim)]">
@@ -1351,6 +1357,7 @@ export function GalleryRoomEditor({
             onSetFrame={setPlacementFrame}
             onSetWallHeight={setPlacementWallHeight}
             dragDisabled={editorMode !== "place"}
+            onDragDenied={() => showPlaceToast(t.planDragDenied)}
           />
         </div>
       ) : (

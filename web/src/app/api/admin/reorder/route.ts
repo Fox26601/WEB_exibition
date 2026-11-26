@@ -20,6 +20,11 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const catalog = await reorderArtworks(parsed.data.ids);
-  return NextResponse.json({ catalog });
+  try {
+    const catalog = await reorderArtworks(parsed.data.ids);
+    return NextResponse.json({ catalog });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Reorder failed";
+    return NextResponse.json({ error: message }, { status: 503 });
+  }
 }
