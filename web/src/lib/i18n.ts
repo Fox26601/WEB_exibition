@@ -222,7 +222,12 @@ export type AdminEditorStrings = {
   publishLiveHint: string;
   uploadArtwork: string;
   uploadMediaHint: string;
+  planDragDenied: string;
+  deleteRoomConfirm: string;
+  surfaceColorsSelected: string;
+  surfaceColorsDraft: string;
 };
+
 
 const ADMIN_EDITOR_EN: AdminEditorStrings = {
   roomPlanTitle: "Room plan & placement",
@@ -277,7 +282,13 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   uploadArtwork: "+ Upload artwork",
   uploadMediaHint:
     "Media file — image, video (MP4/MOV/M4V/WebM), or 3D model (GLB/GLTF). Type is detected automatically. Wall playback uses the browser decoder (iPhone MOV/HEVC on Safari; prefer H.264 MP4 for widest support).",
+  planDragDenied: "Switch to Place mode to drag artworks onto the plan.",
+  deleteRoomConfirm:
+    "Delete this room? Placements in it will be removed from the plan.",
+  surfaceColorsSelected: "Colors apply to the selected room.",
+  surfaceColorsDraft: "Defaults for the next room you add (select a room to edit its colors).",
 };
+
 
 const ADMIN_EDITOR_RU: AdminEditorStrings = {
   roomPlanTitle: "План зала и расстановка",
@@ -333,7 +344,14 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   uploadArtwork: "+ Загрузить работу",
   uploadMediaHint:
     "Файл — изображение, видео (MP4/MOV/M4V/WebM) или 3D-модель (GLB/GLTF). Тип определяется автоматически. На стене играет декодер браузера (iPhone MOV/HEVC в Safari; для максимальной совместимости — H.264 MP4).",
+  planDragDenied: "Переключитесь в Place, чтобы перетаскивать работы на план.",
+  deleteRoomConfirm:
+    "Удалить комнату? Расстановка в ней будет снята с плана.",
+  surfaceColorsSelected: "Цвета применяются к выбранной комнате.",
+  surfaceColorsDraft:
+    "Цвета по умолчанию для следующей комнаты (выберите комнату, чтобы менять её цвета).",
 };
+
 
 export const ADMIN_EDITOR: Record<Locale, AdminEditorStrings> = {
   en: ADMIN_EDITOR_EN,

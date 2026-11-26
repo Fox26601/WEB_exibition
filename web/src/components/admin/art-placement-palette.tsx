@@ -23,7 +23,9 @@ type Props = {
   onSetFrame: (artworkId: string, frameId: FrameId) => void;
   onSetWallHeight: (artworkId: string, wallHeightT: number) => void;
   dragDisabled?: boolean;
+  onDragDenied?: () => void;
 };
+
 
 export function ArtPlacementPalette({
   artworks,
@@ -36,6 +38,7 @@ export function ArtPlacementPalette({
   onSetFrame,
   onSetWallHeight,
   dragDisabled,
+  onDragDenied,
 }: Props) {
   const placed = useMemo(
     () => new Set(placements.map((p) => p.artworkId)),
@@ -95,6 +98,7 @@ export function ArtPlacementPalette({
                 locale={locale}
                 dragDisabled={dragDisabled}
                 onBeginDrag={(e) => onBeginDrag(art, e)}
+                onDragDenied={onDragDenied}
               />
               {isPlaced ? (
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -162,12 +166,14 @@ function PaletteItem({
   locale,
   dragDisabled,
   onBeginDrag,
+  onDragDenied,
 }: {
   art: Artwork;
   index: number;
   locale: Locale;
   dragDisabled?: boolean;
   onBeginDrag: (e: ReactPointerEvent) => void;
+  onDragDenied?: () => void;
 }) {
   const t = adminEditorStrings(locale);
 
@@ -179,7 +185,11 @@ function PaletteItem({
         touchAction: "none",
       }}
       onPointerDown={(e: ReactPointerEvent) => {
-        if (dragDisabled || e.button !== 0) return;
+        if (e.button !== 0) return;
+        if (dragDisabled) {
+          onDragDenied?.();
+          return;
+        }
         onBeginDrag(e);
       }}
     >

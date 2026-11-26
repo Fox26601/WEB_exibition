@@ -28,7 +28,9 @@ import {
   validateArtworkUpload,
 } from "@/lib/artwork-upload";
 import {
+  deleteOrphanUploadUrls,
   processArtworkImage,
+  trackSessionUploadUrls,
   uploadArtworkBinary,
 } from "@/lib/artwork-upload-client";
 import {
@@ -359,7 +361,15 @@ export function PreviewPanel() {
     return <p className="text-[#e08a7a]">{error}</p>;
   }
 
-  const layout = ensureLayout(catalog?.layout);
+  if (!catalog) {
+    return (
+      <p className="text-[var(--paper-dim)]" role="status">
+        Loading…
+      </p>
+    );
+  }
+
+  const layout = ensureLayout(catalog.layout);
 
   return (
     <div>
@@ -590,7 +600,15 @@ function PreviewArtworkEditor({
   const [draft, setDraft] = useState<Artwork>(() => normalizeArtwork(artwork));
   const [previewLocale, setPreviewLocale] = useState<Locale>("en");
   const [previewPage, setPreviewPage] = useState(0);
+  const sessionUploads = useRef<Set<string>>(new Set());
   const bookletPages = normalizeArtworkBooklet(draft);
+
+  function handleCancel() {
+    const urls = [...sessionUploads.current];
+    sessionUploads.current.clear();
+    onCancel();
+    if (urls.length) void deleteOrphanUploadUrls(urls);
+  }
 
   function setBooklet(pages: BookletPage[]) {
     setDraft((d) => ({ ...d, booklet: pages }));
@@ -637,6 +655,11 @@ function PreviewArtworkEditor({
       if (validated.kind === "image") {
         onMessage("Processing image…");
         const data = await processArtworkImage(file);
+        trackSessionUploadUrls(
+          sessionUploads.current,
+          data.urlWall,
+          data.urlFull,
+        );
         setDraft((d) =>
           applyTypeDefaults("image", {
             ...d,
@@ -650,6 +673,11 @@ function PreviewArtworkEditor({
       if (validated.kind === "video") {
         onMessage("Uploading video…");
         const blob = await uploadArtworkBinary(file, validated);
+        trackSessionUploadUrls(
+          sessionUploads.current,
+          blob.url,
+          blob.urlPoster,
+        );
         setDraft((d) =>
           applyTypeDefaults("video", {
             ...d,
@@ -662,6 +690,11 @@ function PreviewArtworkEditor({
       }
       onMessage("Uploading 3D model…");
       const blob = await uploadArtworkBinary(file, validated);
+      trackSessionUploadUrls(
+        sessionUploads.current,
+        blob.url,
+        blob.urlPoster,
+      );
       setDraft((d) =>
         applyTypeDefaults("model", {
           ...d,
@@ -686,6 +719,11 @@ function PreviewArtworkEditor({
     onBusy(true);
     try {
       const data = await processArtworkImage(file);
+      trackSessionUploadUrls(
+        sessionUploads.current,
+        data.urlWall,
+        data.urlFull,
+      );
       setDraft((d) => ({
         ...d,
         urlPoster: data.urlWall,
@@ -897,7 +935,7 @@ function PreviewArtworkEditor({
           >
             Save
           </button>
-          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+          <button type="button" className="btn btn-ghost" onClick={handleCancel}>
             Cancel
           </button>
         </div>

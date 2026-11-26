@@ -6,7 +6,7 @@ import {
 } from "./artwork-upload";
 import { generateModelPosterBlob, uploadPosterBlob } from "./model-poster";
 import { generateVideoPosterBlob } from "./video-poster";
-import { formatAdminApiError } from "./admin-api";
+import { adminFetch, formatAdminApiError } from "./admin-api";
 
 export type UploadedArtworkBlob = {
   url: string;
@@ -109,4 +109,34 @@ export async function processArtworkImage(file: File): Promise<{
     throw new Error(formatAdminApiError(data, "Process failed"));
   }
   return { urlWall: data.urlWall, urlFull: data.urlFull };
+}
+
+/** Record URLs written during an edit session (process-image / upload-token). */
+export function trackSessionUploadUrls(
+  bag: Set<string>,
+  ...urls: Array<string | undefined | null>
+): void {
+  for (const url of urls) {
+    if (typeof url === "string" && url.trim()) bag.add(url.trim());
+  }
+}
+
+/**
+ * Best-effort delete of blobs uploaded in an editor session that was cancelled
+ * without Save. Failures are ignored so Cancel never blocks the UI.
+ */
+export async function deleteOrphanUploadUrls(
+  urls: Iterable<string>,
+): Promise<void> {
+  const list = [...new Set([...urls].map((u) => u.trim()).filter(Boolean))];
+  if (!list.length) return;
+  try {
+    await adminFetch("/api/admin/delete-blobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls: list }),
+    });
+  } catch {
+    /* best-effort */
+  }
 }
