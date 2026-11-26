@@ -31,7 +31,11 @@ import {
   processArtworkImage,
   uploadArtworkBinary,
 } from "@/lib/artwork-upload-client";
-import { formatAdminApiError, readAdminJson } from "@/lib/admin-api";
+import {
+  adminFetch,
+  formatAdminApiError,
+  readAdminJson,
+} from "@/lib/admin-api";
 import { fillArtworkLocales } from "@/lib/admin-translate-client";
 import { GalleryRoomEditor, ensureLayout } from "./gallery-room-editor";
 import { ArtworkThumb } from "./artwork-thumb";
@@ -62,9 +66,9 @@ export function PreviewPanel() {
 
   const refresh = useCallback(async () => {
     const [catRes, tokRes, layoutMeta] = await Promise.all([
-      fetch("/api/catalog?catalog=draft"),
-      fetch("/api/admin/preview-token", { method: "POST" }),
-      fetch("/api/admin/layout"),
+      adminFetch("/api/catalog?catalog=draft"),
+      adminFetch("/api/admin/preview-token", { method: "POST" }),
+      adminFetch("/api/admin/layout"),
     ]);
     if (!catRes.ok) {
       const body = await catRes.json().catch(() => null);
@@ -121,7 +125,7 @@ export function PreviewPanel() {
     setSaveStatus("saving");
     setSaveError("");
     try {
-      const res = await fetch("/api/admin/layout", {
+      const res = await adminFetch("/api/admin/layout", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(layout),
@@ -182,7 +186,7 @@ export function PreviewPanel() {
         await persistLayout(pendingLayout.current);
         pendingLayout.current = null;
       }
-      const res = await fetch("/api/admin/publish", { method: "POST" });
+      const res = await adminFetch("/api/admin/publish", { method: "POST" });
       const data = await readAdminJson<{ catalog: Catalog }>(
         res,
         "Publish failed",
@@ -194,7 +198,6 @@ export function PreviewPanel() {
       setDirty(false);
       setLiveUpdatedAt(data.catalog.updatedAt || "");
       setMessage("Published to live site");
-      await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -206,7 +209,7 @@ export function PreviewPanel() {
     setBusy(true);
     setMessage("");
     try {
-      const res = await fetch("/api/admin/reorder", {
+      const res = await adminFetch("/api/admin/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
@@ -241,6 +244,7 @@ export function PreviewPanel() {
     artwork: Artwork,
     opts?: { successMessage?: string },
   ): Promise<void> {
+    if (busy) return;
     setBusy(true);
     setMessage("");
     try {
@@ -248,7 +252,7 @@ export function PreviewPanel() {
       const payload = normalizeArtwork(filled, {
         syncTitleTextFromBooklet: true,
       });
-      const res = await fetch("/api/admin/artworks", {
+      const res = await adminFetch("/api/admin/artworks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -261,7 +265,6 @@ export function PreviewPanel() {
       setDirty(true);
       setEditing(null);
       setMessage(opts?.successMessage ?? "Saved");
-      await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -271,7 +274,7 @@ export function PreviewPanel() {
 
   async function removeArtwork(id: string) {
     if (busy) return;
-    if (!confirm("Delete this artwork?")) return;
+    if (!confirm("Delete this artwork from draft and live gallery?")) return;
     const previous = catalog;
     setBusy(true);
     setMessage("");
@@ -291,7 +294,9 @@ export function PreviewPanel() {
     );
     if (editing?.id === id) setEditing(null);
     try {
-      const res = await fetch(`/api/admin/artworks/${id}`, { method: "DELETE" });
+      const res = await adminFetch(`/api/admin/artworks/${id}`, {
+        method: "DELETE",
+      });
       const data = await readAdminJson<{ catalog: Catalog }>(
         res,
         "Delete failed",
@@ -303,27 +308,8 @@ export function PreviewPanel() {
       setCatalog(deletedCatalog);
       layoutRef.current = deletedCatalog.layout;
       setDirty(true);
-      setMessage("Deleted");
-      try {
-        const catRes = await fetch("/api/catalog?catalog=draft");
-        if (catRes.ok) {
-          const latest = (await catRes.json()) as Catalog;
-          if (latest.artworks.some((a) => a.id === id)) {
-            setCatalog(deletedCatalog);
-            layoutRef.current = deletedCatalog.layout;
-            setMessage(
-              "Delete saved, but a refresh still showed this artwork — kept deleted list. Publish if live still shows it.",
-            );
-          } else {
-            const next = { ...latest, layout: ensureLayout(latest.layout) };
-            setCatalog(next);
-            layoutRef.current = next.layout;
-            setMessage("Deleted");
-          }
-        }
-      } catch {
-        /* DELETE already succeeded */
-      }
+      setLiveUpdatedAt(deletedCatalog.updatedAt || new Date().toISOString());
+      setMessage("Deleted from draft and live");
     } catch (e) {
       setCatalog(previous);
       setMessage(e instanceof Error ? e.message : "Error");

@@ -14,13 +14,16 @@ export async function GET() {
     loadCatalog("draft"),
     loadCatalog("live"),
   ]);
-  return NextResponse.json({
-    layout: draft.layout,
-    draftUpdatedAt: draft.updatedAt,
-    liveUpdatedAt: live.updatedAt,
-    liveVersion: live.version,
-    dirty: catalogsDifferForPublish(draft, live),
-  });
+  return NextResponse.json(
+    {
+      layout: draft.layout,
+      draftUpdatedAt: draft.updatedAt,
+      liveUpdatedAt: live.updatedAt,
+      liveVersion: live.version,
+      dirty: catalogsDifferForPublish(draft, live),
+    },
+    { headers: { "Cache-Control": "no-store, max-age=0" } },
+  );
 }
 
 export async function PUT(req: NextRequest) {

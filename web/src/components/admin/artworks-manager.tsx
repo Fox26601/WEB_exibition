@@ -26,7 +26,7 @@ import {
   processArtworkImage,
   uploadArtworkBinary,
 } from "@/lib/artwork-upload-client";
-import { readAdminJson } from "@/lib/admin-api";
+import { adminFetch, readAdminJson } from "@/lib/admin-api";
 import { fillArtworkLocales } from "@/lib/admin-translate-client";
 import { ArtworkThumb } from "./artwork-thumb";
 import { LocalizedAutoFields } from "./localized-auto-fields";
@@ -38,7 +38,7 @@ export function ArtworksManager() {
   const [editing, setEditing] = useState<Artwork | null>(null);
 
   const refresh = useCallback(async () => {
-    const res = await fetch("/api/admin/artworks");
+    const res = await adminFetch("/api/admin/artworks");
     const data = await readAdminJson<Catalog>(res, "Failed to load artworks");
     setCatalog(data);
   }, []);
@@ -52,14 +52,13 @@ export function ArtworksManager() {
     setBusy(true);
     setMessage("");
     try {
-      const res = await fetch("/api/admin/publish", { method: "POST" });
+      const res = await adminFetch("/api/admin/publish", { method: "POST" });
       const data = await readAdminJson<{ catalog: Catalog }>(
         res,
         "Publish failed",
       );
       setCatalog(data.catalog);
       setMessage(`Published v${data.catalog.version}`);
-      await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -71,6 +70,7 @@ export function ArtworksManager() {
     artwork: Artwork,
     opts?: { successMessage?: string },
   ): Promise<void> {
+    if (busy) return;
     setBusy(true);
     setMessage("");
     try {
@@ -78,16 +78,16 @@ export function ArtworksManager() {
       const payload = normalizeArtwork(filled, {
         syncTitleTextFromBooklet: true,
       });
-      const res = await fetch("/api/admin/artworks", {
+      const res = await adminFetch("/api/admin/artworks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const data = await readAdminJson<{ catalog: Catalog }>(res, "Save failed");
+      // Trust POST body — do not refetch (Safari HTTP cache can resurrect stale rows).
       setCatalog(data.catalog);
       setEditing(null);
       setMessage(opts?.successMessage ?? "Saved");
-      await refresh().catch(() => undefined);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -97,7 +97,7 @@ export function ArtworksManager() {
 
   async function removeArtwork(id: string) {
     if (busy) return;
-    if (!confirm("Delete this artwork?")) return;
+    if (!confirm("Delete this artwork from draft and live gallery?")) return;
     const previous = catalog;
     setBusy(true);
     setMessage("");
@@ -112,31 +112,16 @@ export function ArtworksManager() {
     );
     if (editing?.id === id) setEditing(null);
     try {
-      const res = await fetch(`/api/admin/artworks/${id}`, { method: "DELETE" });
+      const res = await adminFetch(`/api/admin/artworks/${id}`, {
+        method: "DELETE",
+      });
       const data = await readAdminJson<{ catalog: Catalog }>(
         res,
         "Delete failed",
       );
+      // Trust DELETE body as source of truth for the list.
       setCatalog(data.catalog);
-      setMessage("Deleted");
-      try {
-        const resList = await fetch("/api/admin/artworks");
-        const latest = await readAdminJson<Catalog>(
-          resList,
-          "Failed to load artworks",
-        );
-        if (latest.artworks.some((a) => a.id === id)) {
-          setCatalog(data.catalog);
-          setMessage(
-            "Delete saved, but a refresh still showed this artwork — kept deleted list. Publish if live still shows it.",
-          );
-        } else {
-          setCatalog(latest);
-          setMessage("Deleted");
-        }
-      } catch {
-        /* DELETE already succeeded — keep optimistic/server catalog */
-      }
+      setMessage("Deleted from draft and live");
     } catch (e) {
       setCatalog(previous);
       setMessage(e instanceof Error ? e.message : "Error");
@@ -166,7 +151,7 @@ export function ArtworksManager() {
     [ids[i], ids[j]] = [ids[j], ids[i]];
     setBusy(true);
     try {
-      const res = await fetch("/api/admin/reorder", {
+      const res = await adminFetch("/api/admin/reorder", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids }),
