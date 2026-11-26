@@ -6,6 +6,8 @@ import {
   nextBookletPageKey,
   normalizeArtwork,
   normalizeArtworkBooklet,
+  normalizeEntrance,
+  renumberBookletPages,
 } from "./catalog-types.ts";
 
 const sample = {
@@ -32,10 +34,10 @@ const sample = {
 };
 
 describe("normalizeArtworkBooklet", () => {
-  it("seeds one main page from title+text when booklet missing", () => {
+  it("seeds one numeric page from title+text when booklet missing", () => {
     const pages = normalizeArtworkBooklet(sample);
     assert.equal(pages.length, 1);
-    assert.equal(pages[0].key, "main");
+    assert.equal(pages[0].key, "1");
     assert.equal(pages[0].title.en, "Morning");
     assert.equal(pages[0].body.en, "Wall note");
   });
@@ -43,10 +45,11 @@ describe("normalizeArtworkBooklet", () => {
   it("seeds from empty array the same way", () => {
     const pages = normalizeArtworkBooklet({ ...sample, booklet: [] });
     assert.equal(pages.length, 1);
+    assert.equal(pages[0].key, "1");
     assert.equal(pages[0].body.ru, "Заметка");
   });
 
-  it("preserves multi-page booklets", () => {
+  it("remaps legacy free-text keys to numbers and preserves order", () => {
     const pages = normalizeArtworkBooklet({
       ...sample,
       booklet: [
@@ -63,7 +66,8 @@ describe("normalizeArtworkBooklet", () => {
       ],
     });
     assert.equal(pages.length, 2);
-    assert.equal(pages[1].key, "more");
+    assert.equal(pages[0].key, "1");
+    assert.equal(pages[1].key, "2");
     assert.equal(pages[1].title.en, "B");
   });
 });
@@ -86,6 +90,7 @@ describe("normalizeArtwork sync", () => {
     assert.equal(art.title.en, "Synced title");
     assert.equal(art.text.en, "Synced body");
     assert.equal(art.booklet?.length, 1);
+    assert.equal(art.booklet?.[0].key, "1");
   });
 });
 
@@ -111,5 +116,61 @@ describe("nextBookletPageKey", () => {
       "10",
     );
     assert.equal(nextBookletPageKey([{ key: "1" }, { key: "3" }]), "4");
+  });
+});
+
+describe("renumberBookletPages", () => {
+  it("maps intro/hall-1 to 1/2", () => {
+    const pages = renumberBookletPages([
+      { key: "intro", title: "a" },
+      { key: "hall-1", title: "b" },
+    ]);
+    assert.deepEqual(
+      pages.map((p) => p.key),
+      ["1", "2"],
+    );
+  });
+
+  it("keeps unique numeric keys and fills gaps for legacy ones", () => {
+    const pages = renumberBookletPages([
+      { key: "main" },
+      { key: "2" },
+      { key: "intro" },
+    ]);
+    assert.deepEqual(
+      pages.map((p) => p.key),
+      ["1", "2", "3"],
+    );
+  });
+
+  it("is stable when keys are already numeric", () => {
+    const pages = renumberBookletPages([{ key: "1" }, { key: "2" }]);
+    assert.deepEqual(
+      pages.map((p) => p.key),
+      ["1", "2"],
+    );
+  });
+});
+
+describe("normalizeEntrance", () => {
+  it("remaps legacy intro key used in prod catalogs", () => {
+    const entrance = normalizeEntrance({
+      posterUrl: "",
+      booklet: [
+        {
+          key: "intro",
+          title: emptyLocalized("Exhibition"),
+          body: emptyLocalized(""),
+        },
+      ],
+    });
+    assert.equal(entrance.booklet.length, 1);
+    assert.equal(entrance.booklet[0].key, "1");
+    assert.equal(entrance.booklet[0].title.en, "Exhibition");
+  });
+
+  it("seeds empty entrance with key 1", () => {
+    const entrance = normalizeEntrance({ posterUrl: "", booklet: [] });
+    assert.equal(entrance.booklet[0].key, "1");
   });
 });

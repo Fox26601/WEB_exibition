@@ -1,6 +1,8 @@
 import {
   createDefaultCatalog,
   emptyLayout,
+  isNumericBookletPageKey,
+  normalizeArtwork,
   normalizeLayout,
   normalizeSettings,
   type Catalog,
@@ -33,6 +35,25 @@ type CatalogRecord = {
   etag: string | null;
 };
 
+/** True when any booklet page still uses a legacy free-text key. */
+export function catalogNeedsNumericBookletMigration(
+  catalog: Catalog,
+): boolean {
+  const entrance = catalog.settings?.entrance?.booklet;
+  if (Array.isArray(entrance)) {
+    for (const page of entrance) {
+      if (!isNumericBookletPageKey(page?.key)) return true;
+    }
+  }
+  for (const art of catalog.artworks ?? []) {
+    if (!Array.isArray(art.booklet)) continue;
+    for (const page of art.booklet) {
+      if (!isNumericBookletPageKey(page?.key)) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * Load catalog JSON. Draft missing → copy live once and persist as draft
  * (never return live without writing draft — that resurrected deletes after
@@ -49,10 +70,27 @@ async function loadCatalogRecord(kind: CatalogKind): Promise<CatalogRecord> {
 
   if (detailed.text) {
     try {
-      return {
-        catalog: normalizeLoadedCatalog(JSON.parse(detailed.text) as Catalog),
-        etag: detailed.etag,
-      };
+      const parsed = JSON.parse(detailed.text) as Catalog;
+      const needsMigration = catalogNeedsNumericBookletMigration(parsed);
+      const catalog = normalizeLoadedCatalog(parsed);
+      if (needsMigration) {
+        try {
+          const written = await writeBlobText(
+            key,
+            JSON.stringify(catalog, null, 2),
+            {
+              contentType: "application/json",
+              allowOverwrite: true,
+              ifMatch: detailed.etag,
+            },
+          );
+          return { catalog, etag: written?.etag ?? detailed.etag };
+        } catch {
+          /* concurrent writer — return normalized in-memory view */
+          return { catalog, etag: detailed.etag };
+        }
+      }
+      return { catalog, etag: detailed.etag };
     } catch {
       /* corrupt payload — fall through to bootstrap */
     }
@@ -133,15 +171,18 @@ export function normalizeLoadedCatalog(catalog: Catalog): Catalog {
   catalog.layout = syncPaintingYaws(normalizeLayout(catalog.layout));
   catalog.settings = normalizeSettings(catalog.settings);
   const byId = new Map(defaults.artworks.map((a) => [a.id, a]));
-  for (const art of catalog.artworks) {
+  catalog.artworks = catalog.artworks.map((art) => {
     const sample = byId.get(art.id);
-    if (!sample) continue;
-    if (!art.urlWall && sample.urlWall) art.urlWall = sample.urlWall;
-    if (!art.urlFull && sample.urlFull) art.urlFull = sample.urlFull;
-    if (!art.urlPoster && sample.urlPoster) art.urlPoster = sample.urlPoster;
-    if (!art.modelUrl && sample.modelUrl) art.modelUrl = sample.modelUrl;
-    if (!art.frameId && sample.frameId) art.frameId = sample.frameId;
-  }
+    const next = { ...art };
+    if (sample) {
+      if (!next.urlWall && sample.urlWall) next.urlWall = sample.urlWall;
+      if (!next.urlFull && sample.urlFull) next.urlFull = sample.urlFull;
+      if (!next.urlPoster && sample.urlPoster) next.urlPoster = sample.urlPoster;
+      if (!next.modelUrl && sample.modelUrl) next.modelUrl = sample.modelUrl;
+      if (!next.frameId && sample.frameId) next.frameId = sample.frameId;
+    }
+    return normalizeArtwork(next);
+  });
   catalog.artworks.sort((a, b) => a.sort - b.sort);
   normalizeSculpturePlacements(catalog);
   return catalog;

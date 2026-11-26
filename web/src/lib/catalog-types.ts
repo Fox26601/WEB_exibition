@@ -126,10 +126,7 @@ export interface GalleryLayout {
 }
 
 export interface BookletPage {
-  /**
-   * Stable page id. New pages use a unique decimal string ("1", "2", …).
-   * Legacy catalogs may still use "main", "intro", "hall-1", room ids, etc.
-   */
+  /** Stable auto id: unique decimal string ("1", "2", …). */
   key: string;
   title: LocalizedString;
   body: LocalizedString;
@@ -177,27 +174,63 @@ export function emptyLocalized(fallback = ""): LocalizedString {
   return { en: fallback, ru: fallback, uk: fallback, he: fallback };
 }
 
+/** True when `key` is a positive decimal auto-id ("1", "2", …). */
+export function isNumericBookletPageKey(key: unknown): key is string {
+  if (typeof key !== "string") return false;
+  const raw = key.trim();
+  if (!/^\d+$/.test(raw)) return false;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) && n >= 1;
+}
+
 /**
  * Next unique numeric booklet page key (decimal string).
- * Legacy non-numeric keys ("main", "intro", …) are ignored for sequencing.
+ * Non-numeric legacy keys ("main", "intro", …) are ignored for sequencing.
  */
 export function nextBookletPageKey(
   pages: Iterable<{ key?: string | null }>,
 ): string {
   let max = 0;
   for (const page of pages) {
-    const raw = typeof page?.key === "string" ? page.key.trim() : "";
-    if (!/^\d+$/.test(raw)) continue;
-    const n = Number(raw);
-    if (Number.isSafeInteger(n) && n > max) max = n;
+    if (!isNumericBookletPageKey(page?.key)) continue;
+    const n = Number(page.key.trim());
+    if (n > max) max = n;
   }
   return String(max + 1);
+}
+
+/**
+ * Remap booklet pages to unique numeric keys (1, 2, …).
+ * Keeps existing unique numeric keys; assigns the next free integers to
+ * legacy free-text keys ("intro", "main", …) and duplicates, in order.
+ * Page order is preserved so booklet ←/→ navigation stays intact.
+ */
+export function renumberBookletPages<T extends { key?: string | null }>(
+  pages: T[],
+): (T & { key: string })[] {
+  const used = new Set<number>();
+  const assigned: (string | null)[] = pages.map((page) => {
+    if (!isNumericBookletPageKey(page?.key)) return null;
+    const n = Number(page.key.trim());
+    if (used.has(n)) return null;
+    used.add(n);
+    return String(n);
+  });
+  let next = 1;
+  for (let i = 0; i < assigned.length; i++) {
+    if (assigned[i] !== null) continue;
+    while (used.has(next)) next += 1;
+    assigned[i] = String(next);
+    used.add(next);
+    next += 1;
+  }
+  return pages.map((page, i) => ({ ...page, key: assigned[i]! }));
 }
 
 export function emptyBookletPage(key: string): BookletPage {
   return {
     key,
-    title: emptyLocalized(key === "intro" ? "Exhibition" : ""),
+    title: emptyLocalized(),
     body: emptyLocalized(),
   };
 }
@@ -209,20 +242,19 @@ export function normalizeArtworkBooklet(
   const raw = Array.isArray(artwork.booklet) ? artwork.booklet : [];
   const booklet = raw
     .filter((page) => page && typeof page === "object")
-    .map((page, i) => ({
-      // Preserve legacy string keys; only invent "main"/page-N when key missing.
-      key: page.key || (i === 0 ? "main" : `page-${i + 1}`),
+    .map((page) => ({
+      key: typeof page.key === "string" ? page.key : "",
       title: normalizeLocalized(page.title),
       body: normalizeLocalized(page.body),
     }));
   if (booklet.length === 0) {
     booklet.push({
-      key: "main",
+      key: "1",
       title: normalizeLocalized(artwork.title),
       body: normalizeLocalized(artwork.text),
     });
   }
-  return booklet;
+  return renumberBookletPages(booklet);
 }
 
 /**
@@ -284,15 +316,18 @@ export function normalizeLocalized(
 export function normalizeEntrance(
   entrance?: Partial<EntranceSettings> | null,
 ): EntranceSettings {
-  const booklet = Array.isArray(entrance?.booklet)
-    ? entrance!.booklet.map((page, i) => ({
-        key: page?.key || (i === 0 ? "intro" : `hall-${i}`),
+  const raw = Array.isArray(entrance?.booklet) ? entrance!.booklet : [];
+  const booklet = renumberBookletPages(
+    raw
+      .filter((page) => page && typeof page === "object")
+      .map((page) => ({
+        key: typeof page?.key === "string" ? page.key : "",
         title: normalizeLocalized(page?.title),
         body: normalizeLocalized(page?.body),
-      }))
-    : [];
+      })),
+  );
   if (booklet.length === 0) {
-    booklet.push(emptyBookletPage(nextBookletPageKey([])));
+    booklet.push(emptyBookletPage("1"));
   }
   return {
     posterUrl: entrance?.posterUrl ?? "",
@@ -458,7 +493,7 @@ export function createDefaultCatalog(): Catalog {
         posterUrl: "/samples/sample-01.jpg",
         booklet: [
           {
-            key: "intro",
+            key: "1",
             title: {
               en: "Welcome",
               ru: "Добро пожаловать",
@@ -473,7 +508,7 @@ export function createDefaultCatalog(): Catalog {
             },
           },
           {
-            key: "hall-1",
+            key: "2",
             title: {
               en: "Main hall",
               ru: "Главный зал",
