@@ -1,9 +1,13 @@
 import type { Locale } from "./catalog-types";
 import { LOCALE_LABELS } from "./admin-translate";
 
-/** gemini-2.0-flash shut down 2026-06-01; use Gemini 3.6 Flash. */
+/**
+ * Default: gemini-3.1-flash-lite — cheap Flash-Lite sized for translation.
+ * gemini-2.0-flash shut down 2026-06-01; gemini-3.6-flash hit high-demand 503s.
+ * Override with GEMINI_TRANSLATE_MODEL when needed.
+ */
 const GEMINI_MODEL =
-  process.env.GEMINI_TRANSLATE_MODEL?.trim() || "gemini-3.6-flash";
+  process.env.GEMINI_TRANSLATE_MODEL?.trim() || "gemini-3.1-flash-lite";
 
 export type GeminiTranslateFailReason =
   | "missing_api_key"
@@ -171,6 +175,13 @@ export async function summarizeUpstreamFailure(
   }
   if (status === 429) {
     return `Gemini rate limited (HTTP 429)`;
+  }
+  if (
+    status === 503 ||
+    lower.includes("high demand") ||
+    lower.includes("overloaded")
+  ) {
+    return `Gemini model ${model} overloaded / high demand (HTTP ${status}) — retry shortly or set GEMINI_TRANSLATE_MODEL`;
   }
   if (apiMessage) {
     return `HTTP ${status}: ${truncate(apiMessage, 160)}`;
