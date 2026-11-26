@@ -14,14 +14,34 @@ import { LocalizedAutoFields } from "./localized-auto-fields";
 
 const AUTOSAVE_MS = 700;
 
+function settingsSnapshot(settings: CatalogSettings): string {
+  return JSON.stringify(normalizeSettings(settings));
+}
+
 export function SettingsForm() {
   const [settings, setSettings] = useState<CatalogSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [posterBusy, setPosterBusy] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const skipAutosave = useRef(true);
+  /** True only after a real user edit (onChange / add/remove / poster upload). */
+  const dirty = useRef(false);
+  const lastSavedJson = useRef("");
   const pendingSettings = useRef<CatalogSettings | null>(null);
+
+  function applyServerSettings(next: CatalogSettings) {
+    const normalized = normalizeSettings(next);
+    lastSavedJson.current = settingsSnapshot(normalized);
+    dirty.current = false;
+    pendingSettings.current = null;
+    setSettings(normalized);
+  }
+
+  function markUserEdit(next: CatalogSettings) {
+    dirty.current = true;
+    pendingSettings.current = next;
+    return next;
+  }
 
   useEffect(() => {
     fetch("/api/admin/settings")
@@ -30,8 +50,7 @@ export function SettingsForm() {
           r,
           "Settings load failed",
         );
-        setSettings(normalizeSettings(data));
-        skipAutosave.current = true;
+        applyServerSettings(data);
       })
       .catch((e) => {
         setMessage(e instanceof Error ? e.message : "Failed to load settings");
@@ -40,22 +59,27 @@ export function SettingsForm() {
   }, []);
 
   const persist = useCallback(async (next: CatalogSettings, label: string) => {
-    setBusy(true);
-    setMessage("");
     try {
       const filled = await fillSettingsLocales(normalizeSettings(next));
+      const json = settingsSnapshot(filled);
+      // No-op when payload matches last load/save — avoids toast + refetch loops.
+      if (json === lastSavedJson.current) {
+        dirty.current = false;
+        pendingSettings.current = null;
+        return;
+      }
+      setBusy(true);
+      setMessage("");
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(filled),
+        body: json,
       });
       const data = await readAdminJson<{ settings: CatalogSettings }>(
         res,
         "Settings save failed",
       );
-      const saved = normalizeSettings(data.settings);
-      pendingSettings.current = saved;
-      setSettings(saved);
+      applyServerSettings(data.settings);
       setMessage(label);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
@@ -76,14 +100,18 @@ export function SettingsForm() {
       const pending = pendingSettings.current ?? settings;
       if (pending) {
         const filled = await fillSettingsLocales(normalizeSettings(pending));
-        const saveRes = await fetch("/api/admin/settings", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(filled),
-        });
-        await readAdminJson(saveRes, "Settings save failed");
-        pendingSettings.current = filled;
-        setSettings(filled);
+        const json = settingsSnapshot(filled);
+        if (json !== lastSavedJson.current) {
+          const saveRes = await fetch("/api/admin/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: json,
+          });
+          await readAdminJson(saveRes, "Settings save failed");
+          lastSavedJson.current = json;
+        }
+        dirty.current = false;
+        pendingSettings.current = null;
       }
       const res = await fetch("/api/admin/publish", { method: "POST" });
       const data = await readAdminJson<{ catalog: Catalog }>(
@@ -91,8 +119,7 @@ export function SettingsForm() {
         "Publish failed",
       );
       if (data.catalog?.settings) {
-        setSettings(normalizeSettings(data.catalog.settings));
-        skipAutosave.current = true;
+        applyServerSettings(data.catalog.settings);
       }
       setMessage(`Published v${data.catalog.version} to live`);
     } catch (e) {
@@ -103,14 +130,20 @@ export function SettingsForm() {
   }
 
   useEffect(() => {
-    if (!settings) return;
-    if (skipAutosave.current) {
-      skipAutosave.current = false;
+    if (!settings || !dirty.current) return;
+    const json = settingsSnapshot(settings);
+    if (json === lastSavedJson.current) {
+      dirty.current = false;
+      pendingSettings.current = null;
       return;
     }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      void persist(settings, "Settings autosaved (draft). Publish catalog to push live.");
+      if (!dirty.current) return;
+      void persist(
+        settings,
+        "Settings autosaved (draft). Publish catalog to push live.",
+      );
     }, AUTOSAVE_MS);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
@@ -120,9 +153,7 @@ export function SettingsForm() {
   function patch(partial: Partial<CatalogSettings>) {
     setSettings((prev) => {
       if (!prev) return prev;
-      const next = { ...prev, ...partial };
-      pendingSettings.current = next;
-      return next;
+      return markUserEdit({ ...prev, ...partial });
     });
   }
 
@@ -131,12 +162,10 @@ export function SettingsForm() {
       if (!prev) return prev;
       const booklet = prev.entrance.booklet.slice();
       booklet[index] = page;
-      const next = {
+      return markUserEdit({
         ...prev,
         entrance: { ...prev.entrance, booklet },
-      };
-      pendingSettings.current = next;
-      return next;
+      });
     });
   }
 
@@ -144,15 +173,13 @@ export function SettingsForm() {
     setSettings((prev) => {
       if (!prev) return prev;
       const key = nextBookletPageKey(prev.entrance.booklet);
-      const next = {
+      return markUserEdit({
         ...prev,
         entrance: {
           ...prev.entrance,
           booklet: [...prev.entrance.booklet, emptyBookletPage(key)],
         },
-      };
-      pendingSettings.current = next;
-      return next;
+      });
     });
   }
 
@@ -160,7 +187,7 @@ export function SettingsForm() {
     setSettings((prev) => {
       if (!prev) return prev;
       const booklet = prev.entrance.booklet.filter((_, i) => i !== index);
-      const next = {
+      return markUserEdit({
         ...prev,
         entrance: {
           ...prev.entrance,
@@ -168,9 +195,7 @@ export function SettingsForm() {
             ? booklet
             : [emptyBookletPage(nextBookletPageKey([]))],
         },
-      };
-      pendingSettings.current = next;
-      return next;
+      });
     });
   }
 
@@ -196,12 +221,10 @@ export function SettingsForm() {
       const posterUrl = data.urlFull || data.urlWall || "";
       setSettings((prev) => {
         if (!prev) return prev;
-        const next = {
+        return markUserEdit({
           ...prev,
           entrance: { ...prev.entrance, posterUrl },
-        };
-        pendingSettings.current = next;
-        return next;
+        });
       });
       setMessage("Entrance poster set (draft).");
     } catch (e) {
@@ -240,9 +263,7 @@ export function SettingsForm() {
           onApplyTranslations={(merge) =>
             setSettings((prev) => {
               if (!prev) return prev;
-              const next = { ...prev, poster: merge(prev.poster) };
-              pendingSettings.current = next;
-              return next;
+              return markUserEdit({ ...prev, poster: merge(prev.poster) });
             })
           }
         />
@@ -282,9 +303,7 @@ export function SettingsForm() {
           onApplyTranslations={(merge) =>
             setSettings((prev) => {
               if (!prev) return prev;
-              const next = { ...prev, bio: merge(prev.bio) };
-              pendingSettings.current = next;
-              return next;
+              return markUserEdit({ ...prev, bio: merge(prev.bio) });
             })
           }
         />
@@ -373,12 +392,10 @@ export function SettingsForm() {
                         ...current,
                         title: merge(current.title),
                       };
-                      const next = {
+                      return markUserEdit({
                         ...prev,
                         entrance: { ...prev.entrance, booklet },
-                      };
-                      pendingSettings.current = next;
-                      return next;
+                      });
                     })
                   }
                 />
@@ -400,12 +417,10 @@ export function SettingsForm() {
                       ...current,
                       body: merge(current.body),
                     };
-                    const next = {
+                    return markUserEdit({
                       ...prev,
                       entrance: { ...prev.entrance, booklet },
-                    };
-                    pendingSettings.current = next;
-                    return next;
+                    });
                   })
                 }
               />
@@ -429,12 +444,10 @@ export function SettingsForm() {
           onApplyTranslations={(merge) =>
             setSettings((prev) => {
               if (!prev) return prev;
-              const next = {
+              return markUserEdit({
                 ...prev,
                 aboutArtist: merge(prev.aboutArtist),
-              };
-              pendingSettings.current = next;
-              return next;
+              });
             })
           }
         />
@@ -455,12 +468,10 @@ export function SettingsForm() {
           onApplyTranslations={(merge) =>
             setSettings((prev) => {
               if (!prev) return prev;
-              const next = {
+              return markUserEdit({
                 ...prev,
                 aboutCurator: merge(prev.aboutCurator),
-              };
-              pendingSettings.current = next;
-              return next;
+              });
             })
           }
         />
@@ -492,15 +503,13 @@ export function SettingsForm() {
           onApplyTranslations={(merge) =>
             setSettings((prev) => {
               if (!prev) return prev;
-              const next = {
+              return markUserEdit({
                 ...prev,
                 donate: {
                   ...prev.donate,
                   text: merge(prev.donate.text),
                 },
-              };
-              pendingSettings.current = next;
-              return next;
+              });
             })
           }
         />
