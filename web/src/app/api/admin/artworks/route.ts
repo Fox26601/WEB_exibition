@@ -26,7 +26,7 @@ const artworkSchema = z.object({
   id: z.string().optional(),
   type: z.enum(["image", "video", "model"]),
   sort: z.number().optional(),
-  published: z.boolean().default(true),
+  published: z.boolean().default(false),
   title: localizedSchema.optional(),
   text: localizedSchema.optional(),
   booklet: z.array(bookletPageSchema).optional(),

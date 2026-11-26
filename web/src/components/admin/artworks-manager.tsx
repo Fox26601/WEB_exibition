@@ -174,7 +174,7 @@ export function ArtworksManager() {
         id: crypto.randomUUID(),
         type: "image",
         sort: catalog?.artworks.length ?? 0,
-        published: true,
+        published: false,
         title: emptyLocalized(),
         text: emptyLocalized(),
         booklet: [emptyBookletPage(nextBookletPageKey([]))],
@@ -228,8 +228,9 @@ export function ArtworksManager() {
       </div>
 
       <p className="mb-4 text-sm text-[var(--paper-dim)]">
-        New uploads default to published. Unpublish marks a draft only — use
-        Publish catalog to remove that work from the live gallery wall.
+        New uploads default to draft. Publish an artwork (or check Published in
+        catalog when editing), then use Publish catalog to show it on the live
+        gallery wall.
       </p>
 
       {message ? (
@@ -319,6 +320,7 @@ export function ArtworksManager() {
       {editing ? (
         <ArtworkEditor
           artwork={editing}
+          isNew={!catalog.artworks.some((a) => a.id === editing.id)}
           busy={busy}
           onCancel={() => setEditing(null)}
           onSave={saveArtwork}
@@ -332,6 +334,7 @@ export function ArtworksManager() {
 
 function ArtworkEditor({
   artwork,
+  isNew,
   busy,
   onCancel,
   onSave,
@@ -339,6 +342,7 @@ function ArtworkEditor({
   onMessage,
 }: {
   artwork: Artwork;
+  isNew: boolean;
   busy: boolean;
   onCancel: () => void;
   onSave: (a: Artwork) => Promise<void>;
@@ -472,7 +476,7 @@ function ArtworkEditor({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
       <div className="my-8 w-full max-w-5xl border border-[var(--line)] bg-[#161310] p-6">
         <h2 className="mb-4 font-[family-name:var(--font-display)] text-xl font-bold">
-          Edit {draft.type}
+          {isNew ? "Upload" : "Edit"} {draft.type}
         </h2>
 
         <LocalizedAutoFields
@@ -484,20 +488,25 @@ function ArtworkEditor({
           }
         />
 
-        <div className="mb-4 flex items-center gap-2">
-          <input
-            id="published"
-            type="checkbox"
-            checked={draft.published}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, published: e.target.checked }))
-            }
-            className="!w-auto"
-          />
-          <label htmlFor="published" className="!mb-0 !normal-case !tracking-normal">
-            Published in catalog
-          </label>
-        </div>
+        {!isNew ? (
+          <div className="mb-4 flex items-center gap-2">
+            <input
+              id="published"
+              type="checkbox"
+              checked={draft.published}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, published: e.target.checked }))
+              }
+              className="!w-auto"
+            />
+            <label
+              htmlFor="published"
+              className="!mb-0 !normal-case !tracking-normal"
+            >
+              Published in catalog
+            </label>
+          </div>
+        ) : null}
 
         <div className="mb-4">
           <label>
@@ -654,7 +663,13 @@ function ArtworkEditor({
             type="button"
             className="btn btn-solid"
             disabled={busy}
-            onClick={() => onSave({ ...draft, booklet: bookletPages })}
+            onClick={() =>
+              onSave({
+                ...draft,
+                booklet: bookletPages,
+                published: isNew ? false : draft.published,
+              })
+            }
           >
             Save
           </button>
