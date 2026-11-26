@@ -17,6 +17,7 @@ import {
   normalizeArtworkBooklet,
 } from "@/lib/catalog-types";
 import { BookletOverlay } from "@/components/exhibition/booklet-overlay";
+import { ModalShell } from "@/components/modal-shell";
 import {
   ARTWORK_UPLOAD_ACCEPT,
   IMAGE_MAX_BYTES,
@@ -508,7 +509,11 @@ function ArtworkEditor({
         : draft.urlWall;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
+    <ModalShell
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4"
+      onClose={handleCancel}
+      aria-label={isNew ? `Upload ${draft.type}` : `Edit ${draft.type}`}
+    >
       <div className="my-8 w-full max-w-5xl border border-[var(--line)] bg-[#161310] p-6">
         <h2 className="mb-4 font-[family-name:var(--font-display)] text-xl font-bold">
           {isNew ? "Upload" : "Edit"} {draft.type}
@@ -713,6 +718,6 @@ function ArtworkEditor({
           </button>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 }
