@@ -227,7 +227,6 @@ export function GalleryRoomEditor({
   const [draftFloorColor, setDraftFloorColor] = useState(DEFAULT_FLOOR_COLOR_HEX);
   const [draftWallColor, setDraftWallColor] = useState(DEFAULT_WALL_COLOR_HEX);
   const [panOffset, setPanOffset] = useState<PanOffset>({ x: 0, y: 0 });
-  const [paletteFrame, setPaletteFrame] = useState<FrameId>("wood");
   const [ghost, setGhost] = useState<GhostState | null>(null);
   const [placeToast, setPlaceToast] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -335,13 +334,7 @@ export function GalleryRoomEditor({
         return;
       }
       const current = normalizeLayout(layoutLiveRef.current);
-      const result = evaluateArtworkDrop(
-        art,
-        world,
-        current,
-        paletteFrame,
-        art.id,
-      );
+      const result = evaluateArtworkDrop(art, world, current, art.id);
       if (!result.ok) {
         const msg =
           result.reason === "no_snap"
@@ -354,12 +347,18 @@ export function GalleryRoomEditor({
       }
       let placement = result.placement;
       const prev = current.placements.find((p) => p.artworkId === art.id);
-      if (prev?.kind === "painting" && prev.wallHeightT != null) {
-        placement = { ...placement, wallHeightT: prev.wallHeightT };
+      if (prev?.kind === "painting" && placement.kind === "painting") {
+        if (prev.wallHeightT != null) {
+          placement = { ...placement, wallHeightT: prev.wallHeightT };
+        }
+        // Keep per-placement frame; do not reset from catalog default on move.
+        if (prev.frameId) {
+          placement = { ...placement, frameId: prev.frameId };
+        }
       }
       upsertPlacement(placement);
     },
-    [paletteFrame, resolveWorldAtClient, showPlaceToast, t, upsertPlacement],
+    [resolveWorldAtClient, showPlaceToast, t, upsertPlacement],
   );
 
   const endPlaceDrag = useCallback(
@@ -381,13 +380,7 @@ export function GalleryRoomEditor({
         return;
       }
       const current = normalizeLayout(layoutLiveRef.current);
-      const result = evaluateArtworkDrop(
-        art,
-        world,
-        current,
-        paletteFrame,
-        art.id,
-      );
+      const result = evaluateArtworkDrop(art, world, current, art.id);
       let ghostWorld = world;
       if (result.ok) {
         ghostWorld = result.world;
@@ -397,7 +390,7 @@ export function GalleryRoomEditor({
       }
       setGhost({ world: ghostWorld, ok: result.ok });
     },
-    [paletteFrame, resolveWorldAtClient],
+    [resolveWorldAtClient],
   );
 
   const runPlacementDrag = useCallback(
@@ -1350,8 +1343,6 @@ export function GalleryRoomEditor({
             artworks={artworks}
             locale={locale}
             placements={normalized.placements}
-            paletteFrame={paletteFrame}
-            onPaletteFrameChange={setPaletteFrame}
             onBeginDrag={beginPaletteDrag}
             onRemovePlacement={removePlacement}
             onSetFrame={setPlacementFrame}

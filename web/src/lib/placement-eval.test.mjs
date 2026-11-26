@@ -47,7 +47,7 @@ test("evaluateArtworkDrop snaps painting to nearest wall within range", () => {
   };
 
   const nearWall = { x: 0, z: 6.26 + 0.45 };
-  const drop = evaluateArtworkDrop(art, nearWall, layout, "metal");
+  const drop = evaluateArtworkDrop(art, nearWall, layout);
   assert.equal(drop.ok, true);
   if (!drop.ok) return;
   assert.equal(drop.placement.kind, "painting");
@@ -60,7 +60,7 @@ test("evaluateArtworkDrop snaps painting to nearest wall within range", () => {
   );
 
   const far = { x: 0, z: 6.26 + MAX_WALL_SNAP_DIST + 0.5 };
-  const miss = evaluateArtworkDrop(art, far, layout, "wood");
+  const miss = evaluateArtworkDrop(art, far, layout);
   assert.equal(miss.ok, false);
   if (miss.ok) return;
   assert.equal(miss.reason, "no_snap");
@@ -89,7 +89,7 @@ test("evaluateArtworkDrop snaps painting from room center to nearest wall", () =
   };
 
   const center = { x: 0, z: 4 };
-  const drop = evaluateArtworkDrop(art, center, layout, "wood");
+  const drop = evaluateArtworkDrop(art, center, layout);
   assert.equal(drop.ok, true, "room-center drop must snap to a wall");
   if (!drop.ok) return;
   assert.equal(drop.placement.kind, "painting");
@@ -121,7 +121,7 @@ test("evaluateArtworkDrop places sculpture on floor inside room", () => {
   };
 
   const floor = { x: 0.5, z: 4.2 };
-  const drop = evaluateArtworkDrop(art, floor, layout, "none");
+  const drop = evaluateArtworkDrop(art, floor, layout);
   assert.equal(drop.ok, true);
   if (!drop.ok) return;
   assert.equal(drop.placement.kind, "sculpture");
@@ -129,7 +129,7 @@ test("evaluateArtworkDrop places sculpture on floor inside room", () => {
   assert.equal(drop.placement.floorZ, floor.z);
 
   const outside = { x: 50, z: 50 };
-  const miss = evaluateArtworkDrop(art, outside, layout, "none");
+  const miss = evaluateArtworkDrop(art, outside, layout);
   assert.equal(miss.ok, false);
   if (miss.ok) return;
   assert.equal(miss.reason, "no_room");
@@ -167,7 +167,7 @@ test("evaluateArtworkDrop detects painting conflicts on same wall segment", () =
   };
 
   const nearWall = { x: 0.2, z: 6.26 + 0.35 };
-  const conflict = evaluateArtworkDrop(art, nearWall, layout, "wood");
+  const conflict = evaluateArtworkDrop(art, nearWall, layout);
   assert.equal(conflict.ok, false);
   if (conflict.ok) return;
   assert.equal(conflict.reason, "conflict");
@@ -202,13 +202,42 @@ test("evaluateArtworkDrop ignoreArtworkId skips self conflict on re-drop", () =>
     urlFull: "",
     urlVideo: "",
     urlPoster: "",
+    frameId: "metal",
   };
 
   const nearWall = { x: 0.2, z: 6.26 + 0.35 };
-  const again = evaluateArtworkDrop(art, nearWall, layout, "metal", "existing");
+  const again = evaluateArtworkDrop(art, nearWall, layout, "existing");
   assert.equal(again.ok, true);
   if (!again.ok) return;
   assert.equal(again.placement.frameId, "metal");
+});
+
+test("evaluateArtworkDrop defaults painting frame to wood without catalog frameId", () => {
+  const layout = normalizeLayout({
+    rooms: [squareRoom("r1", 0, 4)],
+    connections: [],
+    placements: [],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+
+  const art = {
+    id: "a-default-frame",
+    type: "image",
+    sort: 0,
+    published: true,
+    title: { en: "", ru: "", uk: "", he: "" },
+    text: { en: "", ru: "", uk: "", he: "" },
+    urlWall: "",
+    urlFull: "",
+    urlVideo: "",
+    urlPoster: "",
+  };
+
+  const nearWall = { x: 0, z: 6.26 + 0.45 };
+  const drop = evaluateArtworkDrop(art, nearWall, layout);
+  assert.equal(drop.ok, true);
+  if (!drop.ok) return;
+  assert.equal(drop.placement.frameId, "wood");
 });
 
 test("placementWorldPoint resolves sculpture floor and painting wall", () => {
