@@ -16,8 +16,6 @@ type Props = {
   artworks: Artwork[];
   locale: Locale;
   placements: ArtworkPlacement[];
-  paletteFrame: FrameId;
-  onPaletteFrameChange: (f: FrameId) => void;
   onBeginDrag: (art: Artwork, e: ReactPointerEvent) => void;
   onRemovePlacement: (artworkId: string) => void;
   onSetFrame: (artworkId: string, frameId: FrameId) => void;
@@ -31,8 +29,6 @@ export function ArtPlacementPalette({
   artworks,
   locale,
   placements,
-  paletteFrame,
-  onPaletteFrameChange,
   onBeginDrag,
   onRemovePlacement,
   onSetFrame,
@@ -55,26 +51,6 @@ export function ArtPlacementPalette({
         <p className="mt-1 text-[0.7rem] text-[var(--paper-dim)]">
           {t.placeInstructions}
         </p>
-        <div className="mt-2 flex flex-wrap items-center gap-1">
-          <span className="text-[0.65rem] text-[var(--paper-dim)]">
-            {t.frame}
-          </span>
-          {FRAME_IDS.filter((id) => id !== "none").map((id) => (
-            <button
-              key={id}
-              type="button"
-              className={`btn !py-0.5 !px-1.5 !text-[0.6rem] ${
-                paletteFrame === id ? "btn-solid" : "btn-ghost"
-              }`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onPaletteFrameChange(id);
-              }}
-            >
-              {id}
-            </button>
-          ))}
-        </div>
       </div>
       <ul
         className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2 touch-pan-y"

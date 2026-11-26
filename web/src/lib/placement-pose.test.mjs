@@ -94,7 +94,7 @@ test("Place drop coords → identical 3D pose (hex+tri+rotated square)", () => {
     z: mid.z + (outward.z / len) * 0.4,
   };
 
-  const drop = evaluateArtworkDrop(art, dropPt, layout, "wood");
+  const drop = evaluateArtworkDrop(art, dropPt, layout);
   assert.equal(drop.ok, true);
   if (!drop.ok) return;
 

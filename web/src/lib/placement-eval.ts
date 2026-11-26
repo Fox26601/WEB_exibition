@@ -32,10 +32,13 @@ export type PlacementDropResult =
   | { ok: true; placement: ArtworkPlacement; world: Vec2 }
   | { ok: false; reason: "no_snap" | "conflict" | "no_room" };
 
-function paintingFrame(art: Artwork, paletteFrame: FrameId): FrameId {
+/** Catalog default for paintings when no artwork.frameId is set. */
+const DEFAULT_PAINTING_FRAME: FrameId = "wood";
+
+function paintingFrame(art: Artwork): FrameId {
   if (art.type === "model") return "none";
   if (art.frameId && art.frameId !== "none") return art.frameId;
-  return paletteFrame;
+  return DEFAULT_PAINTING_FRAME;
 }
 
 type WallSnapHit = {
@@ -110,7 +113,6 @@ export function evaluateArtworkDrop(
   art: Artwork,
   world: Vec2,
   layout: GalleryLayout,
-  paletteFrame: FrameId,
   ignoreArtworkId?: string,
 ): PlacementDropResult {
   const isSculpture = art.type === "model";
@@ -155,7 +157,7 @@ export function evaluateArtworkDrop(
     tAlongEdge: tAlong,
     wallHeightT: DEFAULT_WALL_HEIGHT_T,
     yaw: yawFromEdge(snap.a, snap.b, true, centroid),
-    frameId: paintingFrame(art, paletteFrame),
+    frameId: paintingFrame(art),
   };
 
   if (placementConflicts(placement, layout, ignoreArtworkId)) {
