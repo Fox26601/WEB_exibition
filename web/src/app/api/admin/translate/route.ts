@@ -3,7 +3,10 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { LOCALES } from "@/lib/catalog-types";
 import { emptySiblingLocales } from "@/lib/admin-translate";
-import { translateWithGemini } from "@/lib/gemini-translate";
+import {
+  translateFailMessage,
+  translateWithGemini,
+} from "@/lib/gemini-translate";
 
 const localeSchema = z.enum(LOCALES);
 
@@ -70,10 +73,12 @@ export async function POST(req: NextRequest) {
   });
 
   if (!result.ok) {
-    // Soft-fail: leave empties untouched; client stays quiet.
+    // Soft HTTP 200 so the admin UI can show a clear message without treating
+    // it as a hard form failure; empties stay empty until Gemini succeeds.
     return NextResponse.json({
       translations: {},
       skipped: result.reason,
+      error: translateFailMessage(result.reason, result.detail),
     });
   }
 

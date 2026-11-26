@@ -7,6 +7,12 @@ import { requestTranslations } from "./admin-translate-client";
 
 const DEFAULT_DEBOUNCE_MS = 650;
 
+export type AutoTranslateCallbacks = {
+  onTranslations: (translations: Partial<Record<Locale, string>>) => void;
+  /** Called when Gemini soft-fails or the HTTP call fails (not on abort). */
+  onError?: (message: string) => void;
+};
+
 /**
  * Debounced invisible auto-translate for one LocalizedString group
  * (e.g. artwork titles, or one booklet page's titles/bodies).
@@ -30,9 +36,7 @@ export function useAutoTranslateLocalized(debounceMs = DEFAULT_DEBOUNCE_MS) {
       sourceLocale: Locale,
       sourceText: string,
       currentFields: LocalizedString,
-      onTranslations: (
-        translations: Partial<Record<Locale, string>>,
-      ) => void,
+      callbacks: AutoTranslateCallbacks,
       delayMs: number,
     ) => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -47,15 +51,18 @@ export function useAutoTranslateLocalized(debounceMs = DEFAULT_DEBOUNCE_MS) {
         const controller = new AbortController();
         abortRef.current = controller;
         void (async () => {
-          const translations = await requestTranslations(
+          const result = await requestTranslations(
             currentFields,
             sourceLocale,
             sourceText,
             controller.signal,
           );
           if (seq !== seqRef.current) return;
-          if (!translations || Object.keys(translations).length === 0) return;
-          onTranslations(translations);
+          if (result.error) callbacks.onError?.(result.error);
+          if (!result.translations || Object.keys(result.translations).length === 0) {
+            return;
+          }
+          callbacks.onTranslations(result.translations);
         })();
       };
 
@@ -73,26 +80,22 @@ export function useAutoTranslateLocalized(debounceMs = DEFAULT_DEBOUNCE_MS) {
       sourceLocale: Locale,
       sourceText: string,
       currentFields: LocalizedString,
-      onTranslations: (
-        translations: Partial<Record<Locale, string>>,
-      ) => void,
+      callbacks: AutoTranslateCallbacks,
     ) => {
-      run(sourceLocale, sourceText, currentFields, onTranslations, debounceMs);
+      run(sourceLocale, sourceText, currentFields, callbacks, debounceMs);
     },
     [debounceMs, run],
   );
 
-  /** Immediate translate (blur / explicit flush) — still soft-fails. */
+  /** Immediate translate (blur / explicit flush). */
   const flush = useCallback(
     (
       sourceLocale: Locale,
       sourceText: string,
       currentFields: LocalizedString,
-      onTranslations: (
-        translations: Partial<Record<Locale, string>>,
-      ) => void,
+      callbacks: AutoTranslateCallbacks,
     ) => {
-      run(sourceLocale, sourceText, currentFields, onTranslations, 0);
+      run(sourceLocale, sourceText, currentFields, callbacks, 0);
     },
     [run],
   );

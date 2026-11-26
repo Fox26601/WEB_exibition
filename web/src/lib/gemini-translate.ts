@@ -1,12 +1,39 @@
 import type { Locale } from "./catalog-types";
 import { LOCALE_LABELS } from "./admin-translate";
 
+/** gemini-2.0-flash shut down 2026-06-01; use Gemini 3.6 Flash. */
 const GEMINI_MODEL =
-  process.env.GEMINI_TRANSLATE_MODEL?.trim() || "gemini-2.0-flash";
+  process.env.GEMINI_TRANSLATE_MODEL?.trim() || "gemini-3.6-flash";
+
+export type GeminiTranslateFailReason =
+  | "missing_api_key"
+  | "upstream_error"
+  | "parse_error";
 
 export type GeminiTranslateResult =
   | { ok: true; translations: Partial<Record<Locale, string>> }
-  | { ok: false; reason: "missing_api_key" | "upstream_error" | "parse_error" };
+  | {
+      ok: false;
+      reason: GeminiTranslateFailReason;
+      /** Safe admin-facing detail (no secrets). */
+      detail?: string;
+    };
+
+export function translateFailMessage(
+  reason: GeminiTranslateFailReason,
+  detail?: string,
+): string {
+  switch (reason) {
+    case "missing_api_key":
+      return "Auto-translate unavailable: GEMINI_API_KEY is not configured on the server.";
+    case "parse_error":
+      return "Auto-translate failed: unexpected response from Gemini.";
+    case "upstream_error":
+      return detail
+        ? `Auto-translate failed: ${detail}`
+        : "Auto-translate failed: Gemini API error.";
+  }
+}
 
 /** Prefer GEMINI_API_KEY; accept GOOGLE_GENERATIVE_AI_API_KEY as alias. */
 export function getGeminiApiKey(): string | null {
@@ -15,6 +42,10 @@ export function getGeminiApiKey(): string | null {
     process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ||
     "";
   return key || null;
+}
+
+export function getGeminiTranslateModel(): string {
+  return GEMINI_MODEL;
 }
 
 /**
@@ -66,17 +97,29 @@ export async function translateWithGemini(options: {
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.2,
+          // Gemini 3.x ignores / will reject temperature; do not send it.
           responseMimeType: "application/json",
+          thinkingConfig: { thinkingLevel: "MINIMAL" },
         },
       }),
     });
-  } catch {
-    return { ok: false, reason: "upstream_error" };
+  } catch (err) {
+    const aborted =
+      (err instanceof Error && err.name === "AbortError") ||
+      options.signal?.aborted;
+    if (aborted) {
+      return { ok: false, reason: "upstream_error", detail: "request aborted" };
+    }
+    return {
+      ok: false,
+      reason: "upstream_error",
+      detail: "network error reaching Gemini",
+    };
   }
 
   if (!response.ok) {
-    return { ok: false, reason: "upstream_error" };
+    const detail = await summarizeUpstreamFailure(response, GEMINI_MODEL);
+    return { ok: false, reason: "upstream_error", detail };
   }
 
   let payload: unknown;
@@ -94,7 +137,52 @@ export async function translateWithGemini(options: {
   return { ok: true, translations: parsed };
 }
 
-function extractGeminiText(payload: unknown): string | null {
+/** Build a short, secret-free failure detail from an HTTP error body. */
+export async function summarizeUpstreamFailure(
+  response: Response,
+  model: string,
+): Promise<string> {
+  const status = response.status;
+  let apiMessage = "";
+  try {
+    const body = (await response.json()) as {
+      error?: { message?: string; status?: string };
+    };
+    apiMessage = String(body?.error?.message ?? "").trim();
+  } catch {
+    // ignore non-JSON error bodies
+  }
+
+  const lower = apiMessage.toLowerCase();
+  if (
+    status === 404 ||
+    lower.includes("no longer available") ||
+    lower.includes("not found")
+  ) {
+    return `model ${model} unavailable (HTTP ${status})`;
+  }
+  if (status === 400) {
+    return apiMessage
+      ? `bad request (HTTP 400): ${truncate(apiMessage, 160)}`
+      : `bad request (HTTP 400) for model ${model}`;
+  }
+  if (status === 401 || status === 403) {
+    return `Gemini rejected the API key (HTTP ${status})`;
+  }
+  if (status === 429) {
+    return `Gemini rate limited (HTTP 429)`;
+  }
+  if (apiMessage) {
+    return `HTTP ${status}: ${truncate(apiMessage, 160)}`;
+  }
+  return `HTTP ${status} from Gemini (${model})`;
+}
+
+function truncate(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
+}
+
+export function extractGeminiText(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
   const candidates = (payload as { candidates?: unknown }).candidates;
   if (!Array.isArray(candidates) || !candidates[0]) return null;
@@ -104,7 +192,10 @@ function extractGeminiText(payload: unknown): string | null {
   if (!Array.isArray(parts)) return null;
   const chunks: string[] = [];
   for (const part of parts) {
-    if (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string") {
+    if (!part || typeof part !== "object") continue;
+    // Skip thinking/thought parts — only keep the final answer text.
+    if ((part as { thought?: unknown }).thought === true) continue;
+    if (typeof (part as { text?: unknown }).text === "string") {
       chunks.push((part as { text: string }).text);
     }
   }
@@ -112,7 +203,7 @@ function extractGeminiText(payload: unknown): string | null {
   return joined || null;
 }
 
-function parseTranslationJson(
+export function parseTranslationJson(
   raw: string,
   targets: Locale[],
 ): Partial<Record<Locale, string>> | null {

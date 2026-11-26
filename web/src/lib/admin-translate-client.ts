@@ -5,22 +5,30 @@ import {
   planFillEmptyLocales,
 } from "./admin-translate";
 
+export type TranslateClientResult = {
+  translations: Partial<Record<Locale, string>>;
+  /** Present when Gemini soft-failed or the HTTP call failed. */
+  error?: string;
+};
+
 type TranslateResponse = {
   translations?: Partial<Record<Locale, string>>;
+  skipped?: string;
+  error?: string;
 };
 
 /**
  * POST /api/admin/translate for one LocalizedString group.
- * Soft-fails (returns current fields) on network/auth/key/abort errors.
+ * Soft-fails (empty translations + optional error) on network/auth/key/abort.
  */
 export async function requestTranslations(
   fields: LocalizedString,
   sourceLocale: Locale,
   sourceText: string,
   signal?: AbortSignal,
-): Promise<Partial<Record<Locale, string>>> {
+): Promise<TranslateClientResult> {
   const plan = planAutoTranslate(fields, sourceLocale, sourceText);
-  if (!plan) return {};
+  if (!plan) return { translations: {} };
   try {
     const res = await fetch("/api/admin/translate", {
       method: "POST",
@@ -33,12 +41,45 @@ export async function requestTranslations(
         fields,
       }),
     });
-    if (!res.ok) return {};
+    if (signal?.aborted) return { translations: {} };
+    if (res.status === 403) {
+      return {
+        translations: {},
+        error: "Auto-translate unavailable: admin session required.",
+      };
+    }
+    if (!res.ok) {
+      return {
+        translations: {},
+        error: `Auto-translate failed (HTTP ${res.status}).`,
+      };
+    }
     const data = (await res.json()) as TranslateResponse;
-    if (!data.translations || typeof data.translations !== "object") return {};
-    return data.translations;
-  } catch {
-    return {};
+    const translations =
+      data.translations && typeof data.translations === "object"
+        ? data.translations
+        : {};
+    if (typeof data.error === "string" && data.error.trim()) {
+      return { translations, error: data.error.trim() };
+    }
+    if (data.skipped) {
+      return {
+        translations,
+        error: `Auto-translate skipped (${data.skipped}).`,
+      };
+    }
+    return { translations };
+  } catch (err) {
+    if (
+      signal?.aborted ||
+      (err instanceof Error && err.name === "AbortError")
+    ) {
+      return { translations: {} };
+    }
+    return {
+      translations: {},
+      error: "Auto-translate failed: network error.",
+    };
   }
 }
 
@@ -46,38 +87,44 @@ export async function requestTranslations(
 export async function fillEmptyLocales(
   fields: LocalizedString,
   signal?: AbortSignal,
-): Promise<LocalizedString> {
+): Promise<{ fields: LocalizedString; error?: string }> {
   const plan = planFillEmptyLocales(fields);
-  if (!plan) return fields;
-  const translations = await requestTranslations(
+  if (!plan) return { fields };
+  const result = await requestTranslations(
     fields,
     plan.sourceLocale,
     plan.text,
     signal,
   );
-  return mergeOnlyEmptyTranslations(fields, translations);
+  return {
+    fields: mergeOnlyEmptyTranslations(fields, result.translations),
+    error: result.error,
+  };
 }
 
 async function fillBookletPages(
   pages: BookletPage[],
   signal?: AbortSignal,
-): Promise<BookletPage[]> {
-  return Promise.all(
+): Promise<{ pages: BookletPage[]; error?: string }> {
+  let error: string | undefined;
+  const next = await Promise.all(
     pages.map(async (page) => {
       const [title, body] = await Promise.all([
         fillEmptyLocales(page.title, signal),
         fillEmptyLocales(page.body, signal),
       ]);
-      return { ...page, title, body };
+      error = error ?? title.error ?? body.error;
+      return { ...page, title: title.fields, body: body.fields };
     }),
   );
+  return { pages: next, error };
 }
 
 /** Fill every multi-locale Settings field that still has empty twins. */
 export async function fillSettingsLocales(
   settings: CatalogSettings,
   signal?: AbortSignal,
-): Promise<CatalogSettings> {
+): Promise<{ settings: CatalogSettings; error?: string }> {
   const [poster, bio, aboutArtist, aboutCurator, donateText, booklet] =
     await Promise.all([
       fillEmptyLocales(settings.poster, signal),
@@ -87,14 +134,24 @@ export async function fillSettingsLocales(
       fillEmptyLocales(settings.donate.text, signal),
       fillBookletPages(settings.entrance.booklet, signal),
     ]);
+  const error =
+    poster.error ??
+    bio.error ??
+    aboutArtist.error ??
+    aboutCurator.error ??
+    donateText.error ??
+    booklet.error;
   return {
-    ...settings,
-    poster,
-    bio,
-    aboutArtist,
-    aboutCurator,
-    donate: { ...settings.donate, text: donateText },
-    entrance: { ...settings.entrance, booklet },
+    settings: {
+      ...settings,
+      poster: poster.fields,
+      bio: bio.fields,
+      aboutArtist: aboutArtist.fields,
+      aboutCurator: aboutCurator.fields,
+      donate: { ...settings.donate, text: donateText.fields },
+      entrance: { ...settings.entrance, booklet: booklet.pages },
+    },
+    error,
   };
 }
 
@@ -102,7 +159,7 @@ export async function fillSettingsLocales(
 export async function fillArtworkLocales(
   artwork: Artwork,
   signal?: AbortSignal,
-): Promise<Artwork> {
+): Promise<{ artwork: Artwork; error?: string }> {
   const booklet = Array.isArray(artwork.booklet) ? artwork.booklet : [];
   const [title, text, filledBooklet] = await Promise.all([
     fillEmptyLocales(artwork.title, signal),
@@ -110,9 +167,12 @@ export async function fillArtworkLocales(
     fillBookletPages(booklet, signal),
   ]);
   return {
-    ...artwork,
-    title,
-    text,
-    booklet: filledBooklet,
+    artwork: {
+      ...artwork,
+      title: title.fields,
+      text: text.fields,
+      booklet: filledBooklet.pages,
+    },
+    error: title.error ?? text.error ?? filledBooklet.error,
   };
 }
