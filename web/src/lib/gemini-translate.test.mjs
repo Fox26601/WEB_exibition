@@ -101,9 +101,28 @@ describe("summarizeUpstreamFailure", () => {
     );
     const detail = await summarizeUpstreamFailure(
       response,
-      "gemini-3.6-flash",
+      "gemini-3.1-flash-lite",
     );
     assert.match(detail, /API key/);
     assert.match(detail, /403/);
+  });
+
+  it("flags high-demand / overloaded models", async () => {
+    const response = new Response(
+      JSON.stringify({
+        error: {
+          message:
+            "This model is currently experiencing high demand. Please try again later.",
+        },
+      }),
+      { status: 503 },
+    );
+    const detail = await summarizeUpstreamFailure(
+      response,
+      "gemini-3.6-flash",
+    );
+    assert.match(detail, /high demand|overloaded/i);
+    assert.match(detail, /503/);
+    assert.match(detail, /GEMINI_TRANSLATE_MODEL/);
   });
 });
