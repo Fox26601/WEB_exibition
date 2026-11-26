@@ -3,7 +3,9 @@ import {
   list,
   del,
   get,
+  head,
   BlobPreconditionFailedError,
+  BlobNotFoundError,
 } from "@vercel/blob";
 import { createHash } from "crypto";
 import { mkdir, readFile, writeFile, unlink, readdir } from "fs/promises";
@@ -19,7 +21,7 @@ export function getLocalDataDir(): string {
 
 const DATA_DIR = getLocalDataDir();
 
-/** Catalog JSON should not sit on a long CDN TTL — reads use useCache:false too. */
+/** Catalog JSON should not sit on a long CDN TTL — private reads bypass CDN entirely. */
 const CATALOG_CACHE_SECONDS = 60;
 
 function hasBlobToken(): boolean {
@@ -67,26 +69,37 @@ export type WriteBlobTextOptions = {
   ifMatch?: string | null;
   /** When false, fail if the blob already exists (create-only bootstrap). Default true. */
   allowOverwrite?: boolean;
+  /**
+   * Storage access for this object. Catalog JSON defaults to private so
+   * `useCache: false` is honored (public CDN ignores that flag and breaks CAS).
+   */
+  access?: "public" | "private";
 };
 
 /**
  * Read text + ETag. Missing blob → `{ text: null, etag: null }`.
  * Transport/auth failures throw (do not look like "missing").
+ *
+ * Catalog JSON prefers private + useCache:false. Legacy public catalog objects
+ * are read via head() + authenticated `?cache=0` origin fetch so CAS does not
+ * pair a CDN-stale body with a fresh ETag (root cause of prod write conflicts).
+ * The next put writes access:private so subsequent reads stay strong.
  */
 export async function readBlobTextDetailed(
   pathname: string,
 ): Promise<BlobTextRead> {
   if (hasBlobToken()) {
-    const result = await get(pathname, {
-      access: "public",
-      useCache: false,
-    });
-    if (!result) return { text: null, etag: null };
-    if (result.statusCode === 304 || !result.stream) {
-      return { text: null, etag: result.blob.etag };
-    }
-    const text = await new Response(result.stream).text();
-    return { text, etag: result.blob.etag };
+    const privateRead = await tryGetText(pathname, "private");
+    if (privateRead) return privateRead;
+
+    // Origin-authoritative read for legacy public catalogs (and fallback).
+    const viaHead = await tryOriginTextViaHead(pathname);
+    if (viaHead) return viaHead;
+
+    const publicRead = await tryGetText(pathname, "public");
+    if (publicRead) return publicRead;
+
+    return { text: null, etag: null };
   }
 
   await ensureDataDir();
@@ -96,12 +109,73 @@ export async function readBlobTextDetailed(
   return { text, etag: localEtag(text) };
 }
 
+async function tryGetText(
+  pathname: string,
+  access: "public" | "private",
+): Promise<BlobTextRead | null> {
+  try {
+    const result = await get(pathname, {
+      access,
+      ...(access === "private" ? { useCache: false } : {}),
+    });
+    if (!result) return null;
+    if (result.statusCode === 304 || !result.stream) {
+      return { text: null, etag: result.blob.etag || null };
+    }
+    const text = await new Response(result.stream).text();
+    return { text, etag: result.blob.etag || null };
+  } catch (err) {
+    // Wrong access mode for this object — try the other mode.
+    if (err instanceof BlobNotFoundError) return null;
+    const message = err instanceof Error ? err.message : String(err);
+    if (/access|forbidden|unauthorized|not found/i.test(message)) return null;
+    throw err;
+  }
+}
+
+/**
+ * head() is origin-authoritative. Fetch the blob URL with cache=0 + bearer
+ * token so we do not CAS against a CDN-stale public body.
+ */
+async function tryOriginTextViaHead(
+  pathname: string,
+): Promise<BlobTextRead | null> {
+  try {
+    const meta = await head(pathname);
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!token || !meta.url) return null;
+
+    const url = new URL(meta.url);
+    url.searchParams.set("cache", "0");
+    const res = await fetch(url.toString(), {
+      method: "GET",
+      headers: { authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+      throw new Error(`origin fetch ${res.status} for ${pathname}`);
+    }
+    const text = await res.text();
+    const etag = meta.etag || res.headers.get("etag") || null;
+    return { text, etag };
+  } catch (err) {
+    if (err instanceof BlobNotFoundError) return null;
+    const message = err instanceof Error ? err.message : String(err);
+    if (/not found/i.test(message)) return null;
+    // head/origin unavailable — fall through to public get.
+    logBlobError("origin-read", pathname, err);
+    return null;
+  }
+}
+
 /** Read a JSON or binary blob by pathname key (e.g. catalog-live.json). */
 export async function readBlobText(pathname: string): Promise<string | null> {
   try {
     const { text } = await readBlobTextDetailed(pathname);
     return text;
   } catch (err) {
+    if (isBlobWriteConflict(err)) throw err;
     logBlobError("read", pathname, err);
     throw err;
   }
@@ -119,12 +193,14 @@ export async function writeBlobText(
   const contentType = opts.contentType ?? "application/json";
   const allowOverwrite = opts.allowOverwrite ?? true;
   const ifMatch = opts.ifMatch ?? undefined;
+  // Catalog JSON defaults to private so subsequent strong reads work.
+  const access = opts.access ?? "private";
 
   try {
     if (hasBlobToken()) {
       try {
         const result = await put(pathname, content, {
-          access: "public",
+          access,
           contentType,
           addRandomSuffix: false,
           allowOverwrite: ifMatch ? true : allowOverwrite,
