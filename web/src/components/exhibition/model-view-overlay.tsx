@@ -124,7 +124,11 @@ export function ModelViewOverlay({ modelUrl, closeLabel, onClose }: Props) {
     <div
       className="absolute inset-0 z-40 flex items-center justify-center bg-black/92 p-8 sm:p-12 md:p-16"
       role="dialog"
+      aria-modal="true"
       aria-label="Sculpture view"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         ref={mountRef}

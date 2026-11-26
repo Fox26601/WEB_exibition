@@ -20,6 +20,7 @@ import { liveCatalogView } from "@/lib/live-catalog-view";
 import { UI, pickLocalized } from "@/lib/i18n";
 import { useGalleryLocale } from "@/lib/use-gallery-locale";
 import { LangSwitcher } from "@/components/lang-switcher";
+import { ModalShell } from "@/components/modal-shell";
 import { shouldCompositeHeldMapOverMedia } from "@/lib/gallery-three/booklet-interact";
 import { usePresenceSession } from "@/lib/presence/use-presence-session";
 import { GalleryScene3D } from "./gallery-scene-3d";
@@ -488,7 +489,12 @@ export function ExhibitionApp() {
       ) : null}
 
       {infoModal ? (
-        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+        <ModalShell
+          className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center"
+          onClose={() => setInfoModal(null)}
+          closeOnEscape={false}
+          aria-label={modalTitle}
+        >
           <div className="max-h-[70vh] w-full max-w-lg overflow-y-auto border border-[var(--line)] bg-[#12100e] p-6">
             <h2 className="mb-3 font-[family-name:var(--font-display)] text-2xl font-bold">
               {modalTitle}
@@ -540,11 +546,16 @@ export function ExhibitionApp() {
               {copy.close}
             </button>
           </div>
-        </div>
+        </ModalShell>
       ) : null}
 
       {footerModal === "review" ? (
-        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+        <ModalShell
+          className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center"
+          onClose={() => setFooterModal(null)}
+          closeOnEscape={false}
+          aria-label={copy.review}
+        >
           <div className="max-h-[70vh] w-full max-w-lg overflow-y-auto border border-[var(--line)] bg-[#12100e] p-6">
             <h2 className="mb-4 font-[family-name:var(--font-display)] text-2xl font-bold">
               {copy.review}
@@ -614,11 +625,16 @@ export function ExhibitionApp() {
               {copy.close}
             </button>
           </div>
-        </div>
+        </ModalShell>
       ) : null}
 
       {footerModal === "contact" ? (
-        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center">
+        <ModalShell
+          className="absolute inset-0 z-30 flex items-end justify-center bg-black/55 p-4 sm:items-center"
+          onClose={() => setFooterModal(null)}
+          closeOnEscape={false}
+          aria-label={copy.contact}
+        >
           <div className="max-h-[70vh] w-full max-w-lg overflow-y-auto border border-[var(--line)] bg-[#12100e] p-6">
             <h2 className="mb-4 font-[family-name:var(--font-display)] text-2xl font-bold">
               {copy.contact}
@@ -669,7 +685,7 @@ export function ExhibitionApp() {
               {copy.close}
             </button>
           </div>
-        </div>
+        </ModalShell>
       ) : null}
 
       {imageOverlay ? (
@@ -677,6 +693,7 @@ export function ExhibitionApp() {
           className="absolute inset-0 z-40 flex items-center justify-center bg-black/90 p-8 sm:p-12 md:p-16"
           onClick={() => setImageOverlay(null)}
           role="dialog"
+          aria-modal="true"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -695,7 +712,15 @@ export function ExhibitionApp() {
       ) : null}
 
       {videoOverlay ? (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black p-8 sm:p-12 md:p-16">
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center bg-black p-8 sm:p-12 md:p-16"
+          role="dialog"
+          aria-modal="true"
+          aria-label={copy.close}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setVideoOverlay(null);
+          }}
+        >
           <video
             key={`${videoOverlay.url}|${videoOverlay.poster ?? ""}`}
             ref={fullscreenVideoRef}

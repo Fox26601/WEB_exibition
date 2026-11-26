@@ -143,11 +143,27 @@ export function BookletOverlay({
   }
 
   // Always above art fullscreen (z-40) and under chrome (z-60).
-  // below-art = bottom-edge / corner sheet so the painting stays visible.
-  const shellClass =
-    anchor === "below-art"
-      ? "absolute inset-0 z-50 flex items-end justify-end bg-transparent px-3 pb-[5.5rem] pt-40 pointer-events-none sm:justify-end sm:px-6 sm:pb-12 sm:pt-36 [&>*]:pointer-events-auto"
-      : "absolute inset-0 z-50 flex items-end justify-center bg-black/40 p-4 pointer-events-none sm:items-center [&>*]:pointer-events-auto";
+  // below-art = bottom-edge / corner sheet so the painting stays visible;
+  // pointer-events pass through so the art/chrome under the sheet stay usable.
+  if (anchor === "below-art") {
+    return (
+      <div className="absolute inset-0 z-50 flex items-end justify-end bg-transparent px-3 pb-[5.5rem] pt-40 pointer-events-none sm:justify-end sm:px-6 sm:pb-12 sm:pt-36 [&>*]:pointer-events-auto">
+        {sheet}
+      </div>
+    );
+  }
 
-  return <div className={shellClass}>{sheet}</div>;
+  return (
+    <div
+      className="absolute inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label={titleLabel}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {sheet}
+    </div>
+  );
 }
