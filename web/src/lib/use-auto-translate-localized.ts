@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Locale, LocalizedString } from "./catalog-types";
 import { planAutoTranslate } from "./admin-translate";
+import { requestTranslations } from "./admin-translate-client";
 
 const DEFAULT_DEBOUNCE_MS = 650;
 
@@ -24,7 +25,7 @@ export function useAutoTranslateLocalized(debounceMs = DEFAULT_DEBOUNCE_MS) {
     };
   }, []);
 
-  const schedule = useCallback(
+  const run = useCallback(
     (
       sourceLocale: Locale,
       sourceText: string,
@@ -32,6 +33,7 @@ export function useAutoTranslateLocalized(debounceMs = DEFAULT_DEBOUNCE_MS) {
       onTranslations: (
         translations: Partial<Record<Locale, string>>,
       ) => void,
+      delayMs: number,
     ) => {
       if (timerRef.current) clearTimeout(timerRef.current);
       abortRef.current?.abort();
@@ -41,38 +43,59 @@ export function useAutoTranslateLocalized(debounceMs = DEFAULT_DEBOUNCE_MS) {
       if (!plan) return;
 
       const seq = ++seqRef.current;
-      timerRef.current = setTimeout(() => {
+      const kick = () => {
         const controller = new AbortController();
         abortRef.current = controller;
         void (async () => {
-          try {
-            const res = await fetch("/api/admin/translate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              signal: controller.signal,
-              body: JSON.stringify({
-                text: plan.text,
-                sourceLocale: plan.sourceLocale,
-                targetLocales: plan.targetLocales,
-                fields: currentFields,
-              }),
-            });
-            if (!res.ok) return;
-            const data = (await res.json()) as {
-              translations?: Partial<Record<Locale, string>>;
-            };
-            if (seq !== seqRef.current) return;
-            const translations = data.translations;
-            if (!translations || typeof translations !== "object") return;
-            onTranslations(translations);
-          } catch {
-            // Abort or network — leave empties as-is.
-          }
+          const translations = await requestTranslations(
+            currentFields,
+            sourceLocale,
+            sourceText,
+            controller.signal,
+          );
+          if (seq !== seqRef.current) return;
+          if (!translations || Object.keys(translations).length === 0) return;
+          onTranslations(translations);
         })();
-      }, debounceMs);
+      };
+
+      if (delayMs <= 0) {
+        kick();
+        return;
+      }
+      timerRef.current = setTimeout(kick, delayMs);
     },
-    [debounceMs],
+    [],
   );
 
-  return { schedule };
+  const schedule = useCallback(
+    (
+      sourceLocale: Locale,
+      sourceText: string,
+      currentFields: LocalizedString,
+      onTranslations: (
+        translations: Partial<Record<Locale, string>>,
+      ) => void,
+    ) => {
+      run(sourceLocale, sourceText, currentFields, onTranslations, debounceMs);
+    },
+    [debounceMs, run],
+  );
+
+  /** Immediate translate (blur / explicit flush) — still soft-fails. */
+  const flush = useCallback(
+    (
+      sourceLocale: Locale,
+      sourceText: string,
+      currentFields: LocalizedString,
+      onTranslations: (
+        translations: Partial<Record<Locale, string>>,
+      ) => void,
+    ) => {
+      run(sourceLocale, sourceText, currentFields, onTranslations, 0);
+    },
+    [run],
+  );
+
+  return { schedule, flush };
 }

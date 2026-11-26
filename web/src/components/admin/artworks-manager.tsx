@@ -27,6 +27,7 @@ import {
   uploadArtworkBinary,
 } from "@/lib/artwork-upload-client";
 import { readAdminJson } from "@/lib/admin-api";
+import { fillArtworkLocales } from "@/lib/admin-translate-client";
 import { ArtworkThumb } from "./artwork-thumb";
 import { LocalizedAutoFields } from "./localized-auto-fields";
 
@@ -73,7 +74,8 @@ export function ArtworksManager() {
     setBusy(true);
     setMessage("");
     try {
-      const payload = normalizeArtwork(artwork, {
+      const filled = await fillArtworkLocales(artwork);
+      const payload = normalizeArtwork(filled, {
         syncTitleTextFromBooklet: true,
       });
       const res = await fetch("/api/admin/artworks", {
