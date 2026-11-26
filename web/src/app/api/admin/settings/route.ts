@@ -39,7 +39,9 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const draft = await loadCatalog("draft");
-  return NextResponse.json(draft.settings);
+  return NextResponse.json(draft.settings, {
+    headers: { "Cache-Control": "no-store, max-age=0" },
+  });
 }
 
 export async function PUT(req: NextRequest) {

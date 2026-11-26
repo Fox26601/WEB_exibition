@@ -159,4 +159,19 @@ describe("catalog delete vs concurrent draft writes", () => {
       false,
     );
   });
+
+  it("deleteArtwork also strips the id from live catalog", async () => {
+    const { deleteArtwork, saveCatalog, loadCatalog } = await import(
+      "./catalog.ts"
+    );
+    const catalog = createDefaultCatalog();
+    const id = "sample-sculpture-obelisk";
+    await saveCatalog("live", catalog);
+    await saveCatalog("draft", structuredClone(catalog));
+    await deleteArtwork(id);
+    const live = await loadCatalog("live");
+    const draft = await loadCatalog("draft");
+    assert.equal(draft.artworks.some((a) => a.id === id), false);
+    assert.equal(live.artworks.some((a) => a.id === id), false);
+  });
 });

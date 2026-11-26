@@ -285,49 +285,69 @@ export async function upsertArtwork(artwork: Artwork): Promise<Catalog> {
   });
 }
 
+function stripArtworkFromCatalog(catalog: Catalog, id: string): Artwork | undefined {
+  const removed = catalog.artworks.find((a) => a.id === id);
+  catalog.artworks = catalog.artworks.filter((a) => a.id !== id);
+  catalog.artworks.forEach((a, i) => {
+    a.sort = i;
+  });
+  if (catalog.layout) {
+    const layout = normalizeLayout(catalog.layout);
+    catalog.layout = {
+      ...layout,
+      placements: layout.placements.filter((p) => p.artworkId !== id),
+    };
+  }
+  return removed;
+}
+
+/**
+ * Remove artwork from draft (CAS) and from live when present so the public
+ * gallery does not keep showing a work that was deleted in admin.
+ */
 export async function deleteArtwork(id: string): Promise<Catalog> {
   let removed: Artwork | undefined;
   const catalog = await mutateDraftCatalog((draft) => {
-    removed = draft.artworks.find((a) => a.id === id);
-    draft.artworks = draft.artworks.filter((a) => a.id !== id);
-    draft.artworks.forEach((a, i) => {
-      a.sort = i;
-    });
-    if (draft.layout) {
-      const layout = normalizeLayout(draft.layout);
-      draft.layout = {
-        ...layout,
-        placements: layout.placements.filter((p) => p.artworkId !== id),
-      };
-    }
+    removed = stripArtworkFromCatalog(draft, id);
   });
 
   // Verify delete stuck (guards against a lost race leaving the id present).
   const verify = await loadCatalog("draft");
   if (verify.artworks.some((a) => a.id === id)) {
     const again = await mutateDraftCatalog((draft) => {
-      draft.artworks = draft.artworks.filter((a) => a.id !== id);
-      draft.artworks.forEach((a, i) => {
-        a.sort = i;
-      });
-      if (draft.layout) {
-        const layout = normalizeLayout(draft.layout);
-        draft.layout = {
-          ...layout,
-          placements: layout.placements.filter((p) => p.artworkId !== id),
-        };
-      }
+      stripArtworkFromCatalog(draft, id);
     });
+    await stripArtworkFromLiveBestEffort(id);
     if (removed) {
       await deleteArtworkMediaBestEffort(removed);
     }
     return again;
   }
 
+  await stripArtworkFromLiveBestEffort(id);
+
   if (removed) {
     await deleteArtworkMediaBestEffort(removed);
   }
   return catalog;
+}
+
+/** Best-effort: drop the same id from live so exhibition matches admin delete. */
+async function stripArtworkFromLiveBestEffort(id: string): Promise<void> {
+  try {
+    const { catalog, etag } = await loadCatalogRecord("live");
+    if (!catalog.artworks.some((a) => a.id === id)) return;
+    const next = structuredClone(catalog) as Catalog;
+    stripArtworkFromCatalog(next, id);
+    next.updatedAt = new Date().toISOString();
+    await writeBlobText(LIVE_KEY, JSON.stringify(next, null, 2), {
+      contentType: "application/json",
+      allowOverwrite: true,
+      ifMatch: etag,
+    });
+  } catch {
+    /* live strip is best-effort; draft delete is authoritative for admin UI */
+  }
 }
 
 /** Best-effort blob cleanup for artwork media URLs (ignores static /samples). */

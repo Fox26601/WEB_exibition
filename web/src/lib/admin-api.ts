@@ -1,3 +1,18 @@
+/**
+ * Admin fetch defaults: never use the HTTP cache (Safari especially will
+ * serve a stale GET /api/admin/artworks after DELETE/POST and resurrect rows).
+ */
+export function adminFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    cache: "no-store",
+    credentials: init?.credentials ?? "same-origin",
+  });
+}
+
 /** Normalize admin API error bodies into a short user-visible string. */
 export function formatAdminApiError(
   data: unknown,

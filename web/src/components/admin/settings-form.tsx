@@ -8,7 +8,7 @@ import {
   nextBookletPageKey,
   normalizeSettings,
 } from "@/lib/catalog-types";
-import { readAdminJson } from "@/lib/admin-api";
+import { adminFetch, readAdminJson } from "@/lib/admin-api";
 import { fillSettingsLocales } from "@/lib/admin-translate-client";
 import { LocalizedAutoFields } from "./localized-auto-fields";
 
@@ -44,7 +44,7 @@ export function SettingsForm() {
   }
 
   useEffect(() => {
-    fetch("/api/admin/settings")
+    adminFetch("/api/admin/settings")
       .then(async (r) => {
         const data = await readAdminJson<CatalogSettings>(
           r,
@@ -70,7 +70,7 @@ export function SettingsForm() {
       }
       setBusy(true);
       setMessage("");
-      const res = await fetch("/api/admin/settings", {
+      const res = await adminFetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: json,
@@ -102,7 +102,7 @@ export function SettingsForm() {
         const filled = await fillSettingsLocales(normalizeSettings(pending));
         const json = settingsSnapshot(filled);
         if (json !== lastSavedJson.current) {
-          const saveRes = await fetch("/api/admin/settings", {
+          const saveRes = await adminFetch("/api/admin/settings", {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: json,
@@ -113,7 +113,7 @@ export function SettingsForm() {
         dirty.current = false;
         pendingSettings.current = null;
       }
-      const res = await fetch("/api/admin/publish", { method: "POST" });
+      const res = await adminFetch("/api/admin/publish", { method: "POST" });
       const data = await readAdminJson<{ catalog: Catalog }>(
         res,
         "Publish failed",
@@ -210,7 +210,7 @@ export function SettingsForm() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/admin/process-image", {
+      const res = await adminFetch("/api/admin/process-image", {
         method: "POST",
         body: form,
       });
