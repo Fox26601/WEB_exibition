@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Locale, LocalizedString } from "@/lib/catalog-types";
 import { LOCALES } from "@/lib/catalog-types";
 import { mergeOnlyEmptyTranslations } from "@/lib/admin-translate";
@@ -24,6 +25,7 @@ type Props = {
 /**
  * EN/RU/UK/HE inputs with invisible debounced auto-translate into empty siblings.
  * Also flushes on blur so already-filled locales fill empty twins without retyping.
+ * Surfaces a clear inline error when Gemini fails (empties stay empty).
  */
 export function LocalizedAutoFields({
   values,
@@ -34,10 +36,12 @@ export function LocalizedAutoFields({
   onApplyTranslations,
 }: Props) {
   const { schedule, flush } = useAutoTranslateLocalized();
+  const [translateError, setTranslateError] = useState("");
 
   function applyTranslations(
     translations: Partial<Record<Locale, string>>,
   ) {
+    setTranslateError("");
     onApplyTranslations((current) =>
       mergeOnlyEmptyTranslations(current, translations),
     );
@@ -46,11 +50,17 @@ export function LocalizedAutoFields({
   function handleChange(locale: Locale, value: string) {
     const next = { ...values, [locale]: value };
     onChange(next);
-    schedule(locale, value, next, applyTranslations);
+    schedule(locale, value, next, {
+      onTranslations: applyTranslations,
+      onError: setTranslateError,
+    });
   }
 
   function handleBlur(locale: Locale) {
-    flush(locale, values[locale], values, applyTranslations);
+    flush(locale, values[locale], values, {
+      onTranslations: applyTranslations,
+      onError: setTranslateError,
+    });
   }
 
   return (
@@ -82,6 +92,14 @@ export function LocalizedAutoFields({
           )}
         </div>
       ))}
+      {translateError ? (
+        <p
+          className="sm:col-span-2 text-sm text-[#e08a7a]"
+          role="alert"
+        >
+          {translateError}
+        </p>
+      ) : null}
     </div>
   );
 }

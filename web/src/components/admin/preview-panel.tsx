@@ -248,7 +248,8 @@ export function PreviewPanel() {
     setBusy(true);
     setMessage("");
     try {
-      const filled = await fillArtworkLocales(artwork);
+      const { artwork: filled, error: translateError } =
+        await fillArtworkLocales(artwork);
       const payload = normalizeArtwork(filled, {
         syncTitleTextFromBooklet: true,
       });
@@ -264,7 +265,11 @@ export function PreviewPanel() {
       });
       setDirty(true);
       setEditing(null);
-      setMessage(opts?.successMessage ?? "Saved");
+      setMessage(
+        translateError
+          ? `${opts?.successMessage ?? "Saved"} — ${translateError}`
+          : (opts?.successMessage ?? "Saved"),
+      );
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -336,7 +341,7 @@ export function PreviewPanel() {
         id: crypto.randomUUID(),
         type: "image",
         sort: catalog?.artworks.length ?? 0,
-        published: true,
+        published: false,
         title: emptyLocalized(),
         text: emptyLocalized(),
         booklet: [emptyBookletPage(nextBookletPageKey([]))],
@@ -550,6 +555,7 @@ export function PreviewPanel() {
       {editing ? (
         <PreviewArtworkEditor
           artwork={editing}
+          isNew={!catalog?.artworks.some((a) => a.id === editing.id)}
           busy={busy}
           mediaHint={adminT.uploadMediaHint}
           onCancel={() => setEditing(null)}
@@ -564,6 +570,7 @@ export function PreviewPanel() {
 
 function PreviewArtworkEditor({
   artwork,
+  isNew,
   busy,
   mediaHint,
   onCancel,
@@ -572,6 +579,7 @@ function PreviewArtworkEditor({
   onMessage,
 }: {
   artwork: Artwork;
+  isNew: boolean;
   busy: boolean;
   mediaHint: string;
   onCancel: () => void;
@@ -696,7 +704,7 @@ function PreviewArtworkEditor({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4">
       <div className="my-8 w-full max-w-5xl border border-[var(--line)] bg-[#161310] p-6">
         <h2 className="mb-4 font-[family-name:var(--font-display)] text-xl font-bold">
-          Edit {draft.type}
+          {isNew ? "Upload" : "Edit"} {draft.type}
         </h2>
         <LocalizedAutoFields
           label="Title"
@@ -706,23 +714,25 @@ function PreviewArtworkEditor({
             setDraft((d) => ({ ...d, title: merge(d.title) }))
           }
         />
-        <div className="mb-4 flex items-center gap-2">
-          <input
-            id="preview-published"
-            type="checkbox"
-            checked={draft.published}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, published: e.target.checked }))
-            }
-            className="!w-auto"
-          />
-          <label
-            htmlFor="preview-published"
-            className="!mb-0 !normal-case !tracking-normal"
-          >
-            Published in catalog
-          </label>
-        </div>
+        {!isNew ? (
+          <div className="mb-4 flex items-center gap-2">
+            <input
+              id="preview-published"
+              type="checkbox"
+              checked={draft.published}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, published: e.target.checked }))
+              }
+              className="!w-auto"
+            />
+            <label
+              htmlFor="preview-published"
+              className="!mb-0 !normal-case !tracking-normal"
+            >
+              Published in catalog
+            </label>
+          </div>
+        ) : null}
         <div className="mb-4">
           <label>{mediaHint}</label>
           <input
@@ -877,7 +887,13 @@ function PreviewArtworkEditor({
             type="button"
             className="btn btn-solid"
             disabled={busy}
-            onClick={() => onSave({ ...draft, booklet: bookletPages })}
+            onClick={() =>
+              onSave({
+                ...draft,
+                booklet: bookletPages,
+                published: isNew ? false : draft.published,
+              })
+            }
           >
             Save
           </button>
