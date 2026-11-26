@@ -60,12 +60,14 @@ export function SettingsForm() {
 
   const persist = useCallback(async (next: CatalogSettings, label: string) => {
     try {
-      const filled = await fillSettingsLocales(normalizeSettings(next));
+      const { settings: filled, error: translateError } =
+        await fillSettingsLocales(normalizeSettings(next));
       const json = settingsSnapshot(filled);
       // No-op when payload matches last load/save — avoids toast + refetch loops.
       if (json === lastSavedJson.current) {
         dirty.current = false;
         pendingSettings.current = null;
+        if (translateError) setMessage(translateError);
         return;
       }
       setBusy(true);
@@ -80,7 +82,7 @@ export function SettingsForm() {
         "Settings save failed",
       );
       applyServerSettings(data.settings);
-      setMessage(label);
+      setMessage(translateError ? `${label} — ${translateError}` : label);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
@@ -99,7 +101,9 @@ export function SettingsForm() {
       }
       const pending = pendingSettings.current ?? settings;
       if (pending) {
-        const filled = await fillSettingsLocales(normalizeSettings(pending));
+        const { settings: filled, error: translateError } =
+          await fillSettingsLocales(normalizeSettings(pending));
+        if (translateError) setMessage(translateError);
         const json = settingsSnapshot(filled);
         if (json !== lastSavedJson.current) {
           const saveRes = await adminFetch("/api/admin/settings", {

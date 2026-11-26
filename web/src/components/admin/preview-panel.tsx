@@ -248,7 +248,8 @@ export function PreviewPanel() {
     setBusy(true);
     setMessage("");
     try {
-      const filled = await fillArtworkLocales(artwork);
+      const { artwork: filled, error: translateError } =
+        await fillArtworkLocales(artwork);
       const payload = normalizeArtwork(filled, {
         syncTitleTextFromBooklet: true,
       });
@@ -264,7 +265,11 @@ export function PreviewPanel() {
       });
       setDirty(true);
       setEditing(null);
-      setMessage(opts?.successMessage ?? "Saved");
+      setMessage(
+        translateError
+          ? `${opts?.successMessage ?? "Saved"} — ${translateError}`
+          : (opts?.successMessage ?? "Saved"),
+      );
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
