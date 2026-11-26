@@ -43,6 +43,7 @@ export function createWallVideoTexture(url: string): WallVideoHandle | null {
 
   const texture = new THREE.VideoTexture(video);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.flipY = true;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
 

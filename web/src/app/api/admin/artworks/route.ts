@@ -32,6 +32,8 @@ const artworkSchema = z.object({
   urlPoster: z.string().default(""),
   modelUrl: z.string().optional(),
   frameId: z.enum(["thin", "wood", "metal", "ornate", "none"]).optional(),
+  mediaWidth: z.number().positive().optional(),
+  mediaHeight: z.number().positive().optional(),
 });
 
 export async function GET() {
@@ -78,6 +80,8 @@ export async function POST(req: NextRequest) {
       urlPoster: data.urlPoster,
       modelUrl: data.modelUrl || "",
       frameId: data.frameId || (data.type === "model" ? "none" : "wood"),
+      mediaWidth: data.mediaWidth,
+      mediaHeight: data.mediaHeight,
     },
     { syncTitleTextFromBooklet: true },
   );

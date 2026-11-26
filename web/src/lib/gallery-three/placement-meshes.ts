@@ -12,8 +12,8 @@ import {
 import { CANVAS_Z_OFFSET, GALLERY_FLOOR_RAISE } from "./constants";
 import { ARTWORK_PICK_SIZE, SCULPTURE_PICK_SIZE } from "./artwork-interact";
 import {
-  posterCanvasOrientation,
-  posterCanvasOrientationForPlacement,
+  wallMediaOrientation,
+  wallMediaOrientationCorridor,
   type PosterCanvasOrientation,
 } from "./poster-canvas-orientation";
 import { paintingPoseFromPlacement, sculpturePoseFromPlacement } from "./painting-pose";
@@ -23,6 +23,12 @@ import {
   wallVideoHasFrame,
   type WallVideoHandle,
 } from "./wall-video";
+import {
+  PAINTING_FRAME_DEPTH,
+  mediaAspect,
+  paintingCanvasSize,
+  paintingOuterSize,
+} from "@/lib/painting-frame";
 
 const FRAME_COLORS: Record<string, number> = {
   thin: 0x1a140f,
@@ -53,18 +59,23 @@ function orientCanvasTexture(
   tex: THREE.Texture,
   orient: PosterCanvasOrientation,
 ): void {
+  if (orient.flipY != null) tex.flipY = orient.flipY;
   if (orient.flipV) flipGalleryPosterTextureV(tex);
   else if (orient.textureMirror) orientGalleryPosterTexture(tex);
+  tex.needsUpdate = true;
 }
 
 /**
  * Still poster first (avoids grey frame), then muted looping VideoTexture once a frame is ready.
+ * Video uses a separate orientation (no still flipV).
  */
 function bindPaintingCanvasMedia(
   art: Artwork,
   canvasMat: THREE.MeshBasicMaterial,
-  orient: PosterCanvasOrientation,
+  stillOrient: PosterCanvasOrientation,
+  videoOrient: PosterCanvasOrientation,
   disposables: MeshDisposable[],
+  onMeasuredAspect?: (aspect: number) => void,
 ): void {
   const posterUrl =
     art.type === "video"
@@ -75,9 +86,13 @@ function bindPaintingCanvasMedia(
   if (posterUrl) {
     void loadColorTexture(posterUrl).then((tex) => {
       if (!tex || videoApplied) return;
-      orientCanvasTexture(tex, orient);
+      orientCanvasTexture(tex, stillOrient);
       applyTextureToMaterial(canvasMat, tex);
       disposables.push(tex);
+      const img = tex.image as { width?: number; height?: number } | undefined;
+      if (img?.width && img?.height && onMeasuredAspect) {
+        onMeasuredAspect(img.width / img.height);
+      }
     });
   }
 
@@ -90,14 +105,53 @@ function bindPaintingCanvasMedia(
   const applyVideo = () => {
     if (videoApplied) return;
     videoApplied = true;
-    orientCanvasTexture(handle.texture, orient);
+    orientCanvasTexture(handle.texture, videoOrient);
     applyTextureToMaterial(canvasMat, handle.texture);
+    const vw = handle.video.videoWidth;
+    const vh = handle.video.videoHeight;
+    if (vw > 0 && vh > 0 && onMeasuredAspect) {
+      onMeasuredAspect(vw / vh);
+    }
   };
 
   if (wallVideoHasFrame(handle.video)) {
     applyVideo();
   } else {
     handle.video.addEventListener("loadeddata", applyVideo, { once: true });
+  }
+}
+
+function resizePaintingMeshes(
+  frame: THREE.Mesh | null,
+  canvas: THREE.Mesh,
+  pickProxy: THREE.Mesh,
+  headphones: THREE.Mesh | null,
+  aspect: number,
+): void {
+  const outer = paintingOuterSize(aspect);
+  const canvasSize = paintingCanvasSize(outer);
+  if (frame) {
+    frame.geometry.dispose();
+    frame.geometry = new THREE.BoxGeometry(
+      outer.width,
+      outer.height,
+      PAINTING_FRAME_DEPTH,
+    );
+  }
+  canvas.geometry.dispose();
+  canvas.geometry = new THREE.PlaneGeometry(canvasSize.width, canvasSize.height);
+  pickProxy.geometry.dispose();
+  pickProxy.geometry = new THREE.BoxGeometry(
+    Math.max(ARTWORK_PICK_SIZE.x, outer.width + 0.15),
+    Math.max(ARTWORK_PICK_SIZE.y, outer.height + 0.45),
+    ARTWORK_PICK_SIZE.z,
+  );
+  if (headphones) {
+    headphones.position.set(
+      outer.width * 0.5 + 0.05,
+      -(outer.height * 0.5) + 0.15,
+      0.1,
+    );
   }
 }
 
@@ -136,7 +190,8 @@ export function addPlacementsToScene(
     }
 
     if (placement.kind !== "painting") continue;
-    const pose = paintingPoseFromPlacement(placement, layout);
+    const outer = paintingOuterSize(mediaAspect(art));
+    const pose = paintingPoseFromPlacement(placement, layout, outer.height);
     if (!pose) continue;
     const group = buildPaintingGroup(
       art,
@@ -169,6 +224,10 @@ function buildPaintingGroup(
   group.rotation.y = pose.yawRad;
   group.userData.artworkId = art.id;
 
+  const outer = paintingOuterSize(mediaAspect(art));
+  const canvasSize = paintingCanvasSize(outer);
+  const catalogAspect = mediaAspect(art);
+
   const frameColor = FRAME_COLORS[placement.frameId] ?? FRAME_COLORS.thin;
   const frameMat = new THREE.MeshStandardMaterial({
     color: placement.frameId === "none" ? 0x000000 : frameColor,
@@ -178,9 +237,10 @@ function buildPaintingGroup(
   });
   disposables.push(frameMat);
 
+  let frame: THREE.Mesh | null = null;
   if (placement.frameId !== "none") {
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 1.4, 0.08),
+    frame = new THREE.Mesh(
+      new THREE.BoxGeometry(outer.width, outer.height, PAINTING_FRAME_DEPTH),
       frameMat,
     );
     frame.userData.artworkId = art.id;
@@ -196,8 +256,8 @@ function buildPaintingGroup(
   disposables.push(pickMat);
   const pickProxy = new THREE.Mesh(
     new THREE.BoxGeometry(
-      ARTWORK_PICK_SIZE.x,
-      ARTWORK_PICK_SIZE.y,
+      Math.max(ARTWORK_PICK_SIZE.x, outer.width + 0.15),
+      Math.max(ARTWORK_PICK_SIZE.y, outer.height + 0.45),
       ARTWORK_PICK_SIZE.z,
     ),
     pickMat,
@@ -212,26 +272,48 @@ function buildPaintingGroup(
     toneMapped: true,
   });
   disposables.push(canvasMat);
-  const orient = posterCanvasOrientationForPlacement(placement, layout);
-  const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
+  const stillOrient = wallMediaOrientation(placement, layout, "image");
+  const videoOrient = wallMediaOrientation(placement, layout, "video");
+  const canvas = new THREE.Mesh(
+    new THREE.PlaneGeometry(canvasSize.width, canvasSize.height),
+    canvasMat,
+  );
   canvas.position.z = CANVAS_Z_OFFSET;
-  if (orient.rotate180) canvas.rotation.y = Math.PI;
+  if (stillOrient.rotate180) canvas.rotation.y = Math.PI;
   canvas.userData.artworkId = art.id;
   canvas.userData.isCanvas = true;
   group.add(canvas);
 
-  bindPaintingCanvasMedia(art, canvasMat, orient, disposables);
-
+  let headphones: THREE.Mesh | null = null;
   if (art.type === "video") {
-    const hp = new THREE.Mesh(
+    headphones = new THREE.Mesh(
       new THREE.SphereGeometry(0.12, 12, 12),
       new THREE.MeshStandardMaterial({ color: 0xc4893a, roughness: 0.45 }),
     );
-    hp.position.set(0.7, -0.55, 0.1);
-    hp.userData.artworkId = art.id;
-    hp.userData.isHeadphones = true;
-    group.add(hp);
+    headphones.position.set(
+      outer.width * 0.5 + 0.05,
+      -(outer.height * 0.5) + 0.15,
+      0.1,
+    );
+    headphones.userData.artworkId = art.id;
+    headphones.userData.isHeadphones = true;
+    group.add(headphones);
   }
+
+  let appliedAspect = catalogAspect;
+  bindPaintingCanvasMedia(
+    art,
+    canvasMat,
+    stillOrient,
+    videoOrient,
+    disposables,
+    (measured) => {
+      if (!Number.isFinite(measured) || measured <= 0) return;
+      if (Math.abs(measured - appliedAspect) < 0.02) return;
+      appliedAspect = measured;
+      resizePaintingMeshes(frame, canvas, pickProxy, headphones, measured);
+    },
+  );
 
   return group;
 }
@@ -350,6 +432,8 @@ export function addCorridorArtworks(
     }
 
     const pose = slotPose(index);
+    const outer = paintingOuterSize(mediaAspect(art));
+    const canvasSize = paintingCanvasSize(outer);
     const group = new THREE.Group();
     group.position.set(pose.x, 1.55, pose.z);
     group.rotation.y = pose.wall === "left" ? Math.PI / 2 : -Math.PI / 2;
@@ -357,7 +441,10 @@ export function addCorridorArtworks(
 
     const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a140f, roughness: 0.7 });
     disposables.push(frameMat);
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.4, 0.08), frameMat);
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(outer.width, outer.height, PAINTING_FRAME_DEPTH),
+      frameMat,
+    );
     frame.userData.artworkId = art.id;
     group.add(frame);
 
@@ -369,8 +456,8 @@ export function addCorridorArtworks(
     disposables.push(pickMat);
     const pickProxy = new THREE.Mesh(
       new THREE.BoxGeometry(
-        ARTWORK_PICK_SIZE.x,
-        ARTWORK_PICK_SIZE.y,
+        Math.max(ARTWORK_PICK_SIZE.x, outer.width + 0.15),
+        Math.max(ARTWORK_PICK_SIZE.y, outer.height + 0.45),
         ARTWORK_PICK_SIZE.z,
       ),
       pickMat,
@@ -385,29 +472,49 @@ export function addCorridorArtworks(
       toneMapped: true,
     });
     disposables.push(canvasMat);
-    const canvas = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), canvasMat);
+    const canvas = new THREE.Mesh(
+      new THREE.PlaneGeometry(canvasSize.width, canvasSize.height),
+      canvasMat,
+    );
     canvas.position.z = CANVAS_Z_OFFSET;
     canvas.userData.artworkId = art.id;
     canvas.userData.isCanvas = true;
     group.add(canvas);
 
-    bindPaintingCanvasMedia(
-      art,
-      canvasMat,
-      posterCanvasOrientation(art.id),
-      disposables,
-    );
-
+    let headphones: THREE.Mesh | null = null;
     if (art.type === "video") {
-      const hp = new THREE.Mesh(
+      headphones = new THREE.Mesh(
         new THREE.SphereGeometry(0.12, 12, 12),
         new THREE.MeshStandardMaterial({ color: 0xc4893a }),
       );
-      hp.position.set(0.7, -0.55, 0.1);
-      hp.userData.artworkId = art.id;
-      hp.userData.isHeadphones = true;
-      group.add(hp);
+      headphones.position.set(
+        outer.width * 0.5 + 0.05,
+        -(outer.height * 0.5) + 0.15,
+        0.1,
+      );
+      headphones.userData.artworkId = art.id;
+      headphones.userData.isHeadphones = true;
+      group.add(headphones);
     }
+
+    const stillOrient = wallMediaOrientationCorridor("image");
+    const videoOrient = wallMediaOrientationCorridor(
+      art.type === "video" ? "video" : "image",
+    );
+    let appliedAspect = mediaAspect(art);
+    bindPaintingCanvasMedia(
+      art,
+      canvasMat,
+      stillOrient,
+      videoOrient,
+      disposables,
+      (measured) => {
+        if (!Number.isFinite(measured) || measured <= 0) return;
+        if (Math.abs(measured - appliedAspect) < 0.02) return;
+        appliedAspect = measured;
+        resizePaintingMeshes(frame, canvas, pickProxy, headphones, measured);
+      },
+    );
 
     scene.add(group);
     pickRoots.push(group);

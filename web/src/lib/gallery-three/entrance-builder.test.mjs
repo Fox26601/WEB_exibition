@@ -38,8 +38,9 @@ describe("computeEntrancePose", () => {
 
   it("rotates portal offset for 90° yaw", () => {
     const pose = computeEntrancePose({ x: 2, z: 4, rotation: 90 });
-    // halfSchematic = 1.5; portal = (2 - 1.5, 4) = (0.5, 4)
-    assert.ok(Math.abs(pose.portal.x - 0.5) < 1e-6);
+    // halfDepth = ENTRANCE_SCHEMATIC_DEPTH/2; portal = (2 - half, 4)
+    const half = ENTRANCE_SCHEMATIC_DEPTH * 0.5;
+    assert.ok(Math.abs(pose.portal.x - (2 - half)) < 1e-6);
     assert.ok(Math.abs(pose.portal.z - 4) < 1e-6);
   });
 });
