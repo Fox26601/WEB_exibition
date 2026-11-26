@@ -121,10 +121,10 @@ export interface GalleryEntrancePose {
 /** Synthetic room id for soft-snap / doorway connections to the entrance portal. */
 export const ENTRANCE_ROOM_ID = "__entrance";
 
-/** Portal at world origin when depth is 6 (z = −half depth). */
+/** Portal at world origin when z = −half foyer depth (see ENTRANCE_DEPTH). */
 export const DEFAULT_ENTRANCE_POSE: GalleryEntrancePose = {
   x: 0,
-  z: -3,
+  z: -2,
   rotation: 0,
 };
 

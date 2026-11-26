@@ -6,6 +6,7 @@ import {
   ENTRANCE_ROOM_ID,
 } from "../catalog-types.ts";
 import {
+  ENTRANCE_DEPTH,
   entranceWorldVertices,
   pointInPolygon,
   roomWorldVertices,
@@ -25,7 +26,11 @@ import {
 describe("portal floor clip", () => {
   it("portalPoseFromEntrance matches schematic portal at +half depth", () => {
     // Center at −half depth so portal lands at world origin (plan === 3D depth).
-    const pose = portalPoseFromEntrance({ x: 0, z: -3, rotation: 0 });
+    const pose = portalPoseFromEntrance({
+      x: 0,
+      z: -ENTRANCE_DEPTH * 0.5,
+      rotation: 0,
+    });
     assert.ok(Math.abs(pose.portal.x) < 1e-9);
     assert.ok(Math.abs(pose.portal.z) < 1e-9);
   });

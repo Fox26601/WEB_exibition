@@ -16,11 +16,18 @@ import { DEFAULT_DOOR_WIDTH } from "./gallery-three/constants";
 export type Vec2 = { x: number; z: number };
 
 /**
- * Shared foyer footprint (plan schematic === 3D corridor).
- * Depth was previously 3 on plan vs 6 in Three — unified to walkable depth.
+ * Shared foyer footprint (plan schematic === 3D corridor walls).
+ * Human-scale vestibule: ~4×4 m, not a 6 m tunnel or an 8 m hall.
+ * Arch / doorway clear is narrower (`ENTRANCE_ARCH_WIDTH`).
  */
-export const ENTRANCE_WIDTH = 2.4;
-export const ENTRANCE_DEPTH = 6.0;
+export const ENTRANCE_WIDTH = 4.2;
+/** Foyer depth (plan === 3D). Fits stair run + standing/spawn at visitor scale. */
+export const ENTRANCE_DEPTH = 4.0;
+/**
+ * Portal arch / stair / doorway clear width (meters).
+ * Plan corridor and 3D walls use `ENTRANCE_WIDTH`; the opening stays this wide.
+ */
+export const ENTRANCE_ARCH_WIDTH = 2.4;
 /** Portal edge index for entranceWorldVertices (+local Z side). */
 export const ENTRANCE_PORTAL_EDGE = 2;
 
@@ -683,7 +690,7 @@ export function recomputeConnections(rooms: GalleryRoom[]): RoomConnection[] {
         roomB: b.roomId,
         edgeA: a.edgeIndex,
         edgeB: b.edgeIndex,
-        doorwayWidth: toEntrance ? ENTRANCE_WIDTH : roomDoor,
+        doorwayWidth: toEntrance ? ENTRANCE_ARCH_WIDTH : roomDoor,
       });
     }
   }
@@ -777,5 +784,57 @@ export function defaultRoomTransform(
     rotation: 0,
     scaleX: base,
     scaleZ: base,
+  };
+}
+
+/** Pre-human-scale / #96 stock circumscales (isotropic rooms only). */
+function legacyStockScales(shape: RoomShape): number[] {
+  const unit = unitShapeMaxSpan(shape);
+  return [
+    shape === "square" ? 3.2 : 2.8,
+    /** #96 foyer depth 6 → TARGET 12. */
+    12 / unit,
+  ];
+}
+
+/**
+ * True when scaleX≈scaleZ matches a known stock default (old 2.8/3.2 or #96 6 m foyer).
+ * Custom / hand-tuned rooms return false.
+ */
+export function isLegacyDefaultRoomScale(room: GalleryRoom): boolean {
+  const sx = room.transform.scaleX || 1;
+  const sz = room.transform.scaleZ || 1;
+  if (Math.abs(sx - sz) > 0.08) return false;
+  return legacyStockScales(room.shape).some((c) => Math.abs(sx - c) < 0.08);
+}
+
+/** Replace stock scales with current foyer-relative default; keep pose. */
+export function rescaleRoomToFoyerDefault(room: GalleryRoom): GalleryRoom {
+  const scale = defaultGalleryRoomScale(room.shape);
+  return {
+    ...room,
+    transform: {
+      ...room.transform,
+      scaleX: scale,
+      scaleZ: scale,
+    },
+  };
+}
+
+/**
+ * Optional migration: rescale rooms that still use stock defaults.
+ * Does not move rooms or touch placements / connections.
+ */
+export function applyFoyerRelativeRoomDefaults(
+  layout: GalleryLayout,
+  opts?: { onlyLegacy?: boolean },
+): GalleryLayout {
+  const onlyLegacy = opts?.onlyLegacy !== false;
+  return {
+    ...layout,
+    rooms: layout.rooms.map((room) => {
+      if (onlyLegacy && !isLegacyDefaultRoomScale(room)) return room;
+      return rescaleRoomToFoyerDefault(room);
+    }),
   };
 }

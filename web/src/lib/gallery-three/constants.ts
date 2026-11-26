@@ -22,10 +22,15 @@ export const FLOOR_UV_METERS = 4;
 
 /** Foyer stair count into the raised gallery (6 × STEP_RISE = 2× original rise). */
 export const STEP_COUNT = 6;
-/** Vertical rise per stair tread (meters). */
+/** Vertical rise per stair tread (meters) — building-code-ish riser. */
 export const STEP_RISE = 0.18;
-/** Horizontal depth per stair tread along entrance local −Z (meters). */
-export const STEP_DEPTH = 0.35;
+/**
+ * Horizontal depth per stair tread along entrance local −Z (meters).
+ * Slightly tighter than 0.35 so the 6-step run fits a human-scale vestibule.
+ */
+export const STEP_DEPTH = 0.3;
+/** Distance from foyer back wall to spawn (along corridor into portal). */
+export const ENTRANCE_SPAWN_FROM_BACK = 1.2;
 /** Gallery walk surface above foyer floor (= top tread). */
 export const GALLERY_FLOOR_RAISE = STEP_COUNT * STEP_RISE;
 /** Thin landing slab on the gallery side of the portal (local +Z). */

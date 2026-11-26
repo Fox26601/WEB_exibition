@@ -7,7 +7,7 @@ import { ENTRANCE_ROOM_ID, normalizeLayout } from "./catalog-types";
 import {
   distPointToSegment,
   edgePoints,
-  ENTRANCE_WIDTH,
+  ENTRANCE_ARCH_WIDTH,
   pointInPolygon,
   roomWorldVertices,
   type Vec2,
@@ -64,7 +64,7 @@ function findDoorwayWidth(
     if (!partner) continue;
     const toEntrance =
       partner === ENTRANCE_ROOM_ID || roomId === ENTRANCE_ROOM_ID;
-    const floor = toEntrance ? ENTRANCE_WIDTH : DEFAULT_DOOR_WIDTH;
+    const floor = toEntrance ? ENTRANCE_ARCH_WIDTH : DEFAULT_DOOR_WIDTH;
     return Math.max(floor, c.doorwayWidth ?? 0);
   }
   return 0;

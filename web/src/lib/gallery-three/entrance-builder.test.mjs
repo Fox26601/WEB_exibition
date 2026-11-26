@@ -12,13 +12,17 @@ import {
 } from "./entrance-builder.ts";
 import {
   DOOR_CLEAR_HEIGHT,
+  ENTRANCE_SPAWN_FROM_BACK,
   GALLERY_FLOOR_RAISE,
   STEP_COUNT,
   STEP_RISE,
   galleryWallClearHeight,
   galleryWallTopY,
 } from "./constants.ts";
-import { ENTRANCE_WIDTH } from "../layout-geometry.ts";
+import {
+  ENTRANCE_ARCH_WIDTH as LAYOUT_ARCH_WIDTH,
+  ENTRANCE_WIDTH,
+} from "../layout-geometry.ts";
 
 describe("computeEntrancePose", () => {
   it("places portal on +local Z of schematic center and spawn in corridor", () => {
@@ -32,7 +36,9 @@ describe("computeEntrancePose", () => {
     assert.ok(Math.abs(pose.portal.z) < 1e-9);
     assert.ok(Math.abs(pose.spawn.x) < 1e-9);
     assert.ok(
-      Math.abs(pose.spawn.z - -(ENTRANCE_WORLD_DEPTH - 1.35)) < 1e-6,
+      Math.abs(
+        pose.spawn.z - -(ENTRANCE_WORLD_DEPTH - ENTRANCE_SPAWN_FROM_BACK),
+      ) < 1e-6,
     );
   });
 
@@ -83,7 +89,8 @@ describe("buildEntranceModule stairs", () => {
     // Top tread pulled short of the portal plane (local z=0 → world portal z).
     assert.ok(empty.climbBands[STEP_COUNT - 1].maxZ < empty.climbBands[STEP_COUNT].minZ + 1e-9);
 
-    assert.equal(ENTRANCE_ARCH_WIDTH, ENTRANCE_WIDTH);
+    assert.equal(ENTRANCE_ARCH_WIDTH, LAYOUT_ARCH_WIDTH);
+    assert.ok(ENTRANCE_WIDTH > ENTRANCE_ARCH_WIDTH);
     empty.dispose();
   });
 
