@@ -58,6 +58,38 @@ export function isBlobWriteConflict(err: unknown): boolean {
   );
 }
 
+/**
+ * True when put/get used the wrong store access mode.
+ * Public stores reject `access: "private"` (put message is explicit; get returns
+ * `Failed to fetch blob: 400 Bad Request` against `*.private.blob…`).
+ */
+export function isBlobStoreAccessMismatch(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /Cannot use (private|public) access on a (public|private) store|Failed to fetch blob:\s*400/i.test(
+    message,
+  );
+}
+
+/**
+ * get() errors that must not abort the public/origin fallback chain.
+ * A hard throw here takes down homepage SSR and GET /api/catalog (prod 500).
+ */
+export function blobGetErrorIsSoftMiss(err: unknown): boolean {
+  if (err instanceof BlobNotFoundError) return true;
+  const message = err instanceof Error ? err.message : String(err);
+  if (
+    /access|forbidden|unauthorized|not found|does not exist/i.test(message)
+  ) {
+    return true;
+  }
+  if (isBlobStoreAccessMismatch(err)) return true;
+  // Network / undici failures against the wrong *.private host, etc.
+  if (/Failed to fetch blob|fetch failed|ECONNREFUSED|ENOTFOUND/i.test(message)) {
+    return true;
+  }
+  return false;
+}
+
 export type BlobTextRead = {
   text: string | null;
   etag: string | null;
@@ -70,34 +102,77 @@ export type WriteBlobTextOptions = {
   /** When false, fail if the blob already exists (create-only bootstrap). Default true. */
   allowOverwrite?: boolean;
   /**
-   * Storage access for this object. Catalog JSON defaults to private so
-   * `useCache: false` is honored (public CDN ignores that flag and breaks CAS).
+   * Preferred storage access. Catalog JSON prefers private so `useCache: false`
+   * works on private stores. On a public store the SDK rejects private put/get;
+   * we fall back to public and keep strong reads via head()+`?cache=0`.
    */
   access?: "public" | "private";
 };
 
+type BlobAccess = "public" | "private";
+
+/** Remember which access mode this store actually accepts (process-local). */
+let resolvedStoreAccess: BlobAccess | null = null;
+
+function rememberStoreAccess(access: BlobAccess): void {
+  resolvedStoreAccess = access;
+}
+
+function accessCandidates(preferred: BlobAccess): BlobAccess[] {
+  if (resolvedStoreAccess) {
+    const other: BlobAccess =
+      resolvedStoreAccess === "private" ? "public" : "private";
+    // Prefer the resolved mode; keep the opposite as a one-shot fallback.
+    return [resolvedStoreAccess, other];
+  }
+  return preferred === "private" ? ["private", "public"] : ["public", "private"];
+}
+
+function rememberAccessFromBlobUrl(url: string | null | undefined): void {
+  if (!url) return;
+  try {
+    const host = new URL(url).host;
+    if (host.includes(".private.")) rememberStoreAccess("private");
+    else if (host.includes(".public.")) rememberStoreAccess("public");
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Read text + ETag. Missing blob → `{ text: null, etag: null }`.
- * Transport/auth failures throw (do not look like "missing").
  *
- * Catalog JSON prefers private + useCache:false. Legacy public catalog objects
- * are read via head() + authenticated `?cache=0` origin fetch so CAS does not
- * pair a CDN-stale body with a fresh ETag (root cause of prod write conflicts).
- * The next put writes access:private so subsequent reads stay strong.
+ * Prefer private + useCache:false when the store supports it. On public stores
+ * (prod webgalerey), private get throws 400 — soft-miss and fall through to
+ * head()+authenticated `?cache=0` (origin-strong CAS) then public get.
  */
 export async function readBlobTextDetailed(
   pathname: string,
 ): Promise<BlobTextRead> {
   if (hasBlobToken()) {
-    const privateRead = await tryGetText(pathname, "private");
-    if (privateRead) return privateRead;
+    // Private store: strong read via get(useCache:false). Soft-miss on public
+    // stores (400 against *.private.blob…) so we can fall through.
+    if (resolvedStoreAccess !== "public") {
+      const privateRead = await tryGetText(pathname, "private");
+      if (privateRead?.text != null) {
+        rememberStoreAccess("private");
+        return privateRead;
+      }
+    }
 
-    // Origin-authoritative read for legacy public catalogs (and fallback).
+    // Origin-authoritative — required on public stores where useCache:false is
+    // ignored by the SDK (keeps CAS ifMatch paired with a fresh body/ETag).
     const viaHead = await tryOriginTextViaHead(pathname);
-    if (viaHead) return viaHead;
+    if (viaHead?.text != null) return viaHead;
 
-    const publicRead = await tryGetText(pathname, "public");
-    if (publicRead) return publicRead;
+    // Last resort: public get (may be CDN-cached).
+    if (resolvedStoreAccess !== "private") {
+      const publicRead = await tryGetText(pathname, "public");
+      if (publicRead?.text != null) {
+        rememberStoreAccess("public");
+        return publicRead;
+      }
+    }
 
     return { text: null, etag: null };
   }
@@ -111,7 +186,7 @@ export async function readBlobTextDetailed(
 
 async function tryGetText(
   pathname: string,
-  access: "public" | "private",
+  access: BlobAccess,
 ): Promise<BlobTextRead | null> {
   try {
     const result = await get(pathname, {
@@ -120,16 +195,23 @@ async function tryGetText(
     });
     if (!result) return null;
     if (result.statusCode === 304 || !result.stream) {
-      return { text: null, etag: result.blob.etag || null };
+      // No body — do not treat as a hit that skips origin/public fallbacks.
+      return null;
     }
     const text = await new Response(result.stream).text();
+    rememberAccessFromBlobUrl(result.blob.url);
     return { text, etag: result.blob.etag || null };
   } catch (err) {
-    // Wrong access mode for this object — try the other mode.
-    if (err instanceof BlobNotFoundError) return null;
-    const message = err instanceof Error ? err.message : String(err);
-    if (/access|forbidden|unauthorized|not found/i.test(message)) return null;
-    throw err;
+    if (blobGetErrorIsSoftMiss(err)) {
+      if (isBlobStoreAccessMismatch(err)) {
+        // Opposite mode is the only viable get for this store.
+        rememberStoreAccess(access === "private" ? "public" : "private");
+      }
+      return null;
+    }
+    logBlobError(`get:${access}`, pathname, err);
+    // Still soft-miss: catalog load must not 500 when another access path works.
+    return null;
   }
 }
 
@@ -145,8 +227,14 @@ async function tryOriginTextViaHead(
     const token = process.env.BLOB_READ_WRITE_TOKEN;
     if (!token || !meta.url) return null;
 
+    rememberAccessFromBlobUrl(meta.url);
+
     const url = new URL(meta.url);
-    url.searchParams.set("cache", "0");
+    const isPrivateHost = url.host.includes(".private.");
+    // cache=0 is only valid on private stores; on public it returns HTTP 400.
+    if (isPrivateHost) {
+      url.searchParams.set("cache", "0");
+    }
     const res = await fetch(url.toString(), {
       method: "GET",
       headers: { authorization: `Bearer ${token}` },
@@ -157,7 +245,12 @@ async function tryOriginTextViaHead(
       throw new Error(`origin fetch ${res.status} for ${pathname}`);
     }
     const text = await res.text();
-    const etag = meta.etag || res.headers.get("etag") || null;
+    // Private: head etag is origin-fresh with cache=0 body. Public: prefer the
+    // response etag paired with this body (CDN-consistent); fall back to head.
+    const responseEtag = res.headers.get("etag");
+    const etag = isPrivateHost
+      ? meta.etag || responseEtag || null
+      : responseEtag || meta.etag || null;
     return { text, etag };
   } catch (err) {
     if (err instanceof BlobNotFoundError) return null;
@@ -181,6 +274,49 @@ export async function readBlobText(pathname: string): Promise<string | null> {
   }
 }
 
+async function putWithAccessFallback(
+  pathname: string,
+  content: string,
+  opts: {
+    preferredAccess: BlobAccess;
+    contentType: string;
+    allowOverwrite: boolean;
+    ifMatch?: string;
+  },
+): Promise<{ url: string; etag: string | null }> {
+  const candidates = accessCandidates(opts.preferredAccess);
+  let lastMismatch: unknown;
+  for (const access of candidates) {
+    try {
+      const result = await put(pathname, content, {
+        access,
+        contentType: opts.contentType,
+        addRandomSuffix: false,
+        allowOverwrite: opts.allowOverwrite,
+        ...(opts.ifMatch ? { ifMatch: opts.ifMatch } : {}),
+        cacheControlMaxAge: CATALOG_CACHE_SECONDS,
+      });
+      rememberStoreAccess(access);
+      rememberAccessFromBlobUrl(result.url);
+      return { url: result.url, etag: result.etag ?? null };
+    } catch (err) {
+      if (isBlobWriteConflict(err)) {
+        throw new BlobWriteConflictError(pathname);
+      }
+      if (isBlobStoreAccessMismatch(err) && candidates.length > 1) {
+        rememberStoreAccess(access === "private" ? "public" : "private");
+        lastMismatch = err;
+        logBlobError(`write-access-fallback:${access}`, pathname, err);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastMismatch instanceof Error
+    ? lastMismatch
+    : new Error(`Blob write access mismatch for ${pathname}`);
+}
+
 export async function writeBlobText(
   pathname: string,
   content: string,
@@ -193,19 +329,17 @@ export async function writeBlobText(
   const contentType = opts.contentType ?? "application/json";
   const allowOverwrite = opts.allowOverwrite ?? true;
   const ifMatch = opts.ifMatch ?? undefined;
-  // Catalog JSON defaults to private so subsequent strong reads work.
+  // Prefer private when the store supports it; fall back on public stores.
   const access = opts.access ?? "private";
 
   try {
     if (hasBlobToken()) {
       try {
-        const result = await put(pathname, content, {
-          access,
+        const result = await putWithAccessFallback(pathname, content, {
+          preferredAccess: access,
           contentType,
-          addRandomSuffix: false,
           allowOverwrite: ifMatch ? true : allowOverwrite,
-          ...(ifMatch ? { ifMatch } : {}),
-          cacheControlMaxAge: CATALOG_CACHE_SECONDS,
+          ifMatch,
         });
         return { url: result.url, etag: result.etag ?? null };
       } catch (err) {
