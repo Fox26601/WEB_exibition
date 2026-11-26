@@ -1,6 +1,8 @@
 import {
   createDefaultCatalog,
   emptyLayout,
+  isNumericBookletPageKey,
+  normalizeArtwork,
   normalizeLayout,
   normalizeSettings,
   type Catalog,
@@ -22,6 +24,25 @@ function keyFor(kind: CatalogKind): string {
   return kind === "live" ? LIVE_KEY : DRAFT_KEY;
 }
 
+/** True when any booklet page still uses a legacy free-text key. */
+export function catalogNeedsNumericBookletMigration(
+  catalog: Catalog,
+): boolean {
+  const entrance = catalog.settings?.entrance?.booklet;
+  if (Array.isArray(entrance)) {
+    for (const page of entrance) {
+      if (!isNumericBookletPageKey(page?.key)) return true;
+    }
+  }
+  for (const art of catalog.artworks ?? []) {
+    if (!Array.isArray(art.booklet)) continue;
+    for (const page of art.booklet) {
+      if (!isNumericBookletPageKey(page?.key)) return true;
+    }
+  }
+  return false;
+}
+
 export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
   try {
     const raw = await readBlobText(keyFor(kind));
@@ -31,7 +52,12 @@ export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
         const live = await readBlobText(LIVE_KEY);
         if (live) {
           try {
-            return normalizeLoadedCatalog(JSON.parse(live) as Catalog);
+            const fromLive = JSON.parse(live) as Catalog;
+            const normalized = normalizeLoadedCatalog(fromLive);
+            if (catalogNeedsNumericBookletMigration(fromLive)) {
+              await saveCatalogBestEffort(kind, normalized);
+            }
+            return normalized;
           } catch {
             /* fall through */
           }
@@ -41,7 +67,12 @@ export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
       return empty;
     }
     try {
-      return normalizeLoadedCatalog(JSON.parse(raw) as Catalog);
+      const parsed = JSON.parse(raw) as Catalog;
+      const normalized = normalizeLoadedCatalog(parsed);
+      if (catalogNeedsNumericBookletMigration(parsed)) {
+        await saveCatalogBestEffort(kind, normalized);
+      }
+      return normalized;
     } catch {
       return createDefaultCatalog();
     }
@@ -71,15 +102,18 @@ export function normalizeLoadedCatalog(catalog: Catalog): Catalog {
   catalog.layout = syncPaintingYaws(normalizeLayout(catalog.layout));
   catalog.settings = normalizeSettings(catalog.settings);
   const byId = new Map(defaults.artworks.map((a) => [a.id, a]));
-  for (const art of catalog.artworks) {
+  catalog.artworks = catalog.artworks.map((art) => {
     const sample = byId.get(art.id);
-    if (!sample) continue;
-    if (!art.urlWall && sample.urlWall) art.urlWall = sample.urlWall;
-    if (!art.urlFull && sample.urlFull) art.urlFull = sample.urlFull;
-    if (!art.urlPoster && sample.urlPoster) art.urlPoster = sample.urlPoster;
-    if (!art.modelUrl && sample.modelUrl) art.modelUrl = sample.modelUrl;
-    if (!art.frameId && sample.frameId) art.frameId = sample.frameId;
-  }
+    const next = { ...art };
+    if (sample) {
+      if (!next.urlWall && sample.urlWall) next.urlWall = sample.urlWall;
+      if (!next.urlFull && sample.urlFull) next.urlFull = sample.urlFull;
+      if (!next.urlPoster && sample.urlPoster) next.urlPoster = sample.urlPoster;
+      if (!next.modelUrl && sample.modelUrl) next.modelUrl = sample.modelUrl;
+      if (!next.frameId && sample.frameId) next.frameId = sample.frameId;
+    }
+    return normalizeArtwork(next);
+  });
   catalog.artworks.sort((a, b) => a.sort - b.sort);
   normalizeSculpturePlacements(catalog);
   return catalog;
