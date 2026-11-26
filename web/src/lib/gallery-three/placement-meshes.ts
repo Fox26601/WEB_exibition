@@ -29,6 +29,10 @@ import {
   paintingCanvasSize,
   paintingOuterSize,
 } from "@/lib/painting-frame";
+import {
+  createHeadphonesIconMesh,
+  headphonesCornerPosition,
+} from "./headphones-icon";
 
 const FRAME_COLORS: Record<string, number> = {
   thin: 0x1a140f,
@@ -147,10 +151,8 @@ function resizePaintingMeshes(
     ARTWORK_PICK_SIZE.z,
   );
   if (headphones) {
-    headphones.position.set(
-      outer.width * 0.5 + 0.05,
-      -(outer.height * 0.5) + 0.15,
-      0.1,
+    headphones.position.copy(
+      headphonesCornerPosition(outer.width, outer.height),
     );
   }
 }
@@ -286,17 +288,12 @@ function buildPaintingGroup(
 
   let headphones: THREE.Mesh | null = null;
   if (art.type === "video") {
-    headphones = new THREE.Mesh(
-      new THREE.SphereGeometry(0.12, 12, 12),
-      new THREE.MeshStandardMaterial({ color: 0xc4893a, roughness: 0.45 }),
+    const icon = createHeadphonesIconMesh(art.id);
+    headphones = icon.mesh;
+    headphones.position.copy(
+      headphonesCornerPosition(outer.width, outer.height),
     );
-    headphones.position.set(
-      outer.width * 0.5 + 0.05,
-      -(outer.height * 0.5) + 0.15,
-      0.1,
-    );
-    headphones.userData.artworkId = art.id;
-    headphones.userData.isHeadphones = true;
+    for (const d of icon.disposables) disposables.push(d);
     group.add(headphones);
   }
 
@@ -483,17 +480,12 @@ export function addCorridorArtworks(
 
     let headphones: THREE.Mesh | null = null;
     if (art.type === "video") {
-      headphones = new THREE.Mesh(
-        new THREE.SphereGeometry(0.12, 12, 12),
-        new THREE.MeshStandardMaterial({ color: 0xc4893a }),
+      const icon = createHeadphonesIconMesh(art.id);
+      headphones = icon.mesh;
+      headphones.position.copy(
+        headphonesCornerPosition(outer.width, outer.height),
       );
-      headphones.position.set(
-        outer.width * 0.5 + 0.05,
-        -(outer.height * 0.5) + 0.15,
-        0.1,
-      );
-      headphones.userData.artworkId = art.id;
-      headphones.userData.isHeadphones = true;
+      for (const d of icon.disposables) disposables.push(d);
       group.add(headphones);
     }
 

@@ -11,6 +11,11 @@ import {
   paintingCanvasSize,
   paintingOuterSize,
 } from "@/lib/painting-frame";
+import {
+  createHeadphonesIconMesh,
+  headphonesCornerPosition,
+} from "@/lib/gallery-three/headphones-icon";
+
 type Props = {
   artworks: Artwork[];
   locale: Locale;
@@ -198,22 +203,11 @@ export function GalleryScene({
       }
 
       if (art.type === "video") {
-        const hp = new THREE.Mesh(
-          new THREE.SphereGeometry(0.12, 16, 16),
-          new THREE.MeshStandardMaterial({
-            color: 0xc4893a,
-            metalness: 0.4,
-            roughness: 0.4,
-          }),
+        const icon = createHeadphonesIconMesh(art.id);
+        icon.mesh.position.copy(
+          headphonesCornerPosition(outer.width, outer.height),
         );
-        hp.position.set(
-          outer.width * 0.5 + 0.05,
-          -(outer.height * 0.5) + 0.15,
-          0.1,
-        );
-        hp.userData.artworkId = art.id;
-        hp.userData.isHeadphones = true;
-        group.add(hp);
+        group.add(icon.mesh);
       }
 
       scene.add(group);
