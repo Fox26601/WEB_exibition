@@ -174,4 +174,51 @@ describe("catalog delete vs concurrent draft writes", () => {
     assert.equal(draft.artworks.some((a) => a.id === id), false);
     assert.equal(live.artworks.some((a) => a.id === id), false);
   });
+
+  it("queued mutateDraftCatalog commits parallel layout+settings+upsert", async () => {
+    const { mutateDraftCatalog, loadCatalog, saveCatalog, upsertArtwork } =
+      await import("./catalog.ts");
+    const { updateSettings, saveDraftLayout } = await import("./catalog.ts");
+
+    const base = createDefaultCatalog();
+    base.settings.email = "queue-start@example.com";
+    await saveCatalog("draft", base);
+
+    const art = {
+      ...base.artworks[0],
+      title: {
+        en: "Queued Edit",
+        ru: "Queued Edit",
+        uk: "Queued Edit",
+        he: "Queued Edit",
+      },
+    };
+
+    const layout = normalizeLayout({
+      ...normalizeLayout(base.layout),
+      rooms: [
+        {
+          id: "room-q",
+          shape: "square",
+          transform: { x: 0, z: 0, rotation: 0, scaleX: 1, scaleZ: 1 },
+        },
+      ],
+      placements: [],
+      entrance: { x: 0, z: -2, rotation: 0 },
+    });
+
+    await Promise.all([
+      upsertArtwork(art),
+      updateSettings({
+        ...base.settings,
+        email: "queue-end@example.com",
+      }),
+      saveDraftLayout(layout),
+    ]);
+
+    const draft = await loadCatalog("draft");
+    assert.equal(draft.settings.email, "queue-end@example.com");
+    assert.equal(draft.artworks[0].title.en, "Queued Edit");
+    assert.equal(draft.layout.rooms[0]?.id, "room-q");
+  });
 });
