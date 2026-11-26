@@ -96,9 +96,21 @@ export function ArtworksManager() {
   }
 
   async function removeArtwork(id: string) {
+    if (busy) return;
     if (!confirm("Delete this artwork?")) return;
+    const previous = catalog;
     setBusy(true);
     setMessage("");
+    // Optimistic remove so the row cannot stick around while a refetch races.
+    setCatalog((prev) =>
+      prev
+        ? {
+            ...prev,
+            artworks: prev.artworks.filter((a) => a.id !== id),
+          }
+        : prev,
+    );
+    if (editing?.id === id) setEditing(null);
     try {
       const res = await fetch(`/api/admin/artworks/${id}`, { method: "DELETE" });
       const data = await readAdminJson<{ catalog: Catalog }>(
@@ -107,8 +119,26 @@ export function ArtworksManager() {
       );
       setCatalog(data.catalog);
       setMessage("Deleted");
-      await refresh().catch(() => undefined);
+      try {
+        const resList = await fetch("/api/admin/artworks");
+        const latest = await readAdminJson<Catalog>(
+          resList,
+          "Failed to load artworks",
+        );
+        if (latest.artworks.some((a) => a.id === id)) {
+          setCatalog(data.catalog);
+          setMessage(
+            "Delete saved, but a refresh still showed this artwork — kept deleted list. Publish if live still shows it.",
+          );
+        } else {
+          setCatalog(latest);
+          setMessage("Deleted");
+        }
+      } catch {
+        /* DELETE already succeeded — keep optimistic/server catalog */
+      }
     } catch (e) {
+      setCatalog(previous);
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
       setBusy(false);
@@ -253,6 +283,7 @@ export function ArtworksManager() {
               <button
                 type="button"
                 className="btn btn-ghost !py-1 !px-2 !text-[0.65rem]"
+                disabled={busy}
                 onClick={() => move(art.id, -1)}
               >
                 ↑
@@ -260,6 +291,7 @@ export function ArtworksManager() {
               <button
                 type="button"
                 className="btn btn-ghost !py-1 !px-2 !text-[0.65rem]"
+                disabled={busy}
                 onClick={() => move(art.id, 1)}
               >
                 ↓
@@ -267,6 +299,7 @@ export function ArtworksManager() {
               <button
                 type="button"
                 className="btn btn-ghost !py-1 !px-2 !text-[0.65rem]"
+                disabled={busy}
                 onClick={() => togglePublished(art)}
               >
                 {art.published ? "Unpublish" : "Publish"}
@@ -274,6 +307,7 @@ export function ArtworksManager() {
               <button
                 type="button"
                 className="btn !py-1 !px-2 !text-[0.65rem]"
+                disabled={busy}
                 onClick={() => setEditing(normalizeArtwork(art))}
               >
                 Edit
@@ -281,6 +315,7 @@ export function ArtworksManager() {
               <button
                 type="button"
                 className="btn btn-danger !py-1 !px-2 !text-[0.65rem]"
+                disabled={busy}
                 onClick={() => removeArtwork(art.id)}
               >
                 Delete

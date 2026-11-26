@@ -55,6 +55,11 @@ export async function PUT(req: NextRequest) {
       { status: 400 },
     );
   }
-  const catalog = await updateSettings(parsed.data);
-  return NextResponse.json({ settings: catalog.settings, catalog });
+  try {
+    const catalog = await updateSettings(parsed.data);
+    return NextResponse.json({ settings: catalog.settings, catalog });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Settings save failed";
+    return NextResponse.json({ error: message }, { status: 503 });
+  }
 }

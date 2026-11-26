@@ -270,23 +270,62 @@ export function PreviewPanel() {
   }
 
   async function removeArtwork(id: string) {
+    if (busy) return;
     if (!confirm("Delete this artwork?")) return;
+    const previous = catalog;
     setBusy(true);
     setMessage("");
+    setCatalog((prev) =>
+      prev
+        ? {
+            ...prev,
+            artworks: prev.artworks.filter((a) => a.id !== id),
+            layout: {
+              ...ensureLayout(prev.layout),
+              placements: ensureLayout(prev.layout).placements.filter(
+                (p) => p.artworkId !== id,
+              ),
+            },
+          }
+        : prev,
+    );
+    if (editing?.id === id) setEditing(null);
     try {
       const res = await fetch(`/api/admin/artworks/${id}`, { method: "DELETE" });
       const data = await readAdminJson<{ catalog: Catalog }>(
         res,
         "Delete failed",
       );
-      setCatalog({
+      const deletedCatalog = {
         ...data.catalog,
         layout: ensureLayout(data.catalog.layout ?? catalog?.layout),
-      });
+      };
+      setCatalog(deletedCatalog);
+      layoutRef.current = deletedCatalog.layout;
       setDirty(true);
       setMessage("Deleted");
-      await refresh().catch(() => undefined);
+      try {
+        const catRes = await fetch("/api/catalog?catalog=draft");
+        if (catRes.ok) {
+          const latest = (await catRes.json()) as Catalog;
+          if (latest.artworks.some((a) => a.id === id)) {
+            setCatalog(deletedCatalog);
+            layoutRef.current = deletedCatalog.layout;
+            setMessage(
+              "Delete saved, but a refresh still showed this artwork — kept deleted list. Publish if live still shows it.",
+            );
+          } else {
+            const next = { ...latest, layout: ensureLayout(latest.layout) };
+            setCatalog(next);
+            layoutRef.current = next.layout;
+            setMessage("Deleted");
+          }
+        }
+      } catch {
+        /* DELETE already succeeded */
+      }
     } catch (e) {
+      setCatalog(previous);
       setMessage(e instanceof Error ? e.message : "Error");
     } finally {
       setBusy(false);

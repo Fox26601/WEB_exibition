@@ -10,19 +10,30 @@ import {
   type CatalogSettings,
   type GalleryLayout,
 } from "./catalog-types";
-import { deleteBlob, readBlobText, writeBlobText } from "./blob-store";
+import {
+  deleteBlob,
+  isBlobWriteConflict,
+  readBlobTextDetailed,
+  writeBlobText,
+} from "./blob-store";
 import { artworkMediaPathnames } from "./blob-pathname";
 import { syncPaintingYaws } from "./placement-eval";
 import { normalizeSculpturePlacements } from "./gallery-three/sculpture-seed";
 
 const LIVE_KEY = "catalog-live.json";
 const DRAFT_KEY = "catalog-draft.json";
+const MUTATE_RETRIES = 6;
 
 export type CatalogKind = "live" | "draft";
 
 function keyFor(kind: CatalogKind): string {
   return kind === "live" ? LIVE_KEY : DRAFT_KEY;
 }
+
+type CatalogRecord = {
+  catalog: Catalog;
+  etag: string | null;
+};
 
 /** True when any booklet page still uses a legacy free-text key. */
 export function catalogNeedsNumericBookletMigration(
@@ -43,52 +54,110 @@ export function catalogNeedsNumericBookletMigration(
   return false;
 }
 
+/**
+ * Load catalog JSON. Draft missing → copy live once and persist as draft
+ * (never return live without writing draft — that resurrected deletes after
+ * transient blob misses). Hard read failures throw instead of seeding defaults.
+ */
 export async function loadCatalog(kind: CatalogKind): Promise<Catalog> {
-  try {
-    const raw = await readBlobText(keyFor(kind));
-    if (!raw) {
-      const empty = createDefaultCatalog();
-      if (kind === "draft") {
-        const live = await readBlobText(LIVE_KEY);
-        if (live) {
-          try {
-            const fromLive = JSON.parse(live) as Catalog;
-            const normalized = normalizeLoadedCatalog(fromLive);
-            if (catalogNeedsNumericBookletMigration(fromLive)) {
-              await saveCatalogBestEffort(kind, normalized);
-            }
-            return normalized;
-          } catch {
-            /* fall through */
-          }
-        }
-      }
-      await saveCatalogBestEffort(kind, empty);
-      return empty;
-    }
-    try {
-      const parsed = JSON.parse(raw) as Catalog;
-      const normalized = normalizeLoadedCatalog(parsed);
-      if (catalogNeedsNumericBookletMigration(parsed)) {
-        await saveCatalogBestEffort(kind, normalized);
-      }
-      return normalized;
-    } catch {
-      return createDefaultCatalog();
-    }
-  } catch {
-    return createDefaultCatalog();
-  }
+  const record = await loadCatalogRecord(kind);
+  return record.catalog;
 }
 
-async function saveCatalogBestEffort(
-  kind: CatalogKind,
-  catalog: Catalog,
-): Promise<void> {
+async function loadCatalogRecord(kind: CatalogKind): Promise<CatalogRecord> {
+  const key = keyFor(kind);
+  const detailed = await readBlobTextDetailed(key);
+
+  if (detailed.text) {
+    try {
+      const parsed = JSON.parse(detailed.text) as Catalog;
+      const needsMigration = catalogNeedsNumericBookletMigration(parsed);
+      const catalog = normalizeLoadedCatalog(parsed);
+      if (needsMigration) {
+        try {
+          const written = await writeBlobText(
+            key,
+            JSON.stringify(catalog, null, 2),
+            {
+              contentType: "application/json",
+              allowOverwrite: true,
+              ifMatch: detailed.etag,
+            },
+          );
+          return { catalog, etag: written?.etag ?? detailed.etag };
+        } catch {
+          /* concurrent writer — return normalized in-memory view */
+          return { catalog, etag: detailed.etag };
+        }
+      }
+      return { catalog, etag: detailed.etag };
+    } catch {
+      /* corrupt payload — fall through to bootstrap */
+    }
+  }
+
+  if (kind === "draft") {
+    const live = await readBlobTextDetailed(LIVE_KEY);
+    if (live.text) {
+      try {
+        const fromLive = normalizeLoadedCatalog(JSON.parse(live.text) as Catalog);
+        // Persist so later GETs / deletes do not keep bouncing to live.
+        try {
+          const written = await writeBlobText(
+            DRAFT_KEY,
+            JSON.stringify(fromLive, null, 2),
+            { contentType: "application/json", allowOverwrite: false },
+          );
+          if (written) {
+            return { catalog: fromLive, etag: written.etag };
+          }
+        } catch (err) {
+          if (isBlobWriteConflict(err)) {
+            // Another request created draft first — reload it.
+            const again = await readBlobTextDetailed(DRAFT_KEY);
+            if (again.text) {
+              return {
+                catalog: normalizeLoadedCatalog(
+                  JSON.parse(again.text) as Catalog,
+                ),
+                etag: again.etag,
+              };
+            }
+          } else {
+            throw err;
+          }
+        }
+        return { catalog: fromLive, etag: null };
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          /* fall through to empty seed */
+        } else {
+          throw err;
+        }
+      }
+    }
+  }
+
+  const empty = createDefaultCatalog();
   try {
-    await saveCatalog(kind, catalog);
-  } catch {
-    /* first-boot seed may fail on read-only FS; caller still gets in-memory catalog */
+    const written = await writeBlobText(
+      key,
+      JSON.stringify(empty, null, 2),
+      { contentType: "application/json", allowOverwrite: false },
+    );
+    return { catalog: empty, etag: written?.etag ?? null };
+  } catch (err) {
+    if (isBlobWriteConflict(err)) {
+      const again = await readBlobTextDetailed(key);
+      if (again.text) {
+        return {
+          catalog: normalizeLoadedCatalog(JSON.parse(again.text) as Catalog),
+          etag: again.etag,
+        };
+      }
+    }
+    /* first-boot seed may fail on read-only FS */
+    return { catalog: empty, etag: null };
   }
 }
 
@@ -130,10 +199,52 @@ export async function saveCatalog(
   const written = await writeBlobText(
     keyFor(kind),
     JSON.stringify(catalog, null, 2),
+    { contentType: "application/json", allowOverwrite: true },
   );
   if (!written) {
     throw new Error(`Failed to persist ${keyFor(kind)}`);
   }
+}
+
+/**
+ * Apply a draft mutation with compare-and-swap retries so layout/settings
+ * autosaves cannot clobber a concurrent artwork delete (or vice versa).
+ */
+export async function mutateDraftCatalog(
+  mutate: (draft: Catalog) => void,
+  retries = MUTATE_RETRIES,
+): Promise<Catalog> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const { catalog, etag } = await loadCatalogRecord("draft");
+    const next = structuredClone(catalog) as Catalog;
+    mutate(next);
+    next.updatedAt = new Date().toISOString();
+    try {
+      const written = await writeBlobText(
+        DRAFT_KEY,
+        JSON.stringify(next, null, 2),
+        {
+          contentType: "application/json",
+          allowOverwrite: true,
+          ifMatch: etag,
+        },
+      );
+      if (!written) {
+        throw new Error(`Failed to persist ${DRAFT_KEY}`);
+      }
+      return next;
+    } catch (err) {
+      lastErr = err;
+      if (isBlobWriteConflict(err) && attempt < retries - 1) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("Draft catalog write conflict");
 }
 
 export async function publishDraft(): Promise<Catalog> {
@@ -148,6 +259,7 @@ export async function publishDraft(): Promise<Catalog> {
   const archive = await writeBlobText(
     `catalog-v${live.version || 1}.json`,
     JSON.stringify(live, null, 2),
+    { contentType: "application/json", allowOverwrite: true },
   );
   if (!archive) {
     throw new Error("Failed to archive previous live catalog");
@@ -158,42 +270,64 @@ export async function publishDraft(): Promise<Catalog> {
 }
 
 export async function upsertArtwork(artwork: Artwork): Promise<Catalog> {
-  const draft = await loadCatalog("draft");
-  const idx = draft.artworks.findIndex((a) => a.id === artwork.id);
-  if (idx >= 0) {
-    draft.artworks[idx] = artwork;
-  } else {
-    artwork.sort =
-      draft.artworks.length === 0
-        ? 0
-        : Math.max(...draft.artworks.map((a) => a.sort)) + 1;
-    draft.artworks.push(artwork);
-  }
-  draft.artworks.sort((a, b) => a.sort - b.sort);
-  await saveCatalog("draft", draft);
-  return draft;
+  return mutateDraftCatalog((draft) => {
+    const idx = draft.artworks.findIndex((a) => a.id === artwork.id);
+    if (idx >= 0) {
+      draft.artworks[idx] = artwork;
+    } else {
+      artwork.sort =
+        draft.artworks.length === 0
+          ? 0
+          : Math.max(...draft.artworks.map((a) => a.sort)) + 1;
+      draft.artworks.push(artwork);
+    }
+    draft.artworks.sort((a, b) => a.sort - b.sort);
+  });
 }
 
 export async function deleteArtwork(id: string): Promise<Catalog> {
-  const draft = await loadCatalog("draft");
-  const removed = draft.artworks.find((a) => a.id === id);
-  draft.artworks = draft.artworks.filter((a) => a.id !== id);
-  draft.artworks.forEach((a, i) => {
-    a.sort = i;
+  let removed: Artwork | undefined;
+  const catalog = await mutateDraftCatalog((draft) => {
+    removed = draft.artworks.find((a) => a.id === id);
+    draft.artworks = draft.artworks.filter((a) => a.id !== id);
+    draft.artworks.forEach((a, i) => {
+      a.sort = i;
+    });
+    if (draft.layout) {
+      const layout = normalizeLayout(draft.layout);
+      draft.layout = {
+        ...layout,
+        placements: layout.placements.filter((p) => p.artworkId !== id),
+      };
+    }
   });
-  if (draft.layout) {
-    draft.layout = {
-      ...normalizeLayout(draft.layout),
-      placements: normalizeLayout(draft.layout).placements.filter(
-        (p) => p.artworkId !== id,
-      ),
-    };
+
+  // Verify delete stuck (guards against a lost race leaving the id present).
+  const verify = await loadCatalog("draft");
+  if (verify.artworks.some((a) => a.id === id)) {
+    const again = await mutateDraftCatalog((draft) => {
+      draft.artworks = draft.artworks.filter((a) => a.id !== id);
+      draft.artworks.forEach((a, i) => {
+        a.sort = i;
+      });
+      if (draft.layout) {
+        const layout = normalizeLayout(draft.layout);
+        draft.layout = {
+          ...layout,
+          placements: layout.placements.filter((p) => p.artworkId !== id),
+        };
+      }
+    });
+    if (removed) {
+      await deleteArtworkMediaBestEffort(removed);
+    }
+    return again;
   }
-  await saveCatalog("draft", draft);
+
   if (removed) {
     await deleteArtworkMediaBestEffort(removed);
   }
-  return draft;
+  return catalog;
 }
 
 /** Best-effort blob cleanup for artwork media URLs (ignores static /samples). */
@@ -211,52 +345,49 @@ async function deleteArtworkMediaBestEffort(art: Artwork): Promise<void> {
 }
 
 export async function reorderArtworks(ids: string[]): Promise<Catalog> {
-  const draft = await loadCatalog("draft");
-  const map = new Map(draft.artworks.map((a) => [a.id, a]));
-  const reordered: Artwork[] = [];
-  ids.forEach((id, i) => {
-    const art = map.get(id);
-    if (art) {
-      art.sort = i;
-      reordered.push(art);
-      map.delete(id);
+  return mutateDraftCatalog((draft) => {
+    const map = new Map(draft.artworks.map((a) => [a.id, a]));
+    const reordered: Artwork[] = [];
+    ids.forEach((id, i) => {
+      const art = map.get(id);
+      if (art) {
+        art.sort = i;
+        reordered.push(art);
+        map.delete(id);
+      }
+    });
+    for (const rest of map.values()) {
+      rest.sort = reordered.length;
+      reordered.push(rest);
     }
+    draft.artworks = reordered;
   });
-  for (const rest of map.values()) {
-    rest.sort = reordered.length;
-    reordered.push(rest);
-  }
-  draft.artworks = reordered;
-  await saveCatalog("draft", draft);
-  return draft;
 }
 
 export async function updateSettings(
   settings: CatalogSettings,
 ): Promise<Catalog> {
-  const draft = await loadCatalog("draft");
-  draft.settings = normalizeSettings(settings);
-  await saveCatalog("draft", draft);
-  return draft;
+  return mutateDraftCatalog((draft) => {
+    draft.settings = normalizeSettings(settings);
+  });
 }
 
 /** Debounced admin autosave target: replace draft layout only. */
 export async function saveDraftLayout(layout: GalleryLayout): Promise<Catalog> {
-  const draft = await loadCatalog("draft");
-  draft.layout = syncPaintingYaws(normalizeLayout(layout));
-  normalizeSculpturePlacements(draft);
-  await saveCatalog("draft", draft);
-  return draft;
+  return mutateDraftCatalog((draft) => {
+    draft.layout = syncPaintingYaws(normalizeLayout(layout));
+    normalizeSculpturePlacements(draft);
+  });
 }
 
 export async function saveDraftCatalog(catalog: Catalog): Promise<Catalog> {
-  const next: Catalog = {
-    ...catalog,
-    layout: normalizeLayout(catalog.layout ?? emptyLayout()),
-  };
-  normalizeSculpturePlacements(next);
-  await saveCatalog("draft", next);
-  return next;
+  return mutateDraftCatalog((draft) => {
+    draft.artworks = catalog.artworks;
+    draft.settings = normalizeSettings(catalog.settings);
+    draft.layout = normalizeLayout(catalog.layout ?? emptyLayout());
+    draft.version = catalog.version;
+    normalizeSculpturePlacements(draft);
+  });
 }
 
 export {
