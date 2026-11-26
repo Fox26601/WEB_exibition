@@ -42,6 +42,19 @@ export function mergeOnlyEmptyTranslations(
 }
 
 /**
+ * Prefer the first locale that already has text (EN → RU → UK → HE).
+ * Used for blur/save fill when the user did not just edit a specific box.
+ */
+export function pickTranslateSource(
+  fields: LocalizedString,
+): Locale | null {
+  for (const locale of LOCALES) {
+    if (!isEmptyLocalizedValue(fields[locale])) return locale;
+  }
+  return null;
+}
+
+/**
  * Decide whether a typing event should trigger translation, and which targets.
  * Returns null when there is nothing to do (blank source or no empty siblings).
  */
@@ -58,6 +71,18 @@ export function planAutoTranslate(
   );
   if (targetLocales.length === 0) return null;
   return { sourceLocale, text, targetLocales };
+}
+
+/**
+ * Plan fill from whichever locale already has text into empty siblings.
+ * Returns null when nothing is fillable.
+ */
+export function planFillEmptyLocales(
+  fields: LocalizedString,
+): { sourceLocale: Locale; text: string; targetLocales: Locale[] } | null {
+  const sourceLocale = pickTranslateSource(fields);
+  if (!sourceLocale) return null;
+  return planAutoTranslate(fields, sourceLocale, fields[sourceLocale]);
 }
 
 export const LOCALE_LABELS: Record<Locale, string> = {

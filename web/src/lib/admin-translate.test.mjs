@@ -4,7 +4,9 @@ import {
   emptySiblingLocales,
   isEmptyLocalizedValue,
   mergeOnlyEmptyTranslations,
+  pickTranslateSource,
   planAutoTranslate,
+  planFillEmptyLocales,
 } from "./admin-translate.ts";
 
 describe("isEmptyLocalizedValue", () => {
@@ -109,5 +111,47 @@ describe("planAutoTranslate", () => {
     assert.equal(plan.sourceLocale, "en");
     assert.equal(plan.text, "Quiet room");
     assert.deepEqual(plan.targetLocales, ["uk", "he"]);
+  });
+});
+
+describe("pickTranslateSource", () => {
+  it("prefers the first filled locale in LOCALES order", () => {
+    assert.equal(
+      pickTranslateSource({ en: "", ru: "Текст", uk: "", he: "" }),
+      "ru",
+    );
+    assert.equal(
+      pickTranslateSource({ en: "Hello", ru: "Текст", uk: "", he: "" }),
+      "en",
+    );
+  });
+
+  it("returns null when all locales are empty", () => {
+    assert.equal(
+      pickTranslateSource({ en: "  ", ru: "", uk: "", he: "" }),
+      null,
+    );
+  });
+});
+
+describe("planFillEmptyLocales", () => {
+  it("plans from an existing filled locale into empty twins", () => {
+    const plan = planFillEmptyLocales({
+      en: "About the artist",
+      ru: "",
+      uk: "",
+      he: "",
+    });
+    assert.ok(plan);
+    assert.equal(plan.sourceLocale, "en");
+    assert.equal(plan.text, "About the artist");
+    assert.deepEqual(plan.targetLocales, ["ru", "uk", "he"]);
+  });
+
+  it("returns null when no empties remain", () => {
+    assert.equal(
+      planFillEmptyLocales({ en: "A", ru: "B", uk: "C", he: "D" }),
+      null,
+    );
   });
 });

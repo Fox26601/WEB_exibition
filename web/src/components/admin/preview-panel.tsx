@@ -32,6 +32,7 @@ import {
   uploadArtworkBinary,
 } from "@/lib/artwork-upload-client";
 import { formatAdminApiError, readAdminJson } from "@/lib/admin-api";
+import { fillArtworkLocales } from "@/lib/admin-translate-client";
 import { GalleryRoomEditor, ensureLayout } from "./gallery-room-editor";
 import { ArtworkThumb } from "./artwork-thumb";
 import { LocalizedAutoFields } from "./localized-auto-fields";
@@ -243,7 +244,8 @@ export function PreviewPanel() {
     setBusy(true);
     setMessage("");
     try {
-      const payload = normalizeArtwork(artwork, {
+      const filled = await fillArtworkLocales(artwork);
+      const payload = normalizeArtwork(filled, {
         syncTitleTextFromBooklet: true,
       });
       const res = await fetch("/api/admin/artworks", {

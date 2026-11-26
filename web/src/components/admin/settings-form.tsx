@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { BookletPage, Catalog, CatalogSettings } from "@/lib/catalog-types";
 import {
-  LOCALES,
   emptyBookletPage,
   nextBookletPageKey,
   normalizeSettings,
 } from "@/lib/catalog-types";
 import { readAdminJson } from "@/lib/admin-api";
+import { fillSettingsLocales } from "@/lib/admin-translate-client";
+import { LocalizedAutoFields } from "./localized-auto-fields";
 
 const AUTOSAVE_MS = 700;
 
@@ -42,16 +43,19 @@ export function SettingsForm() {
     setBusy(true);
     setMessage("");
     try {
+      const filled = await fillSettingsLocales(normalizeSettings(next));
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(normalizeSettings(next)),
+        body: JSON.stringify(filled),
       });
       const data = await readAdminJson<{ settings: CatalogSettings }>(
         res,
         "Settings save failed",
       );
-      setSettings(normalizeSettings(data.settings));
+      const saved = normalizeSettings(data.settings);
+      pendingSettings.current = saved;
+      setSettings(saved);
       setMessage(label);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Error");
@@ -71,13 +75,15 @@ export function SettingsForm() {
       }
       const pending = pendingSettings.current ?? settings;
       if (pending) {
+        const filled = await fillSettingsLocales(normalizeSettings(pending));
         const saveRes = await fetch("/api/admin/settings", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(normalizeSettings(pending)),
+          body: JSON.stringify(filled),
         });
         await readAdminJson(saveRes, "Settings save failed");
-        pendingSettings.current = null;
+        pendingSettings.current = filled;
+        setSettings(filled);
       }
       const res = await fetch("/api/admin/publish", { method: "POST" });
       const data = await readAdminJson<{ catalog: Catalog }>(
@@ -227,21 +233,19 @@ export function SettingsForm() {
         <h2 className="mb-3 text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
           Poster tagline
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {LOCALES.map((locale) => (
-            <div key={`poster-${locale}`}>
-              <label>Poster ({locale})</label>
-              <input
-                value={settings.poster[locale]}
-                onChange={(e) =>
-                  patch({
-                    poster: { ...settings.poster, [locale]: e.target.value },
-                  })
-                }
-              />
-            </div>
-          ))}
-        </div>
+        <LocalizedAutoFields
+          label="Poster"
+          values={settings.poster}
+          onChange={(poster) => patch({ poster })}
+          onApplyTranslations={(merge) =>
+            setSettings((prev) => {
+              if (!prev) return prev;
+              const next = { ...prev, poster: merge(prev.poster) };
+              pendingSettings.current = next;
+              return next;
+            })
+          }
+        />
       </section>
 
       <section className="mb-8 grid gap-3 sm:grid-cols-2">
@@ -269,22 +273,21 @@ export function SettingsForm() {
         <h2 className="mb-3 text-sm uppercase tracking-[0.14em] text-[var(--amber)]">
           Bio / CV
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {LOCALES.map((locale) => (
-            <div key={`bio-${locale}`}>
-              <label>Bio ({locale})</label>
-              <textarea
-                rows={5}
-                value={settings.bio[locale]}
-                onChange={(e) =>
-                  patch({
-                    bio: { ...settings.bio, [locale]: e.target.value },
-                  })
-                }
-              />
-            </div>
-          ))}
-        </div>
+        <LocalizedAutoFields
+          label="Bio"
+          multiline
+          rows={5}
+          values={settings.bio}
+          onChange={(bio) => patch({ bio })}
+          onApplyTranslations={(merge) =>
+            setSettings((prev) => {
+              if (!prev) return prev;
+              const next = { ...prev, bio: merge(prev.bio) };
+              pendingSettings.current = next;
+              return next;
+            })
+          }
+        />
       </section>
 
       <section className="mb-8">
@@ -353,39 +356,59 @@ export function SettingsForm() {
                   </button>
                 ) : null}
               </div>
-              <div className="mb-3 grid gap-3 sm:grid-cols-2">
-                {LOCALES.map((locale) => (
-                  <div key={`bt-${index}-${locale}`}>
-                    <label>Title ({locale})</label>
-                    <input
-                      value={page.title[locale]}
-                      onChange={(e) =>
-                        updateBookletPage(index, {
-                          ...page,
-                          title: { ...page.title, [locale]: e.target.value },
-                        })
-                      }
-                    />
-                  </div>
-                ))}
+              <div className="mb-3">
+                <LocalizedAutoFields
+                  label="Title"
+                  values={page.title}
+                  onChange={(title) =>
+                    updateBookletPage(index, { ...page, title })
+                  }
+                  onApplyTranslations={(merge) =>
+                    setSettings((prev) => {
+                      if (!prev) return prev;
+                      const booklet = prev.entrance.booklet.slice();
+                      const current = booklet[index];
+                      if (!current) return prev;
+                      booklet[index] = {
+                        ...current,
+                        title: merge(current.title),
+                      };
+                      const next = {
+                        ...prev,
+                        entrance: { ...prev.entrance, booklet },
+                      };
+                      pendingSettings.current = next;
+                      return next;
+                    })
+                  }
+                />
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {LOCALES.map((locale) => (
-                  <div key={`bb-${index}-${locale}`}>
-                    <label>Body ({locale})</label>
-                    <textarea
-                      rows={4}
-                      value={page.body[locale]}
-                      onChange={(e) =>
-                        updateBookletPage(index, {
-                          ...page,
-                          body: { ...page.body, [locale]: e.target.value },
-                        })
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
+              <LocalizedAutoFields
+                label="Body"
+                multiline
+                values={page.body}
+                onChange={(body) =>
+                  updateBookletPage(index, { ...page, body })
+                }
+                onApplyTranslations={(merge) =>
+                  setSettings((prev) => {
+                    if (!prev) return prev;
+                    const booklet = prev.entrance.booklet.slice();
+                    const current = booklet[index];
+                    if (!current) return prev;
+                    booklet[index] = {
+                      ...current,
+                      body: merge(current.body),
+                    };
+                    const next = {
+                      ...prev,
+                      entrance: { ...prev.entrance, booklet },
+                    };
+                    pendingSettings.current = next;
+                    return next;
+                  })
+                }
+              />
             </div>
           ))}
         </div>
@@ -398,25 +421,23 @@ export function SettingsForm() {
         <p className="mb-3 text-xs text-[var(--paper-dim)]">
           Shown in the exhibition footer Contact modal (Artist section).
         </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {LOCALES.map((locale) => (
-            <div key={`aa-${locale}`}>
-              <label>About artist ({locale})</label>
-              <textarea
-                rows={4}
-                value={settings.aboutArtist[locale]}
-                onChange={(e) =>
-                  patch({
-                    aboutArtist: {
-                      ...settings.aboutArtist,
-                      [locale]: e.target.value,
-                    },
-                  })
-                }
-              />
-            </div>
-          ))}
-        </div>
+        <LocalizedAutoFields
+          label="About artist"
+          multiline
+          values={settings.aboutArtist}
+          onChange={(aboutArtist) => patch({ aboutArtist })}
+          onApplyTranslations={(merge) =>
+            setSettings((prev) => {
+              if (!prev) return prev;
+              const next = {
+                ...prev,
+                aboutArtist: merge(prev.aboutArtist),
+              };
+              pendingSettings.current = next;
+              return next;
+            })
+          }
+        />
       </section>
 
       <section className="mb-8">
@@ -426,25 +447,23 @@ export function SettingsForm() {
         <p className="mb-3 text-xs text-[var(--paper-dim)]">
           Shown in the exhibition footer Contact modal (Curator section).
         </p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {LOCALES.map((locale) => (
-            <div key={`ac-${locale}`}>
-              <label>About curator ({locale})</label>
-              <textarea
-                rows={4}
-                value={settings.aboutCurator[locale]}
-                onChange={(e) =>
-                  patch({
-                    aboutCurator: {
-                      ...settings.aboutCurator,
-                      [locale]: e.target.value,
-                    },
-                  })
-                }
-              />
-            </div>
-          ))}
-        </div>
+        <LocalizedAutoFields
+          label="About curator"
+          multiline
+          values={settings.aboutCurator}
+          onChange={(aboutCurator) => patch({ aboutCurator })}
+          onApplyTranslations={(merge) =>
+            setSettings((prev) => {
+              if (!prev) return prev;
+              const next = {
+                ...prev,
+                aboutCurator: merge(prev.aboutCurator),
+              };
+              pendingSettings.current = next;
+              return next;
+            })
+          }
+        />
       </section>
 
       <section className="mb-8">
@@ -462,28 +481,29 @@ export function SettingsForm() {
             }
           />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {LOCALES.map((locale) => (
-            <div key={`dn-${locale}`}>
-              <label>Donate text ({locale})</label>
-              <textarea
-                rows={3}
-                value={settings.donate.text[locale]}
-                onChange={(e) =>
-                  patch({
-                    donate: {
-                      ...settings.donate,
-                      text: {
-                        ...settings.donate.text,
-                        [locale]: e.target.value,
-                      },
-                    },
-                  })
-                }
-              />
-            </div>
-          ))}
-        </div>
+        <LocalizedAutoFields
+          label="Donate text"
+          multiline
+          rows={3}
+          values={settings.donate.text}
+          onChange={(text) =>
+            patch({ donate: { ...settings.donate, text } })
+          }
+          onApplyTranslations={(merge) =>
+            setSettings((prev) => {
+              if (!prev) return prev;
+              const next = {
+                ...prev,
+                donate: {
+                  ...prev.donate,
+                  text: merge(prev.donate.text),
+                },
+              };
+              pendingSettings.current = next;
+              return next;
+            })
+          }
+        />
       </section>
 
       {message ? (

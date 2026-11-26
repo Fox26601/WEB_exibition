@@ -23,6 +23,7 @@ type Props = {
 
 /**
  * EN/RU/UK/HE inputs with invisible debounced auto-translate into empty siblings.
+ * Also flushes on blur so already-filled locales fill empty twins without retyping.
  */
 export function LocalizedAutoFields({
   values,
@@ -32,16 +33,24 @@ export function LocalizedAutoFields({
   onChange,
   onApplyTranslations,
 }: Props) {
-  const { schedule } = useAutoTranslateLocalized();
+  const { schedule, flush } = useAutoTranslateLocalized();
+
+  function applyTranslations(
+    translations: Partial<Record<Locale, string>>,
+  ) {
+    onApplyTranslations((current) =>
+      mergeOnlyEmptyTranslations(current, translations),
+    );
+  }
 
   function handleChange(locale: Locale, value: string) {
     const next = { ...values, [locale]: value };
     onChange(next);
-    schedule(locale, value, next, (translations) => {
-      onApplyTranslations((current) =>
-        mergeOnlyEmptyTranslations(current, translations),
-      );
-    });
+    schedule(locale, value, next, applyTranslations);
+  }
+
+  function handleBlur(locale: Locale) {
+    flush(locale, values[locale], values, applyTranslations);
   }
 
   return (
@@ -62,11 +71,13 @@ export function LocalizedAutoFields({
               rows={rows}
               value={values[locale]}
               onChange={(e) => handleChange(locale, e.target.value)}
+              onBlur={() => handleBlur(locale)}
             />
           ) : (
             <input
               value={values[locale]}
               onChange={(e) => handleChange(locale, e.target.value)}
+              onBlur={() => handleBlur(locale)}
             />
           )}
         </div>
