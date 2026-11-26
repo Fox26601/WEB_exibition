@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   blobGetErrorIsSoftMiss,
+  casIfMatchForAccess,
   isBlobStoreAccessMismatch,
 } from "./blob-store.ts";
 
@@ -40,5 +41,17 @@ describe("blob store access mismatch (public store + private SDK calls)", () => 
   it("does not treat unrelated write conflicts as access mismatch", () => {
     const err = new Error("Blob write conflict for catalog-draft.json");
     assert.equal(isBlobStoreAccessMismatch(err), false);
+  });
+});
+
+describe("CAS ifMatch gating by store access", () => {
+  it("keeps ifMatch on private access so CAS still works", () => {
+    assert.equal(casIfMatchForAccess("private", '"etag-1"'), '"etag-1"');
+  });
+
+  it("drops ifMatch on public access (CDN cannot strong-read)", () => {
+    assert.equal(casIfMatchForAccess("public", '"etag-stale"'), undefined);
+    assert.equal(casIfMatchForAccess("public", null), undefined);
+    assert.equal(casIfMatchForAccess("public", undefined), undefined);
   });
 });

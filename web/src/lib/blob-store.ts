@@ -104,7 +104,8 @@ export type WriteBlobTextOptions = {
   /**
    * Preferred storage access. Catalog JSON prefers private so `useCache: false`
    * works on private stores. On a public store the SDK rejects private put/get;
-   * we fall back to public and keep strong reads via head()+`?cache=0`.
+   * we fall back to public, drop ifMatch (CDN cannot strong-read), and use a
+   * process-local write-through cache so admin RMW does not 503.
    */
   access?: "public" | "private";
 };
@@ -114,8 +115,40 @@ type BlobAccess = "public" | "private";
 /** Remember which access mode this store actually accepts (process-local). */
 let resolvedStoreAccess: BlobAccess | null = null;
 
+/**
+ * Write-through cache for public-store catalog JSON.
+ * Public CDN ignores useCache:false / cache=0, so same-isolate reads after a
+ * put must not re-fetch a stale CDN body and then ifMatch-fail (or LWW-clobber).
+ */
+const publicWriteThrough = new Map<string, { etag: string; text: string }>();
+
 function rememberStoreAccess(access: BlobAccess): void {
   resolvedStoreAccess = access;
+}
+
+/** Test/helper: which access mode this process resolved (null = unknown). */
+export function getResolvedBlobStoreAccess(): BlobAccess | null {
+  return resolvedStoreAccess;
+}
+
+/** Test helper: clear process-local store access + write-through cache. */
+export function resetBlobStoreAccessStateForTests(): void {
+  resolvedStoreAccess = null;
+  publicWriteThrough.clear();
+}
+
+/**
+ * Compare-and-swap tokens are only safe when the read was origin-strong.
+ * Private stores honor useCache:false; public CDN does not — passing ifMatch
+ * there pairs a CDN body/etag with origin preconditions and 503s forever.
+ */
+export function casIfMatchForAccess(
+  access: BlobAccess,
+  ifMatch: string | null | undefined,
+): string | undefined {
+  if (!ifMatch) return undefined;
+  if (access === "public") return undefined;
+  return ifMatch;
 }
 
 function accessCandidates(preferred: BlobAccess): BlobAccess[] {
@@ -139,12 +172,32 @@ function rememberAccessFromBlobUrl(url: string | null | undefined): void {
   }
 }
 
+function rememberPublicWriteThrough(
+  pathname: string,
+  text: string,
+  etag: string | null | undefined,
+): void {
+  if (!etag) return;
+  publicWriteThrough.set(pathname, { etag, text });
+}
+
+function readPublicWriteThrough(
+  pathname: string,
+  etag: string | null | undefined,
+): string | null {
+  if (!etag) return null;
+  const hit = publicWriteThrough.get(pathname);
+  if (!hit) return null;
+  return hit.etag === etag ? hit.text : null;
+}
+
 /**
  * Read text + ETag. Missing blob → `{ text: null, etag: null }`.
  *
  * Prefer private + useCache:false when the store supports it. On public stores
  * (prod webgalerey), private get throws 400 — soft-miss and fall through to
- * head()+authenticated `?cache=0` (origin-strong CAS) then public get.
+ * head()+fetch (write-through when possible) then public get. Public puts omit
+ * ifMatch because the CDN cannot provide origin-strong reads for CAS.
  */
 export async function readBlobTextDetailed(
   pathname: string,
@@ -231,6 +284,15 @@ async function tryOriginTextViaHead(
 
     const url = new URL(meta.url);
     const isPrivateHost = url.host.includes(".private.");
+
+    // Public store: prefer same-isolate write-through (CDN cannot bypass).
+    if (!isPrivateHost) {
+      const cached = readPublicWriteThrough(pathname, meta.etag);
+      if (cached != null) {
+        return { text: cached, etag: meta.etag || null };
+      }
+    }
+
     // cache=0 is only valid on private stores; on public it returns HTTP 400.
     if (isPrivateHost) {
       url.searchParams.set("cache", "0");
@@ -245,13 +307,21 @@ async function tryOriginTextViaHead(
       throw new Error(`origin fetch ${res.status} for ${pathname}`);
     }
     const text = await res.text();
-    // Private: head etag is origin-fresh with cache=0 body. Public: prefer the
-    // response etag paired with this body (CDN-consistent); fall back to head.
     const responseEtag = res.headers.get("etag");
-    const etag = isPrivateHost
-      ? meta.etag || responseEtag || null
-      : responseEtag || meta.etag || null;
-    return { text, etag };
+    if (isPrivateHost) {
+      // Private: head etag is origin-fresh with cache=0 body.
+      return { text, etag: meta.etag || responseEtag || null };
+    }
+
+    // Public: body is CDN-served. Only treat as strongly paired when the
+    // response etag matches head (origin). Otherwise keep the body for reads
+    // but tag with the response etag (never hand origin etag + stale body to
+    // ifMatch — putWithAccessFallback also drops ifMatch on public puts).
+    if (responseEtag && meta.etag && responseEtag === meta.etag) {
+      rememberPublicWriteThrough(pathname, text, meta.etag);
+      return { text, etag: meta.etag };
+    }
+    return { text, etag: responseEtag || meta.etag || null };
   } catch (err) {
     if (err instanceof BlobNotFoundError) return null;
     const message = err instanceof Error ? err.message : String(err);
@@ -287,20 +357,49 @@ async function putWithAccessFallback(
   const candidates = accessCandidates(opts.preferredAccess);
   let lastMismatch: unknown;
   for (const access of candidates) {
+    // Public CDN cannot strong-read; never send ifMatch on public puts.
+    const ifMatch = casIfMatchForAccess(access, opts.ifMatch);
     try {
       const result = await put(pathname, content, {
         access,
         contentType: opts.contentType,
         addRandomSuffix: false,
-        allowOverwrite: opts.allowOverwrite,
-        ...(opts.ifMatch ? { ifMatch: opts.ifMatch } : {}),
+        // Without ifMatch, honor caller allowOverwrite (bootstrap uses false).
+        allowOverwrite: ifMatch ? true : opts.allowOverwrite,
+        ...(ifMatch ? { ifMatch } : {}),
         cacheControlMaxAge: CATALOG_CACHE_SECONDS,
       });
       rememberStoreAccess(access);
       rememberAccessFromBlobUrl(result.url);
+      if (access === "public") {
+        rememberPublicWriteThrough(pathname, content, result.etag ?? null);
+      }
       return { url: result.url, etag: result.etag ?? null };
     } catch (err) {
       if (isBlobWriteConflict(err)) {
+        // Public + ifMatch should be unreachable; if a stale token still
+        // races in, retry once without CAS so admin edit/delete can proceed.
+        if (access === "public" && opts.ifMatch) {
+          logBlobError("write-public-cas-fallback", pathname, err);
+          try {
+            const result = await put(pathname, content, {
+              access: "public",
+              contentType: opts.contentType,
+              addRandomSuffix: false,
+              allowOverwrite: true,
+              cacheControlMaxAge: CATALOG_CACHE_SECONDS,
+            });
+            rememberStoreAccess("public");
+            rememberAccessFromBlobUrl(result.url);
+            rememberPublicWriteThrough(pathname, content, result.etag ?? null);
+            return { url: result.url, etag: result.etag ?? null };
+          } catch (retryErr) {
+            if (isBlobWriteConflict(retryErr)) {
+              throw new BlobWriteConflictError(pathname);
+            }
+            throw retryErr;
+          }
+        }
         throw new BlobWriteConflictError(pathname);
       }
       if (isBlobStoreAccessMismatch(err) && candidates.length > 1) {
