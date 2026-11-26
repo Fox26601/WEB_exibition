@@ -191,6 +191,7 @@ export type AdminEditorStrings = {
   autosaveFailed: string;
   retry: string;
   placeBanner: string;
+  planHelpAria: string;
   entranceHelp: string;
   entranceHelpBody: string;
   entranceHelpPlaceDrag: string;
@@ -244,6 +245,7 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   autosaveFailed: "Autosave failed",
   retry: "Retry",
   placeBanner: "Enable Place mode to drag artworks onto the plan.",
+  planHelpAria: "Room plan help",
   entranceHelp:
     "Entrance (foyer): not a room from the list — portal and spawn. Bright edge is the gallery door;",
   entranceHelpBody:
@@ -305,6 +307,7 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   autosaveFailed: "Ошибка автосохранения",
   retry: "Повторить",
   placeBanner: "Включите режим Place, чтобы перетаскивать работы на план.",
+  planHelpAria: "Справка по плану зала",
   entranceHelp:
     "Вход (фойе): не комната из списка — портал и spawn. Светлая грань — дверь в галерею;",
   entranceHelpBody:

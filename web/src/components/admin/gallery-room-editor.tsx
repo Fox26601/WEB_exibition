@@ -21,7 +21,11 @@ import {
   ROOM_SHAPES,
   normalizeLayout,
 } from "@/lib/catalog-types";
-import { adminEditorStrings, type Locale } from "@/lib/i18n";
+import {
+  adminEditorStrings,
+  type AdminEditorStrings,
+  type Locale,
+} from "@/lib/i18n";
 import {
   DEFAULT_FLOOR_COLOR_HEX,
   DEFAULT_WALL_COLOR_HEX,
@@ -924,6 +928,11 @@ export function GalleryRoomEditor({
 
   const planMode = editorMode === "plan";
   const interactRooms = planMode;
+  const planHelpText = buildPlanHelpText(t, {
+    includePlaceDrag: placementEnabled && !planMode,
+    roomCount: normalized.rooms.length,
+    doorCount: normalized.connections.length,
+  });
 
   const editorBody = (
     <>
@@ -949,6 +958,7 @@ export function GalleryRoomEditor({
               >
                 {t.placeMode}
               </button>
+              <PlanHelpTip label={t.planHelpAria} text={planHelpText} />
             </div>
             {planMode ? (
               <p className="text-[0.75rem] text-[var(--amber-bright)]">
@@ -956,7 +966,11 @@ export function GalleryRoomEditor({
               </p>
             ) : null}
           </div>
-        ) : null}
+        ) : (
+          <div className="flex w-full items-center gap-2 pb-1">
+            <PlanHelpTip label={t.planHelpAria} text={planHelpText} />
+          </div>
+        )}
         {planMode ? (
           <div className="flex w-full flex-col gap-2">
             <div className="flex flex-wrap items-center gap-3">
@@ -1033,17 +1047,6 @@ export function GalleryRoomEditor({
             </div>
           </div>
         ) : null}
-        <p className="w-full text-sm text-[var(--paper-dim)]">
-          <span className="text-[var(--amber-bright)]">{t.entranceHelp}</span>{" "}
-          <span className="text-[#8aa0b8]">spawn</span> {t.entranceHelpBody}
-          {placementEnabled && !planMode ? t.entranceHelpPlaceDrag : ""}
-          {normalized.rooms.length > 0
-            ? t.entranceHelpRoomsMeta.replace(
-                "{count}",
-                String(normalized.connections.length),
-              )
-            : t.entranceHelpAddRoom}
-        </p>
       </div>
 
       <div className="overflow-auto bg-[#12100e] p-2">
@@ -1369,6 +1372,82 @@ export function GalleryRoomEditor({
 
 export function ensureLayout(layout?: GalleryLayout | null): GalleryLayout {
   return normalizeLayout(layout);
+}
+
+function buildPlanHelpText(
+  t: AdminEditorStrings,
+  opts: {
+    includePlaceDrag: boolean;
+    roomCount: number;
+    doorCount: number;
+  },
+): string {
+  const roomsMeta =
+    opts.roomCount > 0
+      ? t.entranceHelpRoomsMeta.replace("{count}", String(opts.doorCount))
+      : t.entranceHelpAddRoom;
+  return `${t.entranceHelp} spawn ${t.entranceHelpBody}${
+    opts.includePlaceDrag ? t.entranceHelpPlaceDrag : ""
+  }${roomsMeta}`;
+}
+
+function PlanHelpTip({ label, text }: { label: string; text: string }) {
+  const [pinned, setPinned] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const tipId = "plan-help-tooltip";
+  const visible = pinned || hovered;
+
+  useEffect(() => {
+    if (!pinned) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setPinned(false);
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPinned(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [pinned]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative inline-flex shrink-0"
+      onPointerEnter={(event) => {
+        if (event.pointerType === "mouse") setHovered(true);
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") setHovered(false);
+      }}
+    >
+      <button
+        type="button"
+        className="btn btn-ghost !flex !h-7 !w-7 !items-center !justify-center !p-0 !text-[0.75rem] !leading-none text-[var(--paper-dim)]"
+        aria-label={label}
+        aria-expanded={visible}
+        aria-controls={tipId}
+        title={label}
+        onClick={() => setPinned((prev) => !prev)}
+      >
+        <span aria-hidden>?</span>
+      </button>
+      <div
+        id={tipId}
+        role="tooltip"
+        hidden={!visible}
+        className="absolute left-0 top-full z-20 mt-1 w-[min(22rem,calc(100vw-2rem))] rounded border border-[var(--line)] bg-[#1a1714] px-3 py-2 text-left text-[0.72rem] leading-snug text-[var(--paper-dim)] shadow-lg"
+      >
+        {text}
+      </div>
+    </div>
+  );
 }
 
 function SurfaceColorControl({
