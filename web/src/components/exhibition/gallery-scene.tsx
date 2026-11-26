@@ -5,6 +5,12 @@ import * as THREE from "three";
 import type { Artwork } from "@/lib/catalog-types";
 import type { Locale } from "@/lib/i18n";
 import { ROOM, roomLength, slotPose } from "@/lib/room";
+import {
+  PAINTING_FRAME_DEPTH,
+  mediaAspect,
+  paintingCanvasSize,
+  paintingOuterSize,
+} from "@/lib/painting-frame";
 type Props = {
   artworks: Artwork[];
   locale: Locale;
@@ -139,8 +145,10 @@ export function GalleryScene({
       group.rotation.y = pose.wall === "left" ? Math.PI / 2 : -Math.PI / 2;
       group.userData.artworkId = art.id;
 
+      const outer = paintingOuterSize(mediaAspect(art));
+      const canvasSize = paintingCanvasSize(outer);
       const frame = new THREE.Mesh(
-        new THREE.BoxGeometry(1.4, 1.4, 0.08),
+        new THREE.BoxGeometry(outer.width, outer.height, PAINTING_FRAME_DEPTH),
         new THREE.MeshStandardMaterial({ color: 0x1a140f, roughness: 0.7 }),
       );
       group.add(frame);
@@ -150,7 +158,7 @@ export function GalleryScene({
         roughness: 0.6,
       });
       const canvas = new THREE.Mesh(
-        new THREE.PlaneGeometry(1.2, 1.2),
+        new THREE.PlaneGeometry(canvasSize.width, canvasSize.height),
         canvasMat,
       );
       canvas.position.z = 0.05;
@@ -198,7 +206,11 @@ export function GalleryScene({
             roughness: 0.4,
           }),
         );
-        hp.position.set(0.7, -0.55, 0.1);
+        hp.position.set(
+          outer.width * 0.5 + 0.05,
+          -(outer.height * 0.5) + 0.15,
+          0.1,
+        );
         hp.userData.artworkId = art.id;
         hp.userData.isHeadphones = true;
         group.add(hp);

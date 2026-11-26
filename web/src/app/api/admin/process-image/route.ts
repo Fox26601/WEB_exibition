@@ -24,6 +24,12 @@ export async function POST(req: NextRequest) {
   const input = Buffer.from(await file.arrayBuffer());
   const id = randomUUID();
 
+  const meta = await sharp(input).rotate().metadata();
+  const mediaWidth =
+    typeof meta.width === "number" && meta.width > 0 ? meta.width : undefined;
+  const mediaHeight =
+    typeof meta.height === "number" && meta.height > 0 ? meta.height : undefined;
+
   const wallBuf = await sharp(input)
     .rotate()
     .resize(1024, 1024, { fit: "inside", withoutEnlargement: true })
@@ -57,5 +63,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     urlWall: wall.url,
     urlFull: full.url,
+    ...(mediaWidth != null ? { mediaWidth } : {}),
+    ...(mediaHeight != null ? { mediaHeight } : {}),
   });
 }

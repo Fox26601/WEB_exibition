@@ -52,12 +52,14 @@ function nearestTOnSpans(t: number, spans: WallSpan[]): number {
 /**
  * 3D hang pose from saved Place fields (shared pipeline with admin markers).
  * Does not re-snap tAlongEdge into clipped doorway spans — Place is source of truth.
+ * @param outerHeight frame height in meters (aspect-aware); defaults to square.
  */
 export function paintingPoseFromPlacement(
   placement: ArtworkPlacement,
   layout: GalleryLayout,
+  outerHeight?: number,
 ): PaintingPose3D | null {
-  const pose = placementWorldPose(placement, layout);
+  const pose = placementWorldPose(placement, layout, outerHeight);
   if (!pose || pose.kind !== "painting") return null;
   return {
     position: pose.position,

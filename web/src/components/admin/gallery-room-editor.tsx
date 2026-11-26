@@ -39,7 +39,10 @@ import {
   placementWorldPoint,
   wallSnapPreviewWorld,
 } from "@/lib/placement-eval";
-import { remapPlacementsForRoomChange } from "@/lib/placement-pose";
+import {
+  clampWallHeightTForSize,
+  remapPlacementsForRoomChange,
+} from "@/lib/placement-pose";
 import { ArtPlacementPalette } from "./art-placement-palette";
 import {
   ENTRANCE_PORTAL_EDGE,
@@ -301,7 +304,7 @@ export function GalleryRoomEditor({
         ...current,
         placements: current.placements.map((p) =>
           p.artworkId === artworkId && p.kind === "painting"
-            ? { ...p, wallHeightT }
+            ? { ...p, wallHeightT: clampWallHeightTForSize(wallHeightT) }
             : p,
         ),
       });

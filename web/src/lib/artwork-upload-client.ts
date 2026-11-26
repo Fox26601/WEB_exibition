@@ -5,7 +5,7 @@ import {
   type ArtworkUploadValidation,
 } from "./artwork-upload";
 import { generateModelPosterBlob, uploadPosterBlob } from "./model-poster";
-import { generateVideoPosterBlob } from "./video-poster";
+import { generateVideoPosterWithSize } from "./video-poster";
 import { adminFetch, formatAdminApiError } from "./admin-api";
 
 export type UploadedArtworkBlob = {
@@ -14,6 +14,8 @@ export type UploadedArtworkBlob = {
   pathname: string;
   /** Generated poster URL when available (models / videos). */
   urlPoster?: string;
+  mediaWidth?: number;
+  mediaHeight?: number;
 };
 
 /**
@@ -66,8 +68,10 @@ export async function uploadArtworkBinary(
     };
   }
 
-  const urlPoster = await generatePosterForUpload(check.kind, file, uploaded.url);
-  if (urlPoster) uploaded.urlPoster = urlPoster;
+  const extras = await generatePosterForUpload(check.kind, file, uploaded.url);
+  if (extras.urlPoster) uploaded.urlPoster = extras.urlPoster;
+  if (extras.mediaWidth) uploaded.mediaWidth = extras.mediaWidth;
+  if (extras.mediaHeight) uploaded.mediaHeight = extras.mediaHeight;
   return uploaded;
 }
 
@@ -75,27 +79,39 @@ async function generatePosterForUpload(
   kind: ArtworkUploadKind,
   file: File,
   mediaUrl: string,
-): Promise<string | null> {
+): Promise<{
+  urlPoster?: string;
+  mediaWidth?: number;
+  mediaHeight?: number;
+}> {
   try {
     if (kind === "model") {
       const posterBlob = await generateModelPosterBlob(mediaUrl);
-      if (!posterBlob) return null;
-      return uploadPosterBlob(posterBlob);
+      if (!posterBlob) return {};
+      const urlPoster = await uploadPosterBlob(posterBlob);
+      return urlPoster ? { urlPoster } : {};
     }
     if (kind === "video") {
-      const posterBlob = await generateVideoPosterBlob(file);
-      if (!posterBlob) return null;
-      return uploadPosterBlob(posterBlob);
+      const poster = await generateVideoPosterWithSize(file);
+      if (!poster) return {};
+      const urlPoster = await uploadPosterBlob(poster.blob);
+      return {
+        ...(urlPoster ? { urlPoster } : {}),
+        mediaWidth: poster.mediaWidth,
+        mediaHeight: poster.mediaHeight,
+      };
     }
   } catch (err) {
     console.warn("[artwork-upload] poster generation skipped", err);
   }
-  return null;
+  return {};
 }
 
 export async function processArtworkImage(file: File): Promise<{
   urlWall: string;
   urlFull: string;
+  mediaWidth?: number;
+  mediaHeight?: number;
 }> {
   const form = new FormData();
   form.append("file", file);
@@ -108,7 +124,14 @@ export async function processArtworkImage(file: File): Promise<{
     console.warn("[process-image] failed", data);
     throw new Error(formatAdminApiError(data, "Process failed"));
   }
-  return { urlWall: data.urlWall, urlFull: data.urlFull };
+  return {
+    urlWall: data.urlWall,
+    urlFull: data.urlFull,
+    ...(typeof data.mediaWidth === "number" ? { mediaWidth: data.mediaWidth } : {}),
+    ...(typeof data.mediaHeight === "number"
+      ? { mediaHeight: data.mediaHeight }
+      : {}),
+  };
 }
 
 /** Record URLs written during an edit session (process-image / upload-token). */

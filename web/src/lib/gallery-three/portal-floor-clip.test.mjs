@@ -24,9 +24,10 @@ import {
 
 describe("portal floor clip", () => {
   it("portalPoseFromEntrance matches schematic portal at +half depth", () => {
-    const pose = portalPoseFromEntrance({ x: 0, z: -2, rotation: 0 });
+    // Center at −half depth so portal lands at world origin (plan === 3D depth).
+    const pose = portalPoseFromEntrance({ x: 0, z: -3, rotation: 0 });
     assert.ok(Math.abs(pose.portal.x) < 1e-9);
-    assert.ok(Math.abs(pose.portal.z - -0.5) < 1e-9);
+    assert.ok(Math.abs(pose.portal.z) < 1e-9);
   });
 
   it("clipPolygonMinLocalZ cuts verts on the foyer side of the portal", () => {

@@ -26,7 +26,16 @@ import {
   yawFromEdge,
   type Vec2,
 } from "./layout-geometry";
-import { GALLERY_FLOOR_RAISE, GALLERY_HEIGHT, WALL_INSET } from "./gallery-three/constants";
+import {
+  GALLERY_FLOOR_RAISE,
+  WALL_INSET,
+  gallerySurfaceY,
+  galleryWallTopY,
+} from "./gallery-three/constants";
+import {
+  PAINTING_HEIGHT_MARGIN,
+  defaultPaintingOuterSize,
+} from "./painting-frame";
 
 export type PlacementWorldPose = {
   /** Hang / feet point in world XZ (wall along-edge or floor). */
@@ -42,6 +51,52 @@ export type PlacementWorldPose = {
 export function resolvedWallHeightT(p: ArtworkPlacement): number {
   if (p.kind !== "painting") return DEFAULT_WALL_HEIGHT_T;
   const t = p.wallHeightT;
+  if (t == null || !Number.isFinite(t) || t <= 0) return DEFAULT_WALL_HEIGHT_T;
+  return Math.max(MIN_WALL_HEIGHT_T, Math.min(MAX_WALL_HEIGHT_T, t));
+}
+
+/**
+ * Usable hang-center Y range so a frame of `outerHeight` stays between
+ * gallery floor surface and wall top (with margin).
+ */
+export function usableHangBand(outerHeight: number): {
+  yMin: number;
+  yMax: number;
+} {
+  const half = Math.max(
+    0.05,
+    (Number.isFinite(outerHeight) ? outerHeight : defaultPaintingOuterSize().height) /
+      2,
+  );
+  const yFloor = gallerySurfaceY() + PAINTING_HEIGHT_MARGIN;
+  const yCeil = galleryWallTopY() - PAINTING_HEIGHT_MARGIN;
+  let yMin = yFloor + half;
+  let yMax = yCeil - half;
+  if (yMin > yMax) {
+    const mid = (yFloor + yCeil) * 0.5;
+    yMin = mid;
+    yMax = mid;
+  }
+  return { yMin, yMax };
+}
+
+/** Map wallHeightT (usable-band fraction, clamped to slider range) → world Y. */
+export function hangYFromWallHeightT(
+  t: number,
+  outerHeight: number = defaultPaintingOuterSize().height,
+): number {
+  const { yMin, yMax } = usableHangBand(outerHeight);
+  const u =
+    t == null || !Number.isFinite(t) || t <= 0
+      ? DEFAULT_WALL_HEIGHT_T
+      : Math.max(MIN_WALL_HEIGHT_T, Math.min(MAX_WALL_HEIGHT_T, t));
+  return yMin + (yMax - yMin) * u;
+}
+
+export function clampWallHeightTForSize(
+  t: number,
+  _outerHeight?: number,
+): number {
   if (t == null || !Number.isFinite(t) || t <= 0) return DEFAULT_WALL_HEIGHT_T;
   return Math.max(MIN_WALL_HEIGHT_T, Math.min(MAX_WALL_HEIGHT_T, t));
 }
@@ -103,10 +158,12 @@ export function placementWorldPoint(
 /**
  * Single resolver: Place schematic markers and Three exhibition hang/stand poses.
  * Does not invent alternate edge/t when placements exist — uses saved fields only.
+ * @param outerHeight painting outer frame height (meters); defaults to square 1.4
  */
 export function placementWorldPose(
   placement: ArtworkPlacement,
   layout: GalleryLayout,
+  outerHeight: number = defaultPaintingOuterSize().height,
 ): PlacementWorldPose | null {
   if (placement.kind === "sculpture") {
     const world = placementWorldPoint(placement, layout);
@@ -138,8 +195,10 @@ export function placementWorldPose(
   if (!along) return null;
   const centroid = roomCentroid(verts);
   const inward = inwardNormal(a, b, centroid);
-  const hangY =
-    GALLERY_FLOOR_RAISE + GALLERY_HEIGHT * resolvedWallHeightT(placement);
+  const hangY = hangYFromWallHeightT(
+    resolvedWallHeightT(placement),
+    outerHeight,
+  );
   const yawDeg = yawFromEdge(a, b, true, centroid);
   const yawRad = (yawDeg * Math.PI) / 180;
   return {

@@ -1,6 +1,10 @@
 import * as THREE from "three";
 import type { Catalog, GalleryEntrancePose, GalleryLayout } from "@/lib/catalog-types";
 import { DEFAULT_ENTRANCE_POSE, layoutIsEmpty } from "@/lib/catalog-types";
+import {
+  ENTRANCE_DEPTH,
+  ENTRANCE_WIDTH,
+} from "@/lib/layout-geometry";
 import { ROOM } from "@/lib/room";
 import {
   FLOOR_THICKNESS,
@@ -25,14 +29,14 @@ import {
 } from "./texture-load";
 import type { ClimbBand } from "./walk-surface";
 
-/** World corridor depth. */
-export const ENTRANCE_WORLD_DEPTH = 6;
-export const ENTRANCE_ARCH_WIDTH = 2.4;
+/** World corridor depth — same as plan foyer depth (parity). */
+export const ENTRANCE_WORLD_DEPTH = ENTRANCE_DEPTH;
+export const ENTRANCE_ARCH_WIDTH = ENTRANCE_WIDTH;
 /** Arch height from foyer floor; keeps ~2.06 m clear above the raised gallery. */
 export const ENTRANCE_ARCH_HEIGHT = GALLERY_FLOOR_RAISE + 2.06;
 export const ENTRANCE_ARCH_THICKNESS = 0.35;
-/** Schematic footprint depth used for portal offset from entrance center. */
-export const ENTRANCE_SCHEMATIC_DEPTH = 3;
+/** Plan/portal half-depth uses the same constant as the 3D corridor. */
+export const ENTRANCE_SCHEMATIC_DEPTH = ENTRANCE_DEPTH;
 
 const TRIM_COLOR = 0x59524f;
 const TOP_COLOR = 0x736b61;

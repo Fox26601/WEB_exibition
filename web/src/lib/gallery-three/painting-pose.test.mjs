@@ -37,23 +37,27 @@ test("sample-03 keeps admin tAlongEdge (no runtime re-snap)", () => {
   );
 });
 
-test("painting pose Y follows placement wallHeightT", () => {
+test("painting pose Y follows placement wallHeightT within hang band", () => {
   const layout = syncPaintingYaws(normalizeLayout(fixture.layout));
   const base = layout.placements.find((x) => x.kind === "painting");
   assert.ok(base);
+  const outerH = 1.4;
   const low = paintingPoseFromPlacement(
     { ...base, wallHeightT: 0.2 },
     layout,
+    outerH,
   );
   const high = paintingPoseFromPlacement(
     { ...base, wallHeightT: 0.8 },
     layout,
+    outerH,
   );
   assert.ok(low && high);
   assert.ok(high.position.y > low.position.y);
-  const lowRel = low.position.y - GALLERY_FLOOR_RAISE;
-  const highRel = high.position.y - GALLERY_FLOOR_RAISE;
-  assert.ok(Math.abs(highRel / lowRel - 4) < 0.05);
+  // Frame extents stay above raised floor surface and below wall top.
+  const half = outerH / 2;
+  assert.ok(low.position.y - half > GALLERY_FLOOR_RAISE - 0.05);
+  assert.ok(high.position.y + half < 5.0);
 });
 
 test("painting pose sits slightly inward from wall edge", () => {

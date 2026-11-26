@@ -15,11 +15,20 @@ import { DEFAULT_DOOR_WIDTH } from "./gallery-three/constants";
 
 export type Vec2 = { x: number; z: number };
 
-/** Schematic entrance footprint (world corridor depth stays 6). */
+/**
+ * Shared foyer footprint (plan schematic === 3D corridor).
+ * Depth was previously 3 on plan vs 6 in Three — unified to walkable depth.
+ */
 export const ENTRANCE_WIDTH = 2.4;
-export const ENTRANCE_DEPTH = 3.0;
+export const ENTRANCE_DEPTH = 6.0;
 /** Portal edge index for entranceWorldVertices (+local Z side). */
 export const ENTRANCE_PORTAL_EDGE = 2;
+
+/** max(width, depth) — gallery defaults size relative to this. */
+export const FOYER_REF_SPAN = Math.max(ENTRANCE_WIDTH, ENTRANCE_DEPTH);
+/** New gallery rooms target ~2× foyer span on plan and in 3D. */
+export const GALLERY_TO_FOYER_SPAN_RATIO = 2.0;
+export const TARGET_GALLERY_SPAN = FOYER_REF_SPAN * GALLERY_TO_FOYER_SPAN_RATIO;
 
 /** Unit-radius regular polygon in local XZ ( circumradius ≈ 1 before scale). */
 export function shapeLocalVertices(shape: RoomShape): Vec2[] {
@@ -735,14 +744,36 @@ export function placementConflicts(
   return false;
 }
 
+/** Unit-polygon AABB max span (before room scale). */
+export function unitShapeMaxSpan(shape: RoomShape): number {
+  const verts = shapeLocalVertices(shape);
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const v of verts) {
+    minX = Math.min(minX, v.x);
+    maxX = Math.max(maxX, v.x);
+    minZ = Math.min(minZ, v.z);
+    maxZ = Math.max(maxZ, v.z);
+  }
+  return Math.max(maxX - minX, maxZ - minZ, 1e-6);
+}
+
+/** Circumscale so world AABB max span ≈ TARGET_GALLERY_SPAN. */
+export function defaultGalleryRoomScale(shape: RoomShape): number {
+  return TARGET_GALLERY_SPAN / unitShapeMaxSpan(shape);
+}
+
 export function defaultRoomTransform(
   shape: RoomShape,
   index: number,
 ): RoomTransform {
-  const base = shape === "square" ? 3.2 : 2.8;
+  const base = defaultGalleryRoomScale(shape);
+  const grid = TARGET_GALLERY_SPAN * 1.35;
   return {
-    x: (index % 3) * 6.5,
-    z: Math.floor(index / 3) * 6.5 + 4,
+    x: (index % 3) * grid,
+    z: Math.floor(index / 3) * grid + TARGET_GALLERY_SPAN * 0.55,
     rotation: 0,
     scaleX: base,
     scaleZ: base,

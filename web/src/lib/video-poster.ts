@@ -1,3 +1,9 @@
+export type VideoPosterResult = {
+  blob: Blob;
+  mediaWidth: number;
+  mediaHeight: number;
+};
+
 /**
  * Capture an early video frame as a WebP/JPEG blob for urlPoster.
  * Best-effort — returns null if decode / canvas encode fails.
@@ -5,6 +11,14 @@
 export async function generateVideoPosterBlob(
   file: File,
 ): Promise<Blob | null> {
+  const result = await generateVideoPosterWithSize(file);
+  return result?.blob ?? null;
+}
+
+/** Poster blob plus intrinsic video pixel size. */
+export async function generateVideoPosterWithSize(
+  file: File,
+): Promise<VideoPosterResult | null> {
   if (typeof window === "undefined") return null;
 
   const url = URL.createObjectURL(file);
@@ -55,7 +69,8 @@ export async function generateVideoPosterBlob(
         0.85,
       );
     });
-    return blob;
+    if (!blob) return null;
+    return { blob, mediaWidth: w, mediaHeight: h };
   } catch (err) {
     console.warn("[video-poster] generate failed", err);
     return null;

@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ENTRANCE_ROOM_ID } from "./catalog-types.ts";
 import {
-  defaultRoomTransform,
   entranceAsRoom,
   nextEntranceRotation,
   nextRoomRotation,
@@ -107,13 +106,18 @@ test("square drag snap to triangle slant uses 60° not fuzzy 45", () => {
 
 test("entrance portal snap is not overridden by square rotation assist", () => {
   const entrance = entranceAsRoom({ x: 0, z: -3, rotation: 0 });
+  // Fixed moderate scale near portal — covers assist vs foyer, not default span.
   const square = {
     id: "sq",
     shape: "square",
-    transform: defaultRoomTransform("square", 0),
+    transform: {
+      x: -0.2,
+      z: 2.4,
+      rotation: 0,
+      scaleX: 3.2,
+      scaleZ: 3.2,
+    },
   };
-  square.transform.x = -0.2;
-  square.transform.z = 0.1;
   const snapped = softSnapRoom(square, [entrance]);
   assert.equal(snapped.snappedTo?.roomId, ENTRANCE_ROOM_ID);
   assert.equal(snapped.room.transform.rotation ?? 0, square.transform.rotation ?? 0);

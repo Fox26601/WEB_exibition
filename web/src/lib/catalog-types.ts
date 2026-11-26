@@ -49,6 +49,10 @@ export interface Artwork {
   modelUrl?: string;
   /** Default frame when placed as a painting. */
   frameId?: FrameId;
+  /** Intrinsic media pixel width (after EXIF orient), when known. */
+  mediaWidth?: number;
+  /** Intrinsic media pixel height (after EXIF orient), when known. */
+  mediaHeight?: number;
 }
 
 export interface RoomTransform {
@@ -80,7 +84,10 @@ export interface RoomConnection {
   doorwayWidth: number;
 }
 
-/** Normalized hang height on wall (world Y = wallHeightT × room height). */
+/**
+ * Hang height as a fraction of the usable hang-center band
+ * (floor+margin+halfFrame … wallTop−margin−halfFrame), not raw room height.
+ */
 export const DEFAULT_WALL_HEIGHT_T = 0.55;
 export const MIN_WALL_HEIGHT_T = 0.15;
 export const MAX_WALL_HEIGHT_T = 0.9;
@@ -92,7 +99,10 @@ export interface ArtworkPlacement {
   wallEdgeIndex?: number;
   /** 0..1 along the wall edge. */
   tAlongEdge?: number;
-  /** 0..1 up the wall (visitor Y). Omitted / legacy → DEFAULT_WALL_HEIGHT_T. */
+  /**
+   * Fraction along the usable hang-center band (0..1; slider typically 0.15–0.9).
+   * Omitted / legacy → DEFAULT_WALL_HEIGHT_T.
+   */
   wallHeightT?: number;
   floorX?: number;
   floorZ?: number;
@@ -111,9 +121,10 @@ export interface GalleryEntrancePose {
 /** Synthetic room id for soft-snap / doorway connections to the entrance portal. */
 export const ENTRANCE_ROOM_ID = "__entrance";
 
+/** Portal at world origin when depth is 6 (z = −half depth). */
 export const DEFAULT_ENTRANCE_POSE: GalleryEntrancePose = {
   x: 0,
-  z: -2,
+  z: -3,
   rotation: 0,
 };
 
@@ -272,11 +283,25 @@ export function normalizeArtwork(
   const text = opts?.syncTitleTextFromBooklet
     ? normalizeLocalized(booklet[0]?.body ?? artwork.text)
     : normalizeLocalized(artwork.text);
+  const mediaWidth =
+    typeof artwork.mediaWidth === "number" &&
+    Number.isFinite(artwork.mediaWidth) &&
+    artwork.mediaWidth > 0
+      ? artwork.mediaWidth
+      : undefined;
+  const mediaHeight =
+    typeof artwork.mediaHeight === "number" &&
+    Number.isFinite(artwork.mediaHeight) &&
+    artwork.mediaHeight > 0
+      ? artwork.mediaHeight
+      : undefined;
   return {
     ...artwork,
     title,
     text,
     booklet,
+    ...(mediaWidth != null ? { mediaWidth } : {}),
+    ...(mediaHeight != null ? { mediaHeight } : {}),
   };
 }
 

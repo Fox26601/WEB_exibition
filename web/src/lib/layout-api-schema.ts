@@ -59,7 +59,7 @@ export const layoutApiSchema = z.object({
       roomId: z.string(),
       wallEdgeIndex: z.number().optional(),
       tAlongEdge: z.number().optional(),
-      /** Normalized hang height (world Y = wallHeightT × room height). */
+      /** Fraction along usable hang-center band (floor…ceiling with frame half-height). */
       wallHeightT: z
         .number()
         .min(MIN_WALL_HEIGHT_T)

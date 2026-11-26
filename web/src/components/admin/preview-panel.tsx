@@ -666,6 +666,8 @@ function PreviewArtworkEditor({
             ...d,
             urlWall: data.urlWall,
             urlFull: data.urlFull,
+            mediaWidth: data.mediaWidth ?? d.mediaWidth,
+            mediaHeight: data.mediaHeight ?? d.mediaHeight,
           }),
         );
         onMessage("Image processed");
@@ -684,6 +686,8 @@ function PreviewArtworkEditor({
             ...d,
             urlVideo: blob.url,
             urlPoster: blob.urlPoster || d.urlPoster,
+            mediaWidth: blob.mediaWidth ?? d.mediaWidth,
+            mediaHeight: blob.mediaHeight ?? d.mediaHeight,
           }),
         );
         onMessage("Video uploaded");
