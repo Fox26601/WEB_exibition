@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
-import { loadCatalog } from "@/lib/catalog";
+import { catalogsDifferForPublish, loadCatalog } from "@/lib/catalog";
 import { normalizeLayout } from "@/lib/catalog-types";
 
 export default async function AdminDashboard() {
@@ -17,6 +17,13 @@ export default async function AdminDashboard() {
   const draftLayout = normalizeLayout(draft.layout);
   const placedCount = draftLayout.placements.length;
   const roomCount = draftLayout.rooms.length;
+  const dirty = catalogsDifferForPublish(draft, live);
+  const byId = new Map(draft.artworks.map((a) => [a.id, a]));
+  let placedUnpublished = 0;
+  for (const p of draftLayout.placements) {
+    const art = byId.get(p.artworkId);
+    if (art && !art.published) placedUnpublished += 1;
+  }
 
   return (
     <div>
@@ -37,6 +44,27 @@ export default async function AdminDashboard() {
         <strong className="text-[var(--paper)]">
           {placedCount} placement{placedCount === 1 ? "" : "s"}
         </strong>
+        {dirty ? (
+          <>
+            {" · "}
+            <strong className="text-[var(--amber-bright)]">
+              unpublished draft changes
+            </strong>
+          </>
+        ) : (
+          <>
+            {" · "}
+            <span>live matches draft</span>
+          </>
+        )}
+        {placedUnpublished > 0 ? (
+          <>
+            {" · "}
+            <strong className="text-[var(--amber-bright)]">
+              {placedUnpublished} placed still draft (Hide from live)
+            </strong>
+          </>
+        ) : null}
       </p>
       <div className="mt-8 flex flex-wrap gap-3">
         <Link href="/admin/artworks" className="btn btn-solid">
@@ -46,7 +74,7 @@ export default async function AdminDashboard() {
           Site settings
         </Link>
         <Link href="/admin/preview" className="btn">
-          Preview space
+          Layout
         </Link>
         <Link href="/exhibition" className="btn btn-ghost" target="_blank">
           Open live exhibition

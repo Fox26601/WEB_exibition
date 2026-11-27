@@ -2,6 +2,12 @@ import { ROOM } from "@/lib/room";
 
 export const GALLERY_HEIGHT = ROOM.height;
 export const WALL_THICKNESS = 0.18;
+/**
+ * Doorway / portal passage depth — one stair-step thicker than walls so
+ * seam artifacts at wall joints stay hidden inside the opening volume.
+ * (STEP_RISE is defined below; keep numeric form here to avoid TDZ.)
+ */
+export const DOORWAY_PASSAGE_THICKNESS = WALL_THICKNESS + 0.18;
 /** Painting offset from wall edge. */
 export const WALL_INSET = 0.08;
 /** Interior wall plane offset from edge. */

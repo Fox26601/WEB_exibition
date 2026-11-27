@@ -15,6 +15,7 @@ import {
   LOCALES,
   normalizeArtwork,
   normalizeArtworkBooklet,
+  normalizeLayout,
 } from "@/lib/catalog-types";
 import { BookletOverlay } from "@/components/exhibition/booklet-overlay";
 import { ModalShell } from "@/components/modal-shell";
@@ -31,6 +32,12 @@ import {
 } from "@/lib/artwork-upload-client";
 import { adminFetch, readAdminJson } from "@/lib/admin-api";
 import { fillArtworkLocales } from "@/lib/admin-translate-client";
+import {
+  confirmPublishWithPlacedDrafts,
+  countPlacedUnpublished,
+  ensureAdminDraftFlushListener,
+  flushAllAdminDraftWriters,
+} from "@/lib/admin-draft-writers";
 import { ArtworkThumb } from "./artwork-thumb";
 import { LocalizedAutoFields } from "./localized-auto-fields";
 
@@ -47,14 +54,28 @@ export function ArtworksManager() {
   }, []);
 
   useEffect(() => {
+    ensureAdminDraftFlushListener();
     refresh().catch((e) => setMessage(e instanceof Error ? e.message : String(e)));
   }, [refresh]);
 
   async function publishCatalog() {
-    if (!confirm("Publish draft catalog to live?")) return;
+    const layout = normalizeLayout(catalog?.layout);
+    const placedDrafts = countPlacedUnpublished(
+      catalog?.artworks ?? [],
+      layout.placements,
+    );
+    if (
+      !confirmPublishWithPlacedDrafts(
+        placedDrafts,
+        "Publish draft catalog to live?",
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
+      await flushAllAdminDraftWriters();
       const res = await adminFetch("/api/admin/publish", { method: "POST" });
       const data = await readAdminJson<{ catalog: Catalog }>(
         res,
@@ -105,7 +126,12 @@ export function ArtworksManager() {
 
   async function removeArtwork(id: string) {
     if (busy) return;
-    if (!confirm("Delete this artwork from draft and live gallery?")) return;
+    if (
+      !confirm(
+        "Delete this artwork from draft and live gallery now? (Hide from live only flips the draft flag — Publish catalog is still required to update the wall.)",
+      )
+    )
+      return;
     const previous = catalog;
     setBusy(true);
     setMessage("");
@@ -144,8 +170,8 @@ export function ArtworksManager() {
       { ...art, published: nextPublished },
       {
         successMessage: nextPublished
-          ? "Marked published in draft — Publish catalog to show on live wall"
-          : "Unpublished in draft — Publish catalog to remove from live wall",
+          ? "Show on live (draft flag) — Publish catalog to update the live wall"
+          : "Hide from live (draft flag) — Publish catalog to remove from the live wall",
       },
     );
   }
@@ -296,7 +322,7 @@ export function ArtworksManager() {
                 disabled={busy}
                 onClick={() => togglePublished(art)}
               >
-                {art.published ? "Unpublish" : "Publish"}
+                {art.published ? "Hide from live" : "Show on live"}
               </button>
               <button
                 type="button"
@@ -547,7 +573,7 @@ function ArtworkEditor({
               htmlFor="published"
               className="!mb-0 !normal-case !tracking-normal"
             >
-              Published in catalog
+              Show on live (draft flag — Publish catalog to update wall)
             </label>
           </div>
         ) : null}
@@ -571,7 +597,7 @@ function ArtworkEditor({
           ) : null}
         </div>
 
-        {draft.type === "video" ? (
+        {draft.type === "video" || draft.type === "model" ? (
           <div className="mb-4">
             <label>Poster image (optional)</label>
             <input

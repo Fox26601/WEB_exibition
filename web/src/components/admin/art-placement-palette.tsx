@@ -20,6 +20,7 @@ type Props = {
   onRemovePlacement: (artworkId: string) => void;
   onSetFrame: (artworkId: string, frameId: FrameId) => void;
   onSetWallHeight: (artworkId: string, wallHeightT: number) => void;
+  onSetYaw?: (artworkId: string, yaw: number) => void;
   dragDisabled?: boolean;
   onDragDenied?: () => void;
 };
@@ -33,6 +34,7 @@ export function ArtPlacementPalette({
   onRemovePlacement,
   onSetFrame,
   onSetWallHeight,
+  onSetYaw,
   dragDisabled,
   onDragDenied,
 }: Props) {
@@ -114,6 +116,25 @@ export function ArtPlacementPalette({
                       </label>
                     </>
                   ) : null}
+                  {placement?.kind === "sculpture" && onSetYaw ? (
+                    <button
+                      type="button"
+                      className="btn !py-0.5 !px-1.5 !text-[0.6rem]"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={() =>
+                        onSetYaw(
+                          art.id,
+                          ((placement.yaw ?? 0) + 45) % 360,
+                        )
+                      }
+                      title={t.rotateSculpture}
+                    >
+                      {t.rotateSculpture}{" "}
+                      <span className="tabular-nums">
+                        {Math.round(placement.yaw ?? 0)}°
+                      </span>
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="btn btn-danger !py-0.5 !px-1.5 !text-[0.6rem]"
@@ -183,7 +204,11 @@ function PaletteItem({
           ) : null}
         </p>
         <p className="text-[0.65rem] text-[var(--paper-dim)]">
-          {art.type === "model" ? t.sculpture : t.painting}
+          {art.type === "model"
+            ? t.sculpture
+            : art.type === "video"
+              ? t.video
+              : t.painting}
         </p>
       </div>
     </div>

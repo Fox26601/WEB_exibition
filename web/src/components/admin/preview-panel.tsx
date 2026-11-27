@@ -40,6 +40,13 @@ import {
   readAdminJson,
 } from "@/lib/admin-api";
 import { fillArtworkLocales } from "@/lib/admin-translate-client";
+import {
+  confirmPublishWithPlacedDrafts,
+  countPlacedUnpublished,
+  ensureAdminDraftFlushListener,
+  flushAllAdminDraftWriters,
+  registerAdminDraftWriter,
+} from "@/lib/admin-draft-writers";
 import { GalleryRoomEditor, ensureLayout } from "./gallery-room-editor";
 import { ArtworkThumb } from "./artwork-thumb";
 import { LocalizedAutoFields } from "./localized-auto-fields";
@@ -102,8 +109,24 @@ export function PreviewPanel() {
   }, []);
 
   useEffect(() => {
+    ensureAdminDraftFlushListener();
     refresh().catch((e) => setError(e instanceof Error ? e.message : "Error"));
   }, [refresh]);
+
+  // Refresh draft preview JWT on window focus (token TTL ~2h).
+  useEffect(() => {
+    function onFocus() {
+      void adminFetch("/api/admin/preview-token", { method: "POST" })
+        .then(async (res) => {
+          if (!res.ok) return;
+          const tok = await res.json();
+          if (tok?.token) setToken(tok.token);
+        })
+        .catch(() => undefined);
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
 
   const publishedArts = useMemo(() => {
     if (!catalog) return [];
@@ -173,22 +196,48 @@ export function PreviewPanel() {
     [persistLayout],
   );
 
+  const flushLayoutPending = useCallback(async () => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    if (pendingLayout.current) {
+      const next = pendingLayout.current;
+      pendingLayout.current = null;
+      await persistLayout(next);
+    }
+  }, [persistLayout]);
+
+  useEffect(() => {
+    const unregister = registerAdminDraftWriter("layout", flushLayoutPending);
+    return () => {
+      void flushLayoutPending();
+      unregister();
+    };
+  }, [flushLayoutPending]);
+
   function retrySave() {
     void persistLayout(layoutRef.current);
   }
 
   async function publishLive() {
+    const layout = ensureLayout(catalog?.layout);
+    const placedDrafts = countPlacedUnpublished(
+      catalog?.artworks ?? [],
+      layout.placements,
+    );
+    if (
+      !confirmPublishWithPlacedDrafts(
+        placedDrafts,
+        "Publish draft catalog to live?",
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     setMessage("");
     try {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
-      if (pendingLayout.current) {
-        await persistLayout(pendingLayout.current);
-        pendingLayout.current = null;
-      }
+      await flushAllAdminDraftWriters();
       const res = await adminFetch("/api/admin/publish", { method: "POST" });
       const data = await readAdminJson<{ catalog: Catalog }>(
         res,
@@ -282,7 +331,12 @@ export function PreviewPanel() {
 
   async function removeArtwork(id: string) {
     if (busy) return;
-    if (!confirm("Delete this artwork from draft and live gallery?")) return;
+    if (
+      !confirm(
+        "Delete this artwork from draft and live gallery now? (Hide from live only flips the draft flag — Publish is still required to update the wall.)",
+      )
+    )
+      return;
     const previous = catalog;
     setBusy(true);
     setMessage("");
@@ -332,8 +386,8 @@ export function PreviewPanel() {
       { ...art, published: nextPublished },
       {
         successMessage: nextPublished
-          ? "Marked published in draft — Publish to live site to show on wall"
-          : "Unpublished in draft — Publish to live site to remove from wall",
+          ? "Show on live (draft flag) — Publish to live site to update the wall"
+          : "Hide from live (draft flag) — Publish to live site to remove from the wall",
       },
     );
   }
@@ -528,7 +582,7 @@ export function PreviewPanel() {
                       togglePublished(art);
                     }}
                   >
-                    {art.published ? "Unpublish" : "Publish"}
+                    {art.published ? "Hide from live" : "Show on live"}
                   </button>
                   <button
                     type="button"
@@ -776,7 +830,7 @@ function PreviewArtworkEditor({
               htmlFor="preview-published"
               className="!mb-0 !normal-case !tracking-normal"
             >
-              Published in catalog
+              Show on live (draft flag — Publish to update wall)
             </label>
           </div>
         ) : null}
@@ -803,7 +857,7 @@ function PreviewArtworkEditor({
             </p>
           ) : null}
         </div>
-        {draft.type === "video" ? (
+        {draft.type === "video" || draft.type === "model" ? (
           <div className="mb-4">
             <label>Poster</label>
             <input

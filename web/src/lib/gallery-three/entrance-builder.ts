@@ -7,6 +7,7 @@ import {
   ENTRANCE_WIDTH,
 } from "@/lib/layout-geometry";
 import {
+  DOORWAY_PASSAGE_THICKNESS,
   ENTRANCE_SPAWN_FROM_BACK,
   FLOOR_THICKNESS,
   FLOOR_Y,
@@ -36,7 +37,8 @@ export const ENTRANCE_WORLD_DEPTH = ENTRANCE_DEPTH;
 export const ENTRANCE_ARCH_WIDTH = LAYOUT_ARCH_WIDTH;
 /** Arch height from foyer floor; keeps ~2.06 m clear above the raised gallery. */
 export const ENTRANCE_ARCH_HEIGHT = GALLERY_FLOOR_RAISE + 2.06;
-export const ENTRANCE_ARCH_THICKNESS = 0.32;
+/** Portal arch depth — one step thicker than walls (hides joint seams). */
+export const ENTRANCE_ARCH_THICKNESS = DOORWAY_PASSAGE_THICKNESS;
 /** Plan/portal half-depth uses the same constant as the 3D corridor. */
 export const ENTRANCE_SCHEMATIC_DEPTH = ENTRANCE_DEPTH;
 

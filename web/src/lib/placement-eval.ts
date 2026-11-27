@@ -4,9 +4,12 @@ import type {
   FrameId,
   GalleryLayout,
   GalleryRoom,
+  RoomConnection,
 } from "./catalog-types";
-import { DEFAULT_WALL_HEIGHT_T } from "./catalog-types";
+import { DEFAULT_WALL_HEIGHT_T, ENTRANCE_ROOM_ID } from "./catalog-types";
 import {
+  edgeLength,
+  edgePoints,
   findRoomAtPoint,
   nearestWall,
   placementConflicts,
@@ -27,10 +30,12 @@ export { placementWorldPoint, resolvedWallHeightT };
 export const MAX_WALL_SNAP_DIST = 1.2;
 const T_ALONG_MIN = 0.12;
 const T_ALONG_MAX = 0.88;
+/** Margin outside doorway clear so paintings do not hug the opening edge. */
+const DOORWAY_T_MARGIN = 0.02;
 
 export type PlacementDropResult =
   | { ok: true; placement: ArtworkPlacement; world: Vec2 }
-  | { ok: false; reason: "no_snap" | "conflict" | "no_room" };
+  | { ok: false; reason: "no_snap" | "conflict" | "no_room" | "doorway" };
 
 /** Catalog default for paintings when no artwork.frameId is set. */
 const DEFAULT_PAINTING_FRAME: FrameId = "wood";
@@ -50,13 +55,95 @@ type WallSnapHit = {
   b: Vec2;
 };
 
+type DoorwayTRange = { t0: number; t1: number };
+
+function connectionForEdge(
+  connections: RoomConnection[],
+  roomId: string,
+  edgeIndex: number,
+): RoomConnection | null {
+  for (const c of connections) {
+    if (c.roomA === roomId && c.edgeA === edgeIndex) return c;
+    if (c.roomB === roomId && c.edgeB === edgeIndex) return c;
+  }
+  return null;
+}
+
+/** Forbidden tAlongEdge ranges for doorway / entrance-portal openings on an edge. */
+export function doorwayBlockedTRanges(
+  layout: GalleryLayout,
+  roomId: string,
+  edgeIndex: number,
+  edgeLen: number,
+): DoorwayTRange[] {
+  if (edgeLen < 0.05) return [];
+  const c = connectionForEdge(layout.connections ?? [], roomId, edgeIndex);
+  if (!c) return [];
+  const doorW = Math.max(0, c.doorwayWidth ?? 0);
+  if (doorW <= 0.01) return [];
+  const halfT = doorW / edgeLen / 2 + DOORWAY_T_MARGIN;
+  return [
+    {
+      t0: Math.max(0, 0.5 - halfT),
+      t1: Math.min(1, 0.5 + halfT),
+    },
+  ];
+}
+
+export function tAlongInDoorway(
+  t: number,
+  ranges: DoorwayTRange[],
+): boolean {
+  return ranges.some((r) => t >= r.t0 - 1e-6 && t <= r.t1 + 1e-6);
+}
+
+/**
+ * Prefer nearest allowed t outside doorway spans; null if the whole snap
+ * band is blocked (or no valid band remains).
+ */
+export function clampTAlongOutsideDoorway(
+  t: number,
+  ranges: DoorwayTRange[],
+): number | null {
+  if (!tAlongInDoorway(t, ranges)) {
+    return Math.max(T_ALONG_MIN, Math.min(T_ALONG_MAX, t));
+  }
+  let best: number | null = null;
+  let bestDist = Infinity;
+  for (const r of ranges) {
+    for (const cand of [r.t0 - 0.001, r.t1 + 0.001]) {
+      const clamped = Math.max(T_ALONG_MIN, Math.min(T_ALONG_MAX, cand));
+      if (tAlongInDoorway(clamped, ranges)) continue;
+      const d = Math.abs(clamped - t);
+      if (d < bestDist) {
+        bestDist = d;
+        best = clamped;
+      }
+    }
+  }
+  return best;
+}
+
 export function wallSnapPreviewWorld(
   world: Vec2,
   rooms: GalleryRoom[],
+  layout?: GalleryLayout,
 ): Vec2 | null {
   const snap = resolvePaintingWallSnap(world, rooms);
   if (!snap) return null;
-  const tAlong = Math.max(T_ALONG_MIN, Math.min(T_ALONG_MAX, snap.t));
+  let tAlong = Math.max(T_ALONG_MIN, Math.min(T_ALONG_MAX, snap.t));
+  if (layout) {
+    const len = edgeLength(snap.a, snap.b);
+    const blocked = doorwayBlockedTRanges(
+      layout,
+      snap.room.id,
+      snap.edgeIndex,
+      len,
+    );
+    const clamped = clampTAlongOutsideDoorway(tAlong, blocked);
+    if (clamped == null) return null;
+    tAlong = clamped;
+  }
   return pointAlongEdge(snap.a, snap.b, tAlong);
 }
 
@@ -146,7 +233,19 @@ export function evaluateArtworkDrop(
     return { ok: false, reason: "no_snap" };
   }
 
-  const tAlong = Math.max(T_ALONG_MIN, Math.min(T_ALONG_MAX, snap.t));
+  const edgeLen = edgeLength(snap.a, snap.b);
+  const blocked = doorwayBlockedTRanges(
+    layout,
+    snap.room.id,
+    snap.edgeIndex,
+    edgeLen,
+  );
+  const rawT = Math.max(T_ALONG_MIN, Math.min(T_ALONG_MAX, snap.t));
+  // Refuse drops that land in the doorway/portal opening (do not auto-slide).
+  if (tAlongInDoorway(rawT, blocked)) {
+    return { ok: false, reason: "doorway" };
+  }
+  const tAlong = rawT;
   const roomVerts = roomWorldVertices(snap.room);
   const centroid = roomCentroid(roomVerts);
   const placement: ArtworkPlacement = {
@@ -186,4 +285,15 @@ export function syncPaintingYaws(layout: GalleryLayout): GalleryLayout {
     return { ...p, yaw };
   });
   return { ...layout, placements };
+}
+
+/** True when a room edge participates in an entrance portal connection. */
+export function edgeConnectsToEntrance(
+  layout: GalleryLayout,
+  roomId: string,
+  edgeIndex: number,
+): boolean {
+  const c = connectionForEdge(layout.connections ?? [], roomId, edgeIndex);
+  if (!c) return false;
+  return c.roomA === ENTRANCE_ROOM_ID || c.roomB === ENTRANCE_ROOM_ID;
 }
