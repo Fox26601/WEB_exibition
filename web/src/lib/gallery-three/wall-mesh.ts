@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Vec2 } from "@/lib/layout-geometry";
 import {
   DOOR_CLEAR_HEIGHT,
+  DOORWAY_PASSAGE_THICKNESS,
   GALLERY_HEIGHT,
   WALL_CORNER_JOIN,
   WALL_PLANE_BIAS,
@@ -21,6 +22,8 @@ export type WallSlabJoins = {
   joinA?: number;
   /** Meters to extend past endpoint B (vertex join). */
   joinB?: number;
+  /** Override slab thickness (defaults to WALL_THICKNESS). */
+  thickness?: number;
 };
 
 /**
@@ -53,6 +56,7 @@ export function addWallSlab(
   const midX = (a.x + b.x) * 0.5 + ux * ((padB - padA) * 0.5);
   const midZ = (a.z + b.z) * 0.5 + uz * ((padB - padA) * 0.5);
   const inward = inwardNormal(a, b, centroid);
+  const thickness = Math.max(0.02, joins.thickness ?? WALL_THICKNESS);
 
   let yaw = Math.atan2(dx, dz);
   const localXx = Math.cos(yaw);
@@ -69,7 +73,7 @@ export function addWallSlab(
   );
   group.rotation.y = yaw;
   const slab = new THREE.Mesh(
-    new THREE.BoxGeometry(WALL_THICKNESS, height, slabLen),
+    new THREE.BoxGeometry(thickness, height, slabLen),
     material,
   );
   group.add(slab);
@@ -137,6 +141,8 @@ export function buildWallAlongEdge(
     wallTop - 0.18,
   );
   const lintelH = Math.max(0.18, wallTop - lintelBottom);
+  // Doorway/portal volume is one step thicker than walls (hides seam joints).
+  const doorThick = DOORWAY_PASSAGE_THICKNESS;
   if (halfRemain < 0.05) {
     addWallSlab(
       parent,
@@ -146,14 +152,14 @@ export function buildWallAlongEdge(
       centroid,
       lintelH,
       lintelBottom,
-      { joinA: 0, joinB: 0 },
+      { joinA: 0, joinB: 0, thickness: doorThick },
     );
     return;
   }
 
   const t1L = halfRemain / len;
   const t0R = 1 - t1L;
-  // Outer ends: half-thickness join; doorway ends stay flush (no jamb posts).
+  // Outer wall runs stay WALL_THICKNESS; doorway ends get thicker jamb sleeves.
   addWallSlab(
     parent,
     lerpVec2(a, b, 0),
@@ -174,6 +180,32 @@ export function buildWallAlongEdge(
     bottomY,
     { joinA: 0, joinB },
   );
+  // Jamb sleeves at doorway edges — thicker than wall to bury seam artifacts.
+  const jambDepth = Math.min(0.12, halfRemain * 0.35);
+  if (jambDepth > 0.02) {
+    const jambT0 = t1L - jambDepth / len;
+    const jambT1 = t0R + jambDepth / len;
+    addWallSlab(
+      parent,
+      lerpVec2(a, b, Math.max(0, jambT0)),
+      lerpVec2(a, b, t1L),
+      wallMat,
+      centroid,
+      fullH,
+      bottomY,
+      { joinA: 0, joinB: 0, thickness: doorThick },
+    );
+    addWallSlab(
+      parent,
+      lerpVec2(a, b, t0R),
+      lerpVec2(a, b, Math.min(1, jambT1)),
+      wallMat,
+      centroid,
+      fullH,
+      bottomY,
+      { joinA: 0, joinB: 0, thickness: doorThick },
+    );
+  }
   addWallSlab(
     parent,
     lerpVec2(a, b, t1L),
@@ -182,6 +214,6 @@ export function buildWallAlongEdge(
     centroid,
     lintelH,
     lintelBottom,
-    { joinA: 0, joinB: 0 },
+    { joinA: 0, joinB: 0, thickness: doorThick },
   );
 }

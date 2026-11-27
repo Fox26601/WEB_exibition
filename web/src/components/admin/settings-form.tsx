@@ -10,6 +10,11 @@ import {
 } from "@/lib/catalog-types";
 import { adminFetch, readAdminJson } from "@/lib/admin-api";
 import { fillSettingsLocales } from "@/lib/admin-translate-client";
+import {
+  ensureAdminDraftFlushListener,
+  flushAllAdminDraftWriters,
+  registerAdminDraftWriter,
+} from "@/lib/admin-draft-writers";
 import { LocalizedAutoFields } from "./localized-auto-fields";
 
 const AUTOSAVE_MS = 700;
@@ -44,6 +49,7 @@ export function SettingsForm() {
   }
 
   useEffect(() => {
+    ensureAdminDraftFlushListener();
     adminFetch("/api/admin/settings")
       .then(async (r) => {
         const data = await readAdminJson<CatalogSettings>(
@@ -90,33 +96,33 @@ export function SettingsForm() {
     }
   }, []);
 
+  const flushSettingsPending = useCallback(async () => {
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    const pending = pendingSettings.current;
+    if (!pending || !dirty.current) return;
+    await persist(pending, "Settings flushed before publish");
+  }, [persist]);
+
+  useEffect(() => {
+    const unregister = registerAdminDraftWriter(
+      "settings",
+      flushSettingsPending,
+    );
+    return () => {
+      void flushSettingsPending();
+      unregister();
+    };
+  }, [flushSettingsPending]);
+
   async function publishCatalog() {
     if (!confirm("Publish draft catalog (including settings) to live?")) return;
     setBusy(true);
     setMessage("");
     try {
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
-      const pending = pendingSettings.current ?? settings;
-      if (pending) {
-        const { settings: filled, error: translateError } =
-          await fillSettingsLocales(normalizeSettings(pending));
-        if (translateError) setMessage(translateError);
-        const json = settingsSnapshot(filled);
-        if (json !== lastSavedJson.current) {
-          const saveRes = await adminFetch("/api/admin/settings", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: json,
-          });
-          await readAdminJson(saveRes, "Settings save failed");
-          lastSavedJson.current = json;
-        }
-        dirty.current = false;
-        pendingSettings.current = null;
-      }
+      await flushAllAdminDraftWriters();
       const res = await adminFetch("/api/admin/publish", { method: "POST" });
       const data = await readAdminJson<{ catalog: Catalog }>(
         res,

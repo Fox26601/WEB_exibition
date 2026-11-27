@@ -4,6 +4,7 @@ import {
   buildEntranceModule,
   computeEntrancePose,
   ENTRANCE_ARCH_HEIGHT,
+  ENTRANCE_ARCH_THICKNESS,
   ENTRANCE_ARCH_WIDTH,
   ENTRANCE_SCHEMATIC_DEPTH,
   ENTRANCE_WORLD_DEPTH,
@@ -12,10 +13,12 @@ import {
 } from "./entrance-builder.ts";
 import {
   DOOR_CLEAR_HEIGHT,
+  DOORWAY_PASSAGE_THICKNESS,
   ENTRANCE_SPAWN_FROM_BACK,
   GALLERY_FLOOR_RAISE,
   STEP_COUNT,
   STEP_RISE,
+  WALL_THICKNESS,
   galleryWallClearHeight,
   galleryWallTopY,
 } from "./constants.ts";
@@ -23,6 +26,13 @@ import {
   ENTRANCE_ARCH_WIDTH as LAYOUT_ARCH_WIDTH,
   ENTRANCE_WIDTH,
 } from "../layout-geometry.ts";
+
+describe("portal thickness", () => {
+  it("arch depth matches doorway passage (one step thicker than walls)", () => {
+    assert.equal(ENTRANCE_ARCH_THICKNESS, DOORWAY_PASSAGE_THICKNESS);
+    assert.ok(ENTRANCE_ARCH_THICKNESS > WALL_THICKNESS);
+  });
+});
 
 describe("computeEntrancePose", () => {
   it("places portal on +local Z of schematic center and spawn in corridor", () => {

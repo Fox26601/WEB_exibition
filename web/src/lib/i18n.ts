@@ -199,6 +199,7 @@ export type AdminEditorStrings = {
   entranceHelpAddRoom: string;
   entranceLabel: string;
   dropNoSnap: string;
+  dropDoorway: string;
   dropConflict: string;
   dropOutside: string;
   placeOnPlan: string;
@@ -206,7 +207,9 @@ export type AdminEditorStrings = {
   frame: string;
   remove: string;
   removeFromPlan: string;
+  rotateSculpture: string;
   painting: string;
+  video: string;
   sculpture: string;
   publishArtworksFirst: string;
   emptyPlacePalette: string;
@@ -257,6 +260,7 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   entranceHelpAddRoom: " Add at least one room.",
   entranceLabel: "entrance",
   dropNoSnap: "Drop on a gallery room (not the entrance).",
+  dropDoorway: "Cannot hang in a doorway or portal opening.",
   dropConflict: "Too close to another work.",
   dropOutside: "Release inside a room.",
   placeOnPlan: "Place on plan",
@@ -265,7 +269,9 @@ const ADMIN_EDITOR_EN: AdminEditorStrings = {
   frame: "Frame",
   remove: "Remove",
   removeFromPlan: "Remove from plan",
+  rotateSculpture: "Rotate +45°",
   painting: "painting",
+  video: "video",
   sculpture: "sculpture",
   publishArtworksFirst: "Publish artworks first, then place them on the plan.",
   emptyPlacePalette: "No artworks yet. Upload on this page or Artworks, then place them here.",
@@ -319,6 +325,7 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   entranceHelpAddRoom: " Добавьте хотя бы одну комнату.",
   entranceLabel: "вход",
   dropNoSnap: "Отпустите на комнату галереи (не на вход).",
+  dropDoorway: "Нельзя вешать в дверной проём или портал.",
   dropConflict: "Слишком близко к другой работе.",
   dropOutside: "Отпустите внутри комнаты.",
   placeOnPlan: "Расстановка на плане",
@@ -327,7 +334,9 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
   frame: "Рама",
   remove: "Убрать",
   removeFromPlan: "Убрать с плана",
+  rotateSculpture: "Поворот +45°",
   painting: "картина",
+  video: "видео",
   sculpture: "скульптура",
   publishArtworksFirst: "Сначала опубликуйте работы, затем расставьте на плане.",
   emptyPlacePalette:
@@ -359,7 +368,8 @@ const ADMIN_EDITOR_RU: AdminEditorStrings = {
 export const ADMIN_EDITOR: Record<Locale, AdminEditorStrings> = {
   en: ADMIN_EDITOR_EN,
   ru: ADMIN_EDITOR_RU,
-  uk: ADMIN_EDITOR_EN,
+  // Ukrainian admin UI uses Russian copy until dedicated uk strings exist.
+  uk: ADMIN_EDITOR_RU,
   he: ADMIN_EDITOR_EN,
 };
 

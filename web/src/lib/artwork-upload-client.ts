@@ -146,20 +146,34 @@ export function trackSessionUploadUrls(
 
 /**
  * Best-effort delete of blobs uploaded in an editor session that was cancelled
- * without Save. Failures are ignored so Cancel never blocks the UI.
+ * without Save. Retries once; failures are logged so Cancel never blocks the UI.
  */
 export async function deleteOrphanUploadUrls(
   urls: Iterable<string>,
 ): Promise<void> {
   const list = [...new Set([...urls].map((u) => u.trim()).filter(Boolean))];
   if (!list.length) return;
-  try {
-    await adminFetch("/api/admin/delete-blobs", {
+
+  async function attempt(): Promise<boolean> {
+    const res = await adminFetch("/api/admin/delete-blobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ urls: list }),
     });
-  } catch {
-    /* best-effort */
+    return res.ok;
+  }
+
+  try {
+    if (await attempt()) return;
+  } catch (e) {
+    console.warn("[admin] orphan blob delete failed", e);
+  }
+  try {
+    await new Promise((r) => setTimeout(r, 350));
+    if (!(await attempt())) {
+      console.warn("[admin] orphan blob delete retry failed", list.length);
+    }
+  } catch (e) {
+    console.warn("[admin] orphan blob delete retry error", e);
   }
 }

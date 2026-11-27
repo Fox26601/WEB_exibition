@@ -338,3 +338,51 @@ test("resolvedWallHeightT defaults and clamps", () => {
     0.7,
   );
 });
+
+test("evaluateArtworkDrop refuses painting in doorway span", () => {
+  const base = normalizeLayout({
+    rooms: [squareRoom("r1", 0, 4)],
+    connections: [],
+    placements: [],
+    entrance: { x: 0, z: -2, rotation: 0 },
+  });
+
+  const art = {
+    id: "door-art",
+    type: "image",
+    sort: 0,
+    published: true,
+    title: { en: "", ru: "", uk: "", he: "" },
+    text: { en: "", ru: "", uk: "", he: "" },
+    urlWall: "",
+    urlFull: "",
+    urlVideo: "",
+    urlPoster: "",
+    frameId: "wood",
+  };
+
+  const probe = { x: 0, z: 6.26 + 0.35 };
+  const open = evaluateArtworkDrop(art, probe, base);
+  assert.equal(open.ok, true);
+  if (!open.ok) return;
+  const edgeIndex = open.placement.wallEdgeIndex;
+  assert.ok(edgeIndex != null);
+
+  const withDoor = normalizeLayout({
+    ...base,
+    connections: [
+      {
+        roomA: "r1",
+        roomB: "entrance",
+        edgeA: edgeIndex,
+        edgeB: 2,
+        doorwayWidth: 4,
+      },
+    ],
+  });
+
+  const blocked = evaluateArtworkDrop(art, probe, withDoor);
+  assert.equal(blocked.ok, false);
+  if (blocked.ok) return;
+  assert.equal(blocked.reason, "doorway");
+});

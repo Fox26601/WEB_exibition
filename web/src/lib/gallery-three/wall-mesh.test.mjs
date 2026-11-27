@@ -3,8 +3,12 @@ import test from "node:test";
 import * as THREE from "three";
 import { shapeLocalVertices, applyTransform } from "../layout-geometry.ts";
 import { roomCentroid, inwardNormal } from "./room-geometry.ts";
-import { WALL_CORNER_JOIN, WALL_THICKNESS } from "./constants.ts";
-import { addWallSlab } from "./wall-mesh.ts";
+import {
+  DOORWAY_PASSAGE_THICKNESS,
+  WALL_CORNER_JOIN,
+  WALL_THICKNESS,
+} from "./constants.ts";
+import { addWallSlab, buildWallAlongEdge } from "./wall-mesh.ts";
 
 test("wall slab faces room interior for square room", () => {
   const verts = shapeLocalVertices("square").map((v) =>
@@ -47,4 +51,37 @@ test("butt join: slab length equals edge (no miter overshoot)", () => {
     `slab depth ${params.depth} must equal edge length 4`,
   );
   assert.equal(params.width, WALL_THICKNESS);
+});
+
+test("doorway passage is one step thicker than walls", () => {
+  assert.ok(
+    DOORWAY_PASSAGE_THICKNESS > WALL_THICKNESS + 0.01,
+    "doorway volume must be thicker than walls",
+  );
+  const a = { x: 0, z: 0 };
+  const b = { x: 8, z: 0 };
+  const verts = [
+    { x: 0, z: 0 },
+    { x: 8, z: 0 },
+    { x: 8, z: 4 },
+    { x: 0, z: 4 },
+  ];
+  const group = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial();
+  buildWallAlongEdge(group, a, b, 4, mat, verts);
+  let foundThick = false;
+  group.traverse((obj) => {
+    if (obj.isMesh && obj.geometry?.parameters) {
+      if (
+        Math.abs(obj.geometry.parameters.width - DOORWAY_PASSAGE_THICKNESS) <
+        1e-6
+      ) {
+        foundThick = true;
+      }
+    }
+  });
+  assert.ok(
+    foundThick,
+    "doorway lintel/jambs must use DOORWAY_PASSAGE_THICKNESS",
+  );
 });

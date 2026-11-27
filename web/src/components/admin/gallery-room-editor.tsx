@@ -312,6 +312,21 @@ export function GalleryRoomEditor({
     [commit],
   );
 
+  const setPlacementYaw = useCallback(
+    (artworkId: string, yaw: number) => {
+      const current = normalizeLayout(layoutLiveRef.current);
+      commit({
+        ...current,
+        placements: current.placements.map((p) =>
+          p.artworkId === artworkId && p.kind === "sculpture"
+            ? { ...p, yaw }
+            : p,
+        ),
+      });
+    },
+    [commit],
+  );
+
   const upsertPlacement = useCallback(
     (placement: import("@/lib/catalog-types").ArtworkPlacement): void => {
       const current = normalizeLayout(layoutLiveRef.current);
@@ -346,9 +361,11 @@ export function GalleryRoomEditor({
         const msg =
           result.reason === "no_snap"
             ? t.dropNoSnap
-            : result.reason === "conflict"
-              ? t.dropConflict
-              : t.dropOutside;
+            : result.reason === "doorway"
+              ? t.dropDoorway
+              : result.reason === "conflict"
+                ? t.dropConflict
+                : t.dropOutside;
         showPlaceToast(msg);
         return;
       }
@@ -361,6 +378,11 @@ export function GalleryRoomEditor({
         // Keep per-placement frame; do not reset from catalog default on move.
         if (prev.frameId) {
           placement = { ...placement, frameId: prev.frameId };
+        }
+      }
+      if (prev?.kind === "sculpture" && placement.kind === "sculpture") {
+        if (typeof prev.yaw === "number") {
+          placement = { ...placement, yaw: prev.yaw };
         }
       }
       upsertPlacement(placement);
@@ -392,7 +414,7 @@ export function GalleryRoomEditor({
       if (result.ok) {
         ghostWorld = result.world;
       } else if (art.type !== "model") {
-        const hint = wallSnapPreviewWorld(world, current.rooms);
+        const hint = wallSnapPreviewWorld(world, current.rooms, current);
         if (hint) ghostWorld = hint;
       }
       setGhost({ world: ghostWorld, ok: result.ok });
@@ -1353,6 +1375,7 @@ export function GalleryRoomEditor({
             onRemovePlacement={removePlacement}
             onSetFrame={setPlacementFrame}
             onSetWallHeight={setPlacementWallHeight}
+            onSetYaw={setPlacementYaw}
             dragDisabled={editorMode !== "place"}
             onDragDenied={() => showPlaceToast(t.planDragDenied)}
           />
